@@ -1,0 +1,1303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Star Real Estate | Commercial & Residential For Sale & For Rent</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #1f2a33;
+      --text: #4c5963;
+      --bg: #f7f6f1;
+      --panel: #ffffff;
+      --line: rgba(31, 42, 51, 0.14);
+      --primary: #0d3b52;
+      --primary-soft: #dce9ef;
+      --accent: #c1752e;
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --shadow: 0 20px 38px rgba(13, 59, 82, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Public Sans", system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% 10%, rgba(193, 117, 46, 0.1), transparent 30%),
+        radial-gradient(circle at 88% 0%, rgba(13, 59, 82, 0.12), transparent 34%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    body.nav-open {
+      overflow: hidden;
+    }
+
+    .site {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 22px 18px 70px;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      background: rgba(255, 255, 255, 0.9);
+      backdrop-filter: blur(10px);
+      border-radius: 16px;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .brand-mark {
+      width: 54px;
+      height: 54px;
+      border-radius: 12px;
+      border: 1px solid var(--line);
+      background: #ffffff;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .brand-mark img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scale(1.2);
+    }
+
+    .brand-copy h1 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 15px;
+      line-height: 1.15;
+      text-transform: uppercase;
+      letter-spacing: 0.25px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .brand-copy p {
+      margin: 3px 0 0;
+      font-size: 12px;
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .nav-wrap {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+    }
+
+    .desktop-nav {
+      display: flex;
+      gap: 6px;
+      align-items: center;
+    }
+
+    .desktop-nav a {
+      text-decoration: none;
+      color: var(--text);
+      padding: 9px 11px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+    }
+
+    .desktop-nav a:hover {
+      background: var(--primary-soft);
+      color: var(--ink);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      text-decoration: none;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 700;
+      border: 1px solid transparent;
+      padding: 10px 12px;
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #0d3b52, #135678);
+      color: #ffffff;
+      box-shadow: 0 12px 22px rgba(13, 59, 82, 0.24);
+    }
+
+    .menu-toggle {
+      display: none;
+      width: 44px;
+      height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #ffffff;
+      color: var(--ink);
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    .mobile-nav {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      background: rgba(31, 42, 51, 0.62);
+      backdrop-filter: blur(4px);
+      padding: 16px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mobile-nav.open {
+      display: flex;
+    }
+
+    .mobile-sheet {
+      width: min(360px, 100%);
+      background: #ffffff;
+      border: 1px solid var(--line);
+      border-radius: 15px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 8px;
+    }
+
+    .mobile-sheet a,
+    .close-nav {
+      width: 100%;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      padding: 10px 12px;
+      text-decoration: none;
+      color: var(--text);
+      font-size: 13px;
+      font-weight: 700;
+      background: #ffffff;
+      text-align: left;
+    }
+
+    .mobile-sheet a.btn-primary {
+      color: #ffffff;
+      border: none;
+    }
+
+    .close-nav {
+      cursor: pointer;
+      font-family: inherit;
+    }
+
+    .hero {
+      margin-top: 18px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      padding: 44px 40px;
+      min-height: 320px;
+      display: grid;
+      grid-template-columns: 1.15fr 0.85fr;
+      gap: 24px;
+      align-items: center;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.97), rgba(246, 243, 236, 0.95));
+      box-shadow: var(--shadow);
+    }
+
+    .hero-content {
+      min-width: 0;
+      display: grid;
+      gap: 12px;
+      align-content: start;
+    }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      border: 1px solid rgba(193, 117, 46, 0.35);
+      border-radius: 999px;
+      background: rgba(193, 117, 46, 0.12);
+      color: #92531e;
+      padding: 6px 10px;
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.25px;
+    }
+
+    .hero h2 {
+      margin: 14px 0 8px;
+      font-family: "Sora", sans-serif;
+      font-size: clamp(30px, 4vw, 46px);
+      line-height: 1.08;
+      letter-spacing: -0.4px;
+      max-width: 820px;
+    }
+
+    .hero p {
+      margin: 0;
+      color: var(--text);
+      font-size: 15px;
+      line-height: 1.45;
+      max-width: 760px;
+    }
+
+    section {
+      margin-top: 42px;
+    }
+
+    section[id] {
+      scroll-margin-top: 96px;
+    }
+
+    #services {
+      scroll-margin-top: 96px;
+    }
+
+    .content-section {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 14px 28px rgba(13, 59, 82, 0.08);
+      padding: 28px;
+    }
+
+    .hero-services {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.9);
+      padding: 14px;
+      box-shadow: 0 12px 24px rgba(13, 59, 82, 0.08);
+      display: grid;
+      gap: 10px;
+      align-content: start;
+      margin-top: 4px;
+    }
+
+    .hero-services h3 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .hero-services p {
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
+      max-width: none;
+    }
+
+    .hero-services-grid {
+      display: grid;
+      gap: 10px;
+    }
+
+    .hero-service-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      background: #ffffff;
+      padding: 10px;
+      display: grid;
+      gap: 4px;
+    }
+
+    .hero-service-card h4 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+
+    .hero-service-card p {
+      margin: 0;
+      color: var(--text);
+      font-size: 12px;
+      line-height: 1.35;
+    }
+
+    .hero-media {
+      height: 100%;
+      min-height: 250px;
+      border: 1px dashed rgba(13, 59, 82, 0.35);
+      border-radius: var(--radius-md);
+      background:
+        linear-gradient(150deg, #d8e5ec, #f0e6db),
+        repeating-linear-gradient(90deg, rgba(18, 65, 88, 0.13) 0 16px, transparent 16px 28px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #36515f;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 14px;
+    }
+
+    .section-head {
+      margin-bottom: 18px;
+    }
+
+    .section-head h3 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 23px;
+      line-height: 1.15;
+    }
+
+    .section-head p {
+      margin: 6px 0 0;
+      color: var(--text);
+      font-size: 14px;
+    }
+
+    .project-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+      gap: 16px;
+    }
+
+    .project-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel);
+      padding: 14px;
+      display: grid;
+      gap: 10px;
+      box-shadow: 0 14px 26px rgba(13, 59, 82, 0.08);
+    }
+
+    .project-top {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .project-kind {
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.28px;
+    }
+
+    .status {
+      display: inline-flex;
+      align-items: center;
+      border-radius: 999px;
+      border: 1px solid rgba(13, 59, 82, 0.24);
+      background: var(--primary-soft);
+      color: #124158;
+      font-size: 10px;
+      font-weight: 800;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      letter-spacing: 0.2px;
+      white-space: nowrap;
+    }
+
+    .building-placeholder {
+      height: 132px;
+      border: 1px dashed rgba(13, 59, 82, 0.35);
+      border-radius: var(--radius-sm);
+      background:
+        linear-gradient(150deg, #dae7ed, #f2e6da),
+        repeating-linear-gradient(90deg, rgba(18, 65, 88, 0.15) 0 14px, transparent 14px 24px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #36515f;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 10px;
+    }
+
+    .project-card h4 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 17px;
+      line-height: 1.2;
+    }
+
+    .project-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+
+    .project-meta li {
+      border: 1px solid var(--line);
+      border-radius: 999px;
+      padding: 4px 8px;
+      font-size: 11px;
+      color: var(--text);
+      font-weight: 700;
+      background: #f8f8f8;
+    }
+
+    .project-note {
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .project-links {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+
+    .listing-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(245px, 1fr));
+      gap: 16px;
+    }
+
+    .listing-carousel {
+      --items-per-view: 2;
+      --carousel-gap: 16px;
+    }
+
+    .carousel-controls {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-bottom: 10px;
+    }
+
+    .carousel-btn {
+      border: 1px solid var(--line);
+      background: #ffffff;
+      color: var(--primary);
+      border-radius: 999px;
+      width: 34px;
+      height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 800;
+      cursor: pointer;
+      box-shadow: 0 8px 18px rgba(13, 59, 82, 0.1);
+    }
+
+    .carousel-btn:hover {
+      background: var(--primary-soft);
+    }
+
+    .carousel-viewport {
+      overflow: hidden;
+    }
+
+    .carousel-track {
+      display: flex;
+      gap: var(--carousel-gap);
+      transition: transform 420ms ease;
+      will-change: transform;
+    }
+
+    .carousel-slide {
+      flex: 0 0 calc((100% - (var(--carousel-gap) * (var(--items-per-view) - 1))) / var(--items-per-view));
+      min-width: calc((100% - (var(--carousel-gap) * (var(--items-per-view) - 1))) / var(--items-per-view));
+    }
+
+    .carousel-btn:disabled {
+      opacity: 0.42;
+      cursor: not-allowed;
+      box-shadow: none;
+    }
+
+    .property-group {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: #ffffff;
+      padding: 14px;
+    }
+
+    .property-group--residential {
+      border-color: rgba(13, 59, 82, 0.26);
+      background: linear-gradient(165deg, rgba(220, 233, 239, 0.42), rgba(255, 255, 255, 0.95));
+    }
+
+    .property-group--commercial {
+      border-color: rgba(193, 117, 46, 0.32);
+      background: linear-gradient(165deg, rgba(245, 228, 210, 0.42), rgba(255, 255, 255, 0.95));
+    }
+
+    .property-group + .property-group {
+      margin-top: 24px;
+    }
+
+    .property-tag {
+      display: inline-flex;
+      align-items: center;
+      width: fit-content;
+      border-radius: 999px;
+      padding: 4px 10px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.24px;
+      text-transform: uppercase;
+      margin-bottom: 8px;
+    }
+
+    .property-group--residential .property-tag {
+      border: 1px solid rgba(13, 59, 82, 0.26);
+      color: #0d3b52;
+      background: rgba(220, 233, 239, 0.8);
+    }
+
+    .property-group--commercial .property-tag {
+      border: 1px solid rgba(193, 117, 46, 0.32);
+      color: #8d531a;
+      background: rgba(245, 228, 210, 0.8);
+    }
+
+    .property-subhead h4 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .property-subhead-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 4px;
+    }
+
+    .property-subhead-head .carousel-controls {
+      margin-bottom: 0;
+      flex-shrink: 0;
+    }
+
+    .listing-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel);
+      padding: 14px;
+      display: grid;
+      gap: 9px;
+      box-shadow: 0 12px 24px rgba(13, 59, 82, 0.07);
+    }
+
+    .listing-card h4 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    .listing-layout {
+      display: grid;
+      grid-template-columns: 1fr 150px;
+      gap: 10px;
+      align-items: start;
+    }
+
+    .listing-details {
+      margin: 0;
+      display: grid;
+      gap: 6px;
+    }
+
+    .listing-details div {
+      display: grid;
+      grid-template-columns: minmax(96px, 118px) 1fr;
+      gap: 10px;
+      align-items: baseline;
+    }
+
+    .listing-details dt {
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .listing-details dd {
+      margin: 0;
+      color: #143848;
+      font-size: 13px;
+      line-height: 1.35;
+    }
+
+    .listing-photo {
+      height: 120px;
+      border: 1px dashed rgba(13, 59, 82, 0.35);
+      border-radius: var(--radius-sm);
+      background:
+        linear-gradient(145deg, #dde8ee, #f3e7dc),
+        repeating-linear-gradient(90deg, rgba(18, 65, 88, 0.1) 0 14px, transparent 14px 24px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #36515f;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 10px;
+    }
+
+    .listing-price {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 20px;
+      color: var(--accent);
+      letter-spacing: -0.2px;
+    }
+
+    .simple-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .simple-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel);
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+      box-shadow: 0 12px 24px rgba(13, 59, 82, 0.07);
+    }
+
+    .simple-card h4 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    .simple-card p {
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.4;
+    }
+
+    .agent-role {
+      font-size: 11px;
+      color: var(--text);
+      text-transform: uppercase;
+      letter-spacing: 0.25px;
+      font-weight: 800;
+    }
+
+    .agent-photo {
+      height: 138px;
+      border: 1px dashed rgba(13, 59, 82, 0.35);
+      border-radius: var(--radius-sm);
+      background:
+        linear-gradient(145deg, #dde8ee, #f3e7dc),
+        repeating-linear-gradient(90deg, rgba(18, 65, 88, 0.1) 0 14px, transparent 14px 24px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #36515f;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 10px;
+    }
+
+    .agent-history {
+      margin: 0;
+      color: #143848;
+      font-size: 12px;
+      line-height: 1.45;
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+    }
+
+    .website-link {
+      text-decoration: none;
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .website-link:hover {
+      text-decoration: underline;
+    }
+
+    footer {
+      margin-top: 30px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    @media (max-width: 820px) {
+      .hero {
+        grid-template-columns: 1fr;
+      }
+
+      .hero-media {
+        min-height: 220px;
+      }
+
+      .desktop-nav {
+        display: none;
+      }
+
+      .menu-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+
+      .listing-carousel {
+        --items-per-view: 1;
+      }
+
+      .listing-layout {
+        grid-template-columns: 1fr;
+      }
+
+      .property-subhead-head {
+        align-items: flex-start;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .site {
+        padding: 14px 12px 60px;
+      }
+
+      .topbar {
+        padding: 8px 10px;
+      }
+
+      .brand-mark {
+        width: 48px;
+        height: 48px;
+      }
+
+      .brand-copy h1 {
+        font-size: 13px;
+      }
+
+      .hero {
+        padding: 24px 20px;
+        min-height: 0;
+        gap: 16px;
+      }
+
+      .content-section {
+        padding: 20px;
+      }
+
+      .carousel-btn {
+        width: 32px;
+        height: 32px;
+      }
+
+      #services {
+        scroll-margin-top: 84px;
+      }
+
+      section[id] {
+        scroll-margin-top: 84px;
+      }
+
+      footer {
+        justify-content: center;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="site">
+    <header class="topbar">
+      <a class="brand" href="#home" aria-label="Back to top">
+        <div class="brand-mark">
+          <img src="jpg/logo-primary.jpg" alt="Star Real Estate logo">
+        </div>
+        <div class="brand-copy">
+          <h1>Star Real Estate</h1>
+          <p>Commercial & Residential | For Sale & For Rent</p>
+        </div>
+      </a>
+
+      <div class="nav-wrap">
+        <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
+
+        <nav class="desktop-nav" aria-label="Primary navigation">
+          <a href="#home">Home</a>
+          <a href="#services">Services</a>
+          <a href="#properties">Properties</a>
+          <a href="#about">Our Team</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="mobile-nav" aria-hidden="true">
+      <div class="mobile-sheet">
+        <button class="close-nav" type="button" aria-label="Close menu">Close</button>
+        <a href="#home">Home</a>
+        <a href="#services">Services</a>
+        <a href="#properties">Properties</a>
+        <a href="#about">Our Team</a>
+      </div>
+    </div>
+
+    <section class="hero" id="home">
+      <div class="hero-content">
+        <h2>Where smart moves shine</h2>
+        <p>We support buyers, sellers, landlords, and tenants with pricing strategy, marketing, tours, and deal coordination.</p>
+        <div class="hero-services" id="services">
+          <h3>Real Estate Services</h3>
+          <p>Commercial and residential support for buying, selling, and renting across NYC.</p>
+          <div class="hero-services-grid">
+            <article class="hero-service-card">
+              <h4>Residential Sales</h4>
+              <p>Pricing, listing strategy, showings, and negotiations for homes, condos, and co-ops.</p>
+            </article>
+            <article class="hero-service-card">
+              <h4>Commercial Sales & Leasing</h4>
+              <p>Tenant or buyer targeting, market positioning, and deal management for commercial assets.</p>
+            </article>
+            <article class="hero-service-card">
+              <h4>Rental Services</h4>
+              <p>Marketing, tours, screening, and lease support for residential and commercial rentals.</p>
+            </article>
+          </div>
+        </div>
+      </div>
+      <div class="hero-media">Hero Image Placeholder<br>Replace with featured property photo</div>
+    </section>
+
+    <section id="properties" class="content-section">
+      <div class="section-head">
+        <h3>Properties</h3>
+        <p>Generic NYC listings by property type.</p>
+      </div>
+
+      <div class="property-group property-group--residential" aria-labelledby="residential-properties">
+        <div class="section-head property-subhead">
+          <span class="property-tag">Residential</span>
+          <div class="property-subhead-head">
+            <h4 id="residential-properties">Residential Properties</h4>
+            <div class="carousel-controls" aria-label="Residential property carousel controls">
+              <button class="carousel-btn" type="button" data-carousel-prev aria-label="Previous residential listing">&#8249;</button>
+              <button class="carousel-btn" type="button" data-carousel-next aria-label="Next residential listing">&#8250;</button>
+            </div>
+          </div>
+          <p>Sample NYC homes and apartments available for sale or rent.</p>
+        </div>
+        <div class="listing-carousel" data-carousel>
+          <div class="carousel-viewport">
+            <div class="carousel-track" data-carousel-track>
+              <article class="listing-card carousel-slide">
+                <div class="project-top">
+                  <span class="project-kind">NYC Residential Listing</span>
+                  <span class="status">For Sale</span>
+                </div>
+                <h4>Upper West Side Condo</h4>
+                <div class="listing-layout">
+                  <dl class="listing-details">
+                    <div><dt>Price</dt><dd>$1,150,000</dd></div>
+                    <div><dt>Property Type</dt><dd>Condo</dd></div>
+                    <div><dt>Location</dt><dd>245 W 72nd St, New York, NY</dd></div>
+                    <div><dt>Neighborhood</dt><dd>Upper West Side</dd></div>
+                    <div><dt>Bedrooms</dt><dd>2</dd></div>
+                    <div><dt>Bathroom</dt><dd>2</dd></div>
+                  </dl>
+                  <div class="listing-photo" role="img" aria-label="Pictures 1 to 6 placeholder">
+                    Pictures 1-6 Placeholder
+                  </div>
+                </div>
+                <a href="https://example.com/listings/nyc-upper-west-side-condo" target="_blank" rel="noopener noreferrer" class="website-link">Property Details</a>
+              </article>
+
+              <article class="listing-card carousel-slide">
+                <div class="project-top">
+                  <span class="project-kind">NYC Residential Listing</span>
+                  <span class="status">For Rent</span>
+                </div>
+                <h4>Astoria Co-op Apartment</h4>
+                <div class="listing-layout">
+                  <dl class="listing-details">
+                    <div><dt>Price</dt><dd>$3,200/mo</dd></div>
+                    <div><dt>Property Type</dt><dd>Co-op</dd></div>
+                    <div><dt>Location</dt><dd>31-14 30th Ave, Astoria, NY</dd></div>
+                    <div><dt>Neighborhood</dt><dd>Astoria</dd></div>
+                    <div><dt>Bedrooms</dt><dd>1</dd></div>
+                    <div><dt>Bathroom</dt><dd>1</dd></div>
+                  </dl>
+                  <div class="listing-photo" role="img" aria-label="Pictures 1 to 6 placeholder">
+                    Pictures 1-6 Placeholder
+                  </div>
+                </div>
+                <a href="https://example.com/listings/nyc-astoria-coop-apartment" target="_blank" rel="noopener noreferrer" class="website-link">Property Details</a>
+              </article>
+
+              <article class="listing-card carousel-slide">
+                <div class="project-top">
+                  <span class="project-kind">NYC Residential Placeholder</span>
+                  <span class="status">For Sale</span>
+                </div>
+                <h4>Brooklyn Brownstone House</h4>
+                <div class="listing-layout">
+                  <dl class="listing-details">
+                    <div><dt>Price</dt><dd>$2,250,000</dd></div>
+                    <div><dt>Property Type</dt><dd>House</dd></div>
+                    <div><dt>Location</dt><dd>198 Dean St, Brooklyn, NY</dd></div>
+                    <div><dt>Neighborhood</dt><dd>Boerum Hill</dd></div>
+                    <div><dt>Bedrooms</dt><dd>4</dd></div>
+                    <div><dt>Bathroom</dt><dd>3</dd></div>
+                  </dl>
+                  <div class="listing-photo" role="img" aria-label="Pictures 1 to 6 placeholder">
+                    Pictures 1-6 Placeholder
+                  </div>
+                </div>
+                <a href="https://example.com/listings/nyc-brooklyn-brownstone-placeholder" target="_blank" rel="noopener noreferrer" class="website-link">Property Details</a>
+              </article>
+
+              <article class="listing-card carousel-slide">
+                <div class="project-top">
+                  <span class="project-kind">NYC Residential Placeholder</span>
+                  <span class="status">For Rent</span>
+                </div>
+                <h4>Long Island City Condo</h4>
+                <div class="listing-layout">
+                  <dl class="listing-details">
+                    <div><dt>Price</dt><dd>$4,100/mo</dd></div>
+                    <div><dt>Property Type</dt><dd>Condo</dd></div>
+                    <div><dt>Location</dt><dd>47-22 11th St, Long Island City, NY</dd></div>
+                    <div><dt>Neighborhood</dt><dd>Hunters Point</dd></div>
+                    <div><dt>Bedrooms</dt><dd>2</dd></div>
+                    <div><dt>Bathroom</dt><dd>2</dd></div>
+                  </dl>
+                  <div class="listing-photo" role="img" aria-label="Pictures 1 to 6 placeholder">
+                    Pictures 1-6 Placeholder
+                  </div>
+                </div>
+                <a href="https://example.com/listings/nyc-lic-condo-placeholder" target="_blank" rel="noopener noreferrer" class="website-link">Property Details</a>
+              </article>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="property-group property-group--commercial" aria-labelledby="commercial-properties">
+        <div class="section-head property-subhead">
+          <span class="property-tag">Commercial</span>
+          <div class="property-subhead-head">
+            <h4 id="commercial-properties">Commercial Properties</h4>
+            <div class="carousel-controls" aria-label="Commercial property carousel controls">
+              <button class="carousel-btn" type="button" data-carousel-prev aria-label="Previous commercial listing">&#8249;</button>
+              <button class="carousel-btn" type="button" data-carousel-next aria-label="Next commercial listing">&#8250;</button>
+            </div>
+          </div>
+          <p>Sample NYC office, retail, and mixed-use spaces.</p>
+        </div>
+        <div class="listing-carousel" data-carousel>
+          <div class="carousel-viewport">
+            <div class="carousel-track" data-carousel-track>
+              <article class="listing-card carousel-slide">
+                <div class="project-top">
+                  <span class="project-kind">NYC Commercial Listing</span>
+                  <span class="status">For Sale</span>
+                </div>
+                <h4>Midtown Multi-family Building</h4>
+                <div class="listing-layout">
+                  <dl class="listing-details">
+                    <div><dt>Price</dt><dd>$3,450,000</dd></div>
+                    <div><dt>Property Type</dt><dd>Multi-family</dd></div>
+                    <div><dt>Location</dt><dd>315 W 37th St, New York, NY</dd></div>
+                    <div><dt>Neighborhood</dt><dd>Midtown West</dd></div>
+                    <div><dt>Bedrooms</dt><dd>16</dd></div>
+                    <div><dt>Bathroom</dt><dd>8</dd></div>
+                  </dl>
+                  <div class="listing-photo" role="img" aria-label="Pictures 1 to 6 placeholder">
+                    Pictures 1-6 Placeholder
+                  </div>
+                </div>
+                <a href="https://example.com/listings/nyc-midtown-multifamily-building" target="_blank" rel="noopener noreferrer" class="website-link">Property Details</a>
+              </article>
+
+              <article class="listing-card carousel-slide">
+                <div class="project-top">
+                  <span class="project-kind">NYC Commercial Listing</span>
+                  <span class="status">For Rent</span>
+                </div>
+                <h4>SoHo Mixed-Use Townhouse</h4>
+                <div class="listing-layout">
+                  <dl class="listing-details">
+                    <div><dt>Price</dt><dd>$18,500/mo</dd></div>
+                    <div><dt>Property Type</dt><dd>House</dd></div>
+                    <div><dt>Location</dt><dd>128 Prince St, New York, NY</dd></div>
+                    <div><dt>Neighborhood</dt><dd>SoHo</dd></div>
+                    <div><dt>Bedrooms</dt><dd>5</dd></div>
+                    <div><dt>Bathroom</dt><dd>3</dd></div>
+                  </dl>
+                  <div class="listing-photo" role="img" aria-label="Pictures 1 to 6 placeholder">
+                    Pictures 1-6 Placeholder
+                  </div>
+                </div>
+                <a href="https://example.com/listings/nyc-soho-mixed-use-townhouse" target="_blank" rel="noopener noreferrer" class="website-link">Property Details</a>
+              </article>
+
+              <article class="listing-card carousel-slide">
+                <div class="project-top">
+                  <span class="project-kind">NYC Commercial Placeholder</span>
+                  <span class="status">For Sale</span>
+                </div>
+                <h4>Chelsea Co-op Loft Space</h4>
+                <div class="listing-layout">
+                  <dl class="listing-details">
+                    <div><dt>Price</dt><dd>$2,980,000</dd></div>
+                    <div><dt>Property Type</dt><dd>Co-op</dd></div>
+                    <div><dt>Location</dt><dd>220 W 19th St, New York, NY</dd></div>
+                    <div><dt>Neighborhood</dt><dd>Chelsea</dd></div>
+                    <div><dt>Bedrooms</dt><dd>3</dd></div>
+                    <div><dt>Bathroom</dt><dd>2</dd></div>
+                  </dl>
+                  <div class="listing-photo" role="img" aria-label="Pictures 1 to 6 placeholder">
+                    Pictures 1-6 Placeholder
+                  </div>
+                </div>
+                <a href="https://example.com/listings/nyc-chelsea-coop-placeholder" target="_blank" rel="noopener noreferrer" class="website-link">Property Details</a>
+              </article>
+
+              <article class="listing-card carousel-slide">
+                <div class="project-top">
+                  <span class="project-kind">NYC Commercial Placeholder</span>
+                  <span class="status">For Rent</span>
+                </div>
+                <h4>Williamsburg Retail Condo</h4>
+                <div class="listing-layout">
+                  <dl class="listing-details">
+                    <div><dt>Price</dt><dd>$11,800/mo</dd></div>
+                    <div><dt>Property Type</dt><dd>Condo</dd></div>
+                    <div><dt>Location</dt><dd>82 Wythe Ave, Brooklyn, NY</dd></div>
+                    <div><dt>Neighborhood</dt><dd>Williamsburg</dd></div>
+                    <div><dt>Bedrooms</dt><dd>2</dd></div>
+                    <div><dt>Bathroom</dt><dd>2</dd></div>
+                  </dl>
+                  <div class="listing-photo" role="img" aria-label="Pictures 1 to 6 placeholder">
+                    Pictures 1-6 Placeholder
+                  </div>
+                </div>
+                <a href="https://example.com/listings/nyc-williamsburg-retail-placeholder" target="_blank" rel="noopener noreferrer" class="website-link">Property Details</a>
+              </article>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="about" class="content-section">
+      <div class="section-head">
+        <h3>Our Team</h3>
+        <p>Meet the advisors behind Star Real Estate. Our team combines local NYC market insight, hands-on transaction support, and relationship-driven guidance from first tour through final closing.</p>
+      </div>
+      <div class="simple-grid">
+        <article class="simple-card">
+          <div class="agent-photo" role="img" aria-label="Xiao profile picture placeholder">
+            Team Photo Placeholder
+          </div>
+          <h4>Xiao</h4>
+          <div class="agent-role">Senior Realtor</div>
+          <p>Leads listing strategy, pricing, and client representation across active properties.</p>
+          <p class="agent-history">Background: Over 9 years in NYC residential and mixed-use sales, with early experience in property marketing and neighborhood pricing analysis across Manhattan and Queens.</p>
+        </article>
+        <article class="simple-card">
+          <div class="agent-photo" role="img" aria-label="Wendy profile picture placeholder">
+            Team Photo Placeholder
+          </div>
+          <h4>Wendy</h4>
+          <div class="agent-role">Realtor</div>
+          <p>Handles tours, client communication, and leasing support for available listings.</p>
+          <p class="agent-history">Background: Began in NYC rental operations and client services, then transitioned into full-time brokerage, focusing on tenant placement, negotiations, and smooth move-in coordination.</p>
+        </article>
+      </div>
+    </section>
+
+    <footer>
+      <span>Star Real Estate</span>
+      <span>Property availability and pricing are subject to change.</span>
+    </footer>
+  </div>
+
+  <script>
+    const menuToggle = document.querySelector('.menu-toggle');
+    const mobileNav = document.querySelector('.mobile-nav');
+    const closeButton = document.querySelector('.close-nav');
+    const mobileLinks = document.querySelectorAll('.mobile-sheet a');
+
+    function openNav() {
+      mobileNav?.classList.add('open');
+      mobileNav?.setAttribute('aria-hidden', 'false');
+      menuToggle?.setAttribute('aria-expanded', 'true');
+      document.body.classList.add('nav-open');
+    }
+
+    function closeNav() {
+      mobileNav?.classList.remove('open');
+      mobileNav?.setAttribute('aria-hidden', 'true');
+      menuToggle?.setAttribute('aria-expanded', 'false');
+      document.body.classList.remove('nav-open');
+    }
+
+    menuToggle?.addEventListener('click', () => {
+      if (mobileNav?.classList.contains('open')) {
+        closeNav();
+      } else {
+        openNav();
+      }
+    });
+
+    closeButton?.addEventListener('click', closeNav);
+
+    mobileNav?.addEventListener('click', (event) => {
+      if (event.target === mobileNav) {
+        closeNav();
+      }
+    });
+
+    mobileLinks.forEach((link) => {
+      link.addEventListener('click', () => {
+        closeNav();
+      });
+    });
+
+    const listingCarousels = document.querySelectorAll('[data-carousel]');
+
+    listingCarousels.forEach((carousel) => {
+      const track = carousel.querySelector('[data-carousel-track]');
+      const propertyGroup = carousel.closest('.property-group');
+      const prevButton = propertyGroup?.querySelector('[data-carousel-prev]');
+      const nextButton = propertyGroup?.querySelector('[data-carousel-next]');
+      const slides = track ? Array.from(track.children) : [];
+
+      if (!track || slides.length === 0) return;
+
+      let currentIndex = 0;
+      let itemsPerView = 2;
+      let autoAdvanceId = null;
+
+      const getItemsPerView = () => (window.matchMedia('(max-width: 820px)').matches ? 1 : 2);
+      const getMaxIndex = () => Math.max(0, slides.length - itemsPerView);
+
+      const updateButtons = () => {
+        const isDisabled = getMaxIndex() === 0;
+        if (prevButton) prevButton.disabled = isDisabled;
+        if (nextButton) nextButton.disabled = isDisabled;
+      };
+
+      const goToSlide = (index) => {
+        const maxIndex = getMaxIndex();
+        if (maxIndex === 0) {
+          currentIndex = 0;
+          track.style.transform = 'translateX(0)';
+          updateButtons();
+          return;
+        }
+
+        if (index < 0) currentIndex = maxIndex;
+        else if (index > maxIndex) currentIndex = 0;
+        else currentIndex = index;
+
+        const targetSlide = slides[currentIndex];
+        const offset = targetSlide ? targetSlide.offsetLeft : 0;
+        track.style.transform = `translateX(-${offset}px)`;
+        updateButtons();
+      };
+
+      const stopAutoAdvance = () => {
+        if (!autoAdvanceId) return;
+        window.clearInterval(autoAdvanceId);
+        autoAdvanceId = null;
+      };
+
+      const startAutoAdvance = () => {
+        stopAutoAdvance();
+        if (slides.length <= itemsPerView) return;
+        autoAdvanceId = window.setInterval(() => {
+          goToSlide(currentIndex + 1);
+        }, 4500);
+      };
+
+      const syncLayout = () => {
+        itemsPerView = getItemsPerView();
+        carousel.style.setProperty('--items-per-view', String(itemsPerView));
+        if (currentIndex > getMaxIndex()) currentIndex = getMaxIndex();
+        goToSlide(currentIndex);
+        startAutoAdvance();
+      };
+
+      prevButton?.addEventListener('click', () => {
+        goToSlide(currentIndex - 1);
+        startAutoAdvance();
+      });
+
+      nextButton?.addEventListener('click', () => {
+        goToSlide(currentIndex + 1);
+        startAutoAdvance();
+      });
+
+      carousel.addEventListener('mouseenter', stopAutoAdvance);
+      carousel.addEventListener('mouseleave', startAutoAdvance);
+      carousel.addEventListener('focusin', stopAutoAdvance);
+      carousel.addEventListener('focusout', startAutoAdvance);
+      window.addEventListener('resize', syncLayout);
+
+      syncLayout();
+    });
+  </script>
+</body>
+</html>
