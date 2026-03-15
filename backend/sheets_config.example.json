@@ -1,0 +1,13 @@
+{
+  "primary": {
+    "spreadsheet_id": "YOUR_PRIMARY_SHEET_ID",
+    "sheet_range": "Listings!A:Z"
+  },
+  "secondary": {
+    "spreadsheet_id": "YOUR_SECONDARY_SHEET_ID",
+    "sheet_range": "Listings!A:Z"
+  },
+  "output_path": "data/listings.json",
+  "meta_output_path": "data/listings_meta.json",
+  "required_fields": ["category", "title", "status"]
+}

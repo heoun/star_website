@@ -1,0 +1,46 @@
+name: Sync Listings From Sheets
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 * * * *"
+
+permissions:
+  contents: write
+
+jobs:
+  sync-listings:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install Dependencies
+        run: pip install -r backend/requirements.txt
+
+      - name: Sync Listings
+        env:
+          GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
+          PRIMARY_SHEET_ID: ${{ secrets.PRIMARY_SHEET_ID }}
+          PRIMARY_SHEET_RANGE: ${{ secrets.PRIMARY_SHEET_RANGE }}
+          SECONDARY_SHEET_ID: ${{ secrets.SECONDARY_SHEET_ID }}
+          SECONDARY_SHEET_RANGE: ${{ secrets.SECONDARY_SHEET_RANGE }}
+        run: python backend/sync_listings.py
+
+      - name: Commit Updated Data
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add data/listings.json data/listings_meta.json
+          if git diff --cached --quiet; then
+            echo "No listing changes to commit."
+            exit 0
+          fi
+          git commit -m "chore: sync listings data"
+          git push

@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
+    "sync:listings": "python3 backend/sync_listings.py",
     "build": "node scripts/build.js",
     "dev": "node server.js",
     "start": "node server.js"

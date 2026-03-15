@@ -1178,6 +1178,10 @@
     const mobileNav = document.querySelector('.mobile-nav');
     const closeButton = document.querySelector('.close-nav');
     const mobileLinks = document.querySelectorAll('.mobile-sheet a');
+    const listingTracks = {
+      residential: document.querySelector('.property-group--residential [data-carousel-track]'),
+      commercial: document.querySelector('.property-group--commercial [data-carousel-track]')
+    };
 
     function openNav() {
       mobileNav?.classList.add('open');
@@ -1215,89 +1219,229 @@
       });
     });
 
-    const listingCarousels = document.querySelectorAll('[data-carousel]');
+    const escapeHtml = (value) => {
+      const text = String(value ?? '');
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/\"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    };
 
-    listingCarousels.forEach((carousel) => {
-      const track = carousel.querySelector('[data-carousel-track]');
-      const propertyGroup = carousel.closest('.property-group');
-      const prevButton = propertyGroup?.querySelector('[data-carousel-prev]');
-      const nextButton = propertyGroup?.querySelector('[data-carousel-next]');
-      const slides = track ? Array.from(track.children) : [];
+    const normalizeCategory = (value) => {
+      const lowered = String(value ?? '').toLowerCase();
+      if (lowered.includes('comm')) return 'commercial';
+      if (lowered.includes('res')) return 'residential';
+      return '';
+    };
 
-      if (!track || slides.length === 0) return;
+    const safeText = (value, fallback = '-') => {
+      const cleaned = String(value ?? '').trim();
+      return cleaned || fallback;
+    };
 
-      let currentIndex = 0;
-      let itemsPerView = 2;
-      let autoAdvanceId = null;
+    const toSafeHttpUrl = (value) => {
+      try {
+        const parsed = new URL(String(value ?? '').trim());
+        return parsed.protocol === 'http:' || parsed.protocol === 'https:' ? parsed.toString() : '';
+      } catch {
+        return '';
+      }
+    };
 
-      const getItemsPerView = () => (window.matchMedia('(max-width: 820px)').matches ? 1 : 2);
-      const getMaxIndex = () => Math.max(0, slides.length - itemsPerView);
+    const listingCardMarkup = (listing) => {
+      const detailsUrl = toSafeHttpUrl(listing.details_url);
+      const linkAttributes = detailsUrl
+        ? `href="${escapeHtml(detailsUrl)}" target="_blank" rel="noopener noreferrer"`
+        : 'href="#" aria-disabled="true"';
+      const linkText = detailsUrl ? 'Property Details' : 'Details unavailable';
+      const defaultKind = listing.category === 'commercial' ? 'NYC Commercial Listing' : 'NYC Residential Listing';
+      const imageLabel = safeText(listing.image_label, 'Property image placeholder');
+      const details = [
+        ['Price', safeText(listing.price)],
+        ['Property Type', safeText(listing.property_type)],
+        ['Location', safeText(listing.location)],
+        ['Neighborhood', safeText(listing.neighborhood)],
+        ['Bedrooms', safeText(listing.bedrooms)],
+        ['Bathroom', safeText(listing.bathroom)]
+      ]
+        .map(([label, value]) => `<div><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(value)}</dd></div>`)
+        .join('');
 
-      const updateButtons = () => {
-        const isDisabled = getMaxIndex() === 0;
-        if (prevButton) prevButton.disabled = isDisabled;
-        if (nextButton) nextButton.disabled = isDisabled;
+      return `
+        <article class="listing-card carousel-slide">
+          <div class="project-top">
+            <span class="project-kind">${escapeHtml(safeText(listing.kind_label, defaultKind))}</span>
+            <span class="status">${escapeHtml(safeText(listing.status, 'Available'))}</span>
+          </div>
+          <h4>${escapeHtml(safeText(listing.title, 'Untitled Listing'))}</h4>
+          <div class="listing-layout">
+            <dl class="listing-details">${details}</dl>
+            <div class="listing-photo" role="img" aria-label="${escapeHtml(imageLabel)}">${escapeHtml(imageLabel)}</div>
+          </div>
+          <a ${linkAttributes} class="website-link">${escapeHtml(linkText)}</a>
+        </article>
+      `;
+    };
+
+    const emptyCardMarkup = (category) => {
+      const label = category === 'commercial' ? 'Commercial' : 'Residential';
+      return `
+        <article class="listing-card carousel-slide">
+          <div class="project-top">
+            <span class="project-kind">${label} Listings</span>
+            <span class="status">Unavailable</span>
+          </div>
+          <h4>No active listings right now</h4>
+          <div class="listing-layout">
+            <dl class="listing-details">
+              <div><dt>Note</dt><dd>Listings will appear after the next successful sync.</dd></div>
+            </dl>
+            <div class="listing-photo" role="img" aria-label="No listing image available">No image available</div>
+          </div>
+          <a href="#" aria-disabled="true" class="website-link">Details unavailable</a>
+        </article>
+      `;
+    };
+
+    const normalizeListingsPayload = (payload) => {
+      const rawListings = Array.isArray(payload?.listings) ? payload.listings : Array.isArray(payload) ? payload : [];
+      return rawListings
+        .map((item) => ({
+          category: normalizeCategory(item.category || item.group || item.type || item.listing_type),
+          status: item.status || item.listing_status || '',
+          title: item.title || item.name || item.property_name || '',
+          price: item.price || item.list_price || item.rent || '',
+          property_type: item.property_type || item.propertyType || '',
+          location: item.location || item.address || '',
+          neighborhood: item.neighborhood || item.area || '',
+          bedrooms: item.bedrooms || item.beds || '',
+          bathroom: item.bathroom || item.bathrooms || '',
+          details_url: item.details_url || item.url || item.link || '',
+          kind_label: item.kind_label || item.project_kind || item.kind || '',
+          image_label: item.image_label || item.photo_label || ''
+        }))
+        .filter((item) => item.category && item.title);
+    };
+
+    const renderListings = (listings) => {
+      const grouped = {
+        residential: listings.filter((item) => item.category === 'residential'),
+        commercial: listings.filter((item) => item.category === 'commercial')
       };
 
-      const goToSlide = (index) => {
-        const maxIndex = getMaxIndex();
-        if (maxIndex === 0) {
-          currentIndex = 0;
-          track.style.transform = 'translateX(0)';
+      Object.entries(grouped).forEach(([category, items]) => {
+        const track = listingTracks[category];
+        if (!track) return;
+        track.innerHTML = items.length > 0
+          ? items.map((item) => listingCardMarkup(item)).join('')
+          : emptyCardMarkup(category);
+      });
+    };
+
+    const hydrateListingsFromJson = async () => {
+      try {
+        const response = await fetch('/data/listings.json', { cache: 'no-store' });
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        const payload = await response.json();
+        const normalized = normalizeListingsPayload(payload);
+        if (normalized.length === 0) throw new Error('No valid listings in JSON payload');
+        renderListings(normalized);
+      } catch (error) {
+        console.warn('Listings sync fetch failed. Using embedded fallback cards.', error);
+      }
+    };
+
+    const initializeListingCarousels = () => {
+      const listingCarousels = document.querySelectorAll('[data-carousel]');
+      listingCarousels.forEach((carousel) => {
+        const track = carousel.querySelector('[data-carousel-track]');
+        const propertyGroup = carousel.closest('.property-group');
+        const prevButton = propertyGroup?.querySelector('[data-carousel-prev]');
+        const nextButton = propertyGroup?.querySelector('[data-carousel-next]');
+        const slides = track ? Array.from(track.children) : [];
+
+        if (!track || slides.length === 0) return;
+
+        let currentIndex = 0;
+        let itemsPerView = 2;
+        let autoAdvanceId = null;
+
+        const getItemsPerView = () => (window.matchMedia('(max-width: 820px)').matches ? 1 : 2);
+        const getMaxIndex = () => Math.max(0, slides.length - itemsPerView);
+
+        const updateButtons = () => {
+          const isDisabled = getMaxIndex() === 0;
+          if (prevButton) prevButton.disabled = isDisabled;
+          if (nextButton) nextButton.disabled = isDisabled;
+        };
+
+        const goToSlide = (index) => {
+          const maxIndex = getMaxIndex();
+          if (maxIndex === 0) {
+            currentIndex = 0;
+            track.style.transform = 'translateX(0)';
+            updateButtons();
+            return;
+          }
+
+          if (index < 0) currentIndex = maxIndex;
+          else if (index > maxIndex) currentIndex = 0;
+          else currentIndex = index;
+
+          const targetSlide = slides[currentIndex];
+          const offset = targetSlide ? targetSlide.offsetLeft : 0;
+          track.style.transform = `translateX(-${offset}px)`;
           updateButtons();
-          return;
-        }
+        };
 
-        if (index < 0) currentIndex = maxIndex;
-        else if (index > maxIndex) currentIndex = 0;
-        else currentIndex = index;
+        const stopAutoAdvance = () => {
+          if (!autoAdvanceId) return;
+          window.clearInterval(autoAdvanceId);
+          autoAdvanceId = null;
+        };
 
-        const targetSlide = slides[currentIndex];
-        const offset = targetSlide ? targetSlide.offsetLeft : 0;
-        track.style.transform = `translateX(-${offset}px)`;
-        updateButtons();
-      };
+        const startAutoAdvance = () => {
+          stopAutoAdvance();
+          if (slides.length <= itemsPerView) return;
+          autoAdvanceId = window.setInterval(() => {
+            goToSlide(currentIndex + 1);
+          }, 4500);
+        };
 
-      const stopAutoAdvance = () => {
-        if (!autoAdvanceId) return;
-        window.clearInterval(autoAdvanceId);
-        autoAdvanceId = null;
-      };
+        const syncLayout = () => {
+          itemsPerView = getItemsPerView();
+          carousel.style.setProperty('--items-per-view', String(itemsPerView));
+          if (currentIndex > getMaxIndex()) currentIndex = getMaxIndex();
+          goToSlide(currentIndex);
+          startAutoAdvance();
+        };
 
-      const startAutoAdvance = () => {
-        stopAutoAdvance();
-        if (slides.length <= itemsPerView) return;
-        autoAdvanceId = window.setInterval(() => {
+        prevButton?.addEventListener('click', () => {
+          goToSlide(currentIndex - 1);
+          startAutoAdvance();
+        });
+
+        nextButton?.addEventListener('click', () => {
           goToSlide(currentIndex + 1);
-        }, 4500);
-      };
+          startAutoAdvance();
+        });
 
-      const syncLayout = () => {
-        itemsPerView = getItemsPerView();
-        carousel.style.setProperty('--items-per-view', String(itemsPerView));
-        if (currentIndex > getMaxIndex()) currentIndex = getMaxIndex();
-        goToSlide(currentIndex);
-        startAutoAdvance();
-      };
+        carousel.addEventListener('mouseenter', stopAutoAdvance);
+        carousel.addEventListener('mouseleave', startAutoAdvance);
+        carousel.addEventListener('focusin', stopAutoAdvance);
+        carousel.addEventListener('focusout', startAutoAdvance);
+        window.addEventListener('resize', syncLayout);
 
-      prevButton?.addEventListener('click', () => {
-        goToSlide(currentIndex - 1);
-        startAutoAdvance();
+        syncLayout();
       });
+    };
 
-      nextButton?.addEventListener('click', () => {
-        goToSlide(currentIndex + 1);
-        startAutoAdvance();
-      });
-
-      carousel.addEventListener('mouseenter', stopAutoAdvance);
-      carousel.addEventListener('mouseleave', startAutoAdvance);
-      carousel.addEventListener('focusin', stopAutoAdvance);
-      carousel.addEventListener('focusout', startAutoAdvance);
-      window.addEventListener('resize', syncLayout);
-
-      syncLayout();
-    });
+    (async () => {
+      await hydrateListingsFromJson();
+      initializeListingCarousels();
+    })();
   </script>
 </body>
 </html>
