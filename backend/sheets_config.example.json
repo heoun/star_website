@@ -9,5 +9,5 @@
   },
   "output_path": "data/listings.json",
   "meta_output_path": "data/listings_meta.json",
-  "required_fields": ["category", "title", "status"]
+  "required_fields": ["category", "title", "transaction_group"]
 }

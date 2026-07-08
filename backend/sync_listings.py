@@ -27,7 +27,9 @@ DEFAULT_META_PATH = ROOT / "data" / "listings_meta.json"
 SCOPES = ["https://www.googleapis.com/auth/spreadsheets.readonly"]
 
 FIELD_ALIASES = {
+    "listing_id": ["listing_id", "id", "listingid"],
     "category": ["category", "group", "type", "listing_type"],
+    "transaction_group": ["transaction_group", "transaction_type", "deal_type", "listing_transaction"],
     "status": ["status", "listing_status"],
     "title": ["title", "name", "property_name"],
     "price": ["price", "list_price", "rent"],
@@ -42,7 +44,7 @@ FIELD_ALIASES = {
     "image_url": ["image_url", "photo_url", "image"],
 }
 
-REQUIRED_FIELDS = ["category", "title", "status"]
+REQUIRED_FIELDS = ["category", "title", "transaction_group"]
 
 
 def now_iso() -> str:
@@ -148,6 +150,28 @@ def normalize_category(value: str) -> str:
     return ""
 
 
+def normalize_transaction_group(value: str) -> str:
+    lowered = value.strip().lower()
+    if not lowered:
+        return ""
+    if "sale" in lowered or "sell" in lowered:
+        return "sale"
+    if "occup" in lowered or "rent" in lowered or "lease" in lowered or "rental" in lowered:
+        return "occupancy"
+    return ""
+
+
+def derive_status_label(category: str, transaction_group: str) -> str:
+    if transaction_group == "sale":
+        return "For Sale"
+    if transaction_group == "occupancy":
+        if category == "commercial":
+            return "For Lease"
+        if category == "residential":
+            return "For Rent"
+    return "Available"
+
+
 def normalize_rows(rows: list[list[str]], required_fields: list[str]) -> list[dict[str, str]]:
     if not rows:
         raise RuntimeError("Sheet returned no rows.")
@@ -165,8 +189,11 @@ def normalize_rows(rows: list[list[str]], required_fields: list[str]) -> list[di
         raise RuntimeError(f"Missing required columns: {', '.join(missing_fields)}")
 
     listings: list[dict[str, str]] = []
+    seen_listing_ids: set[str] = set()
+    duplicate_listing_ids: set[str] = set()
+    invalid_transaction_rows: list[int] = []
 
-    for raw_row in rows[1:]:
+    for row_idx, raw_row in enumerate(rows[1:], start=2):
         if not any(str(cell).strip() for cell in raw_row):
             continue
 
@@ -180,7 +207,37 @@ def normalize_rows(rows: list[list[str]], required_fields: list[str]) -> list[di
         if not item["title"]:
             continue
 
+        transaction_group = normalize_transaction_group(item.get("transaction_group", ""))
+        if not transaction_group:
+            # Backward-compat fallback for existing sheets still using free-text status values.
+            transaction_group = normalize_transaction_group(item.get("status", ""))
+        if not transaction_group:
+            invalid_transaction_rows.append(row_idx)
+            continue
+
+        item["transaction_group"] = transaction_group
+        item["status"] = derive_status_label(item["category"], transaction_group)
+        item["status_label"] = item["status"]
+
+        listing_id = item.get("listing_id", "").strip()
+        if listing_id:
+            if listing_id in seen_listing_ids:
+                duplicate_listing_ids.add(listing_id)
+            else:
+                seen_listing_ids.add(listing_id)
+
         listings.append(item)
+
+    if duplicate_listing_ids:
+        duplicated = ", ".join(sorted(duplicate_listing_ids))
+        raise RuntimeError(f"Duplicate listing_id values found: {duplicated}")
+
+    if invalid_transaction_rows:
+        rows_list = ", ".join(str(idx) for idx in invalid_transaction_rows)
+        raise RuntimeError(
+            f"Rows with invalid transaction_group values: {rows_list}. "
+            "Use sale or occupancy (occupancy renders as rent for residential and lease for commercial)."
+        )
 
     if not listings:
         raise RuntimeError("No valid listing rows were found after normalization.")

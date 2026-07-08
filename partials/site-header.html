@@ -1,0 +1,25 @@
+<header class="topbar">
+  <a class="brand" href="{{brandHref}}" aria-label="{{brandLabel}}">
+    <div class="brand-mark">
+      <img src="{{logoSrc}}" alt="Star Real Estate logo">
+    </div>
+    <div class="brand-copy">
+      <h1>Star Real Estate</h1>
+    </div>
+  </a>
+
+  <div class="nav-wrap">
+    <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
+
+    <nav class="desktop-nav" aria-label="Primary navigation">
+{{desktopNavLinks}}
+    </nav>
+  </div>
+</header>
+
+<div class="mobile-nav" aria-hidden="true">
+  <div class="mobile-sheet">
+    <button class="close-nav" type="button" aria-label="Close menu">Close</button>
+{{mobileNavLinks}}
+  </div>
+</div>

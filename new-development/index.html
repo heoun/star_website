@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Star Real Estate</title>
+  <title>New Development | Star Real Estate</title>
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
@@ -17,7 +17,7 @@
       --primary: #0d3b52;
       --primary-soft: #dce9ef;
       --accent: #c1752e;
-      --page-bg-image: url("jpg/bkg.jpeg");
+      --page-bg-image: url("../jpg/newdev-bkg.jpeg");
       --radius-lg: 22px;
       --radius-md: 16px;
       --radius-sm: 12px;
@@ -26,10 +26,6 @@
 
     * {
       box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
     }
 
     body {
@@ -120,13 +116,6 @@
       text-overflow: ellipsis;
     }
 
-    .brand-copy p {
-      margin: 3px 0 0;
-      font-size: 12px;
-      color: var(--text);
-      font-weight: 600;
-    }
-
     .nav-wrap {
       display: flex;
       align-items: center;
@@ -187,25 +176,6 @@
       text-align: center;
     }
 
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      text-decoration: none;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 700;
-      border: 1px solid transparent;
-      padding: 10px 12px;
-      cursor: pointer;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #0d3b52, #135678);
-      color: #ffffff;
-      box-shadow: 0 12px 22px rgba(13, 59, 82, 0.24);
-    }
-
     .menu-toggle {
       display: none;
       width: 44px;
@@ -258,9 +228,9 @@
       text-align: left;
     }
 
-    .mobile-sheet a.btn-primary {
+    .mobile-sheet a[aria-current="page"] {
+      background: rgba(255, 255, 255, 0.18);
       color: #ffffff;
-      border: none;
     }
 
     .mobile-sheet a.intent-nav {
@@ -270,71 +240,41 @@
       font-weight: 800;
     }
 
-    .mobile-sheet a[aria-current="page"] {
-      background: rgba(255, 255, 255, 0.18);
-      color: #ffffff;
-    }
-
     .close-nav {
       cursor: pointer;
       font-family: inherit;
       color: #ffffff;
     }
 
-    .hero {
+    .page-hero {
       margin-top: 18px;
-      margin-left: calc(50% - 50vw);
-      margin-right: calc(50% - 50vw);
-      min-height: calc(100vh - 112px);
-      width: 100vw;
-      display: flex;
-      align-items: center;
-      position: relative;
-      overflow: hidden;
-      border: 0;
-      border-radius: 0;
-      padding: 72px max(32px, calc((100vw - 1160px) / 2 + 18px));
+      min-height: 300px;
+      border-radius: var(--radius-lg);
+      padding: 44px 40px;
       color: #ffffff;
       background: var(--page-bg-image) center / cover fixed no-repeat;
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      align-content: end;
+      box-shadow: var(--shadow);
     }
 
-    .hero::before,
-    .hero::after {
+    .page-hero::before {
       content: "";
       position: absolute;
       inset: 0;
-      pointer-events: none;
-    }
-
-    .hero::before {
-      z-index: 0;
       background:
-        radial-gradient(circle at 42% 46%, rgba(28, 106, 127, 0.44) 0%, rgba(13, 59, 82, 0.32) 38%, rgba(13, 59, 82, 0.12) 70%, rgba(13, 59, 82, 0) 100%),
-        linear-gradient(90deg, rgba(12, 31, 40, 0.56), rgba(12, 31, 40, 0.24) 50%, rgba(12, 31, 40, 0.04) 100%);
+        radial-gradient(circle at 32% 36%, rgba(28, 106, 127, 0.5), rgba(13, 59, 82, 0.18) 48%, rgba(13, 59, 82, 0) 72%),
+        linear-gradient(90deg, rgba(12, 31, 40, 0.72), rgba(12, 31, 40, 0.22));
     }
 
-    .hero::after {
-      z-index: 0;
-      background:
-        linear-gradient(180deg, rgba(247, 246, 241, 0.18) 0%, rgba(247, 246, 241, 0.04) 12%, rgba(247, 246, 241, 0) 28%, rgba(247, 246, 241, 0) 72%, rgba(247, 246, 241, 0.22) 100%),
-        linear-gradient(90deg, rgba(247, 246, 241, 0.12) 0%, rgba(247, 246, 241, 0.02) 8%, rgba(247, 246, 241, 0) 18%, rgba(247, 246, 241, 0) 86%, rgba(247, 246, 241, 0.02) 95%, rgba(247, 246, 241, 0.14) 100%);
-    }
-
-    .hero-content {
-      max-width: 900px;
-      min-width: min(100%, 0);
-      display: grid;
-      gap: 18px;
-      align-content: start;
+    .page-hero > * {
       position: relative;
       z-index: 1;
     }
 
-    .hero-brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      width: fit-content;
+    .page-kicker {
       color: rgba(255, 255, 255, 0.78);
       font-size: 12px;
       font-weight: 800;
@@ -342,98 +282,25 @@
       letter-spacing: 0.24px;
     }
 
-    .hero-brand::before {
-      content: "";
-      width: 42px;
-      height: 1px;
-      background: rgba(255, 255, 255, 0.46);
-    }
-
-    .hero h2 {
-      margin: 0;
+    .page-hero h2 {
+      margin: 10px 0 0;
       font-family: "Sora", sans-serif;
-      font-size: 64px;
+      font-size: clamp(38px, 6vw, 68px);
       line-height: 1.02;
       letter-spacing: 0;
-      max-width: 820px;
-      text-wrap: balance;
+      max-width: 780px;
     }
 
-    .hero p {
-      margin: 0;
-      color: rgba(255, 255, 255, 0.84);
+    .page-hero p {
+      margin: 14px 0 0;
+      color: rgba(255, 255, 255, 0.86);
       font-size: 17px;
       line-height: 1.55;
-      max-width: 680px;
-    }
-
-    .hero-intent {
-      width: min(520px, 100%);
-      display: grid;
-      gap: 8px;
-      margin-top: 6px;
-    }
-
-    .hero-intent-kicker {
-      margin: 0;
-      color: rgba(255, 255, 255, 0.82);
-      font-size: 13px;
-      font-weight: 800;
-      line-height: 1.2;
-      letter-spacing: 0.22px;
-    }
-
-    .hero-intent-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .hero-intent-card {
-      min-height: 54px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 11px 12px;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.14);
-      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.14);
-      color: #ffffff;
-      text-align: center;
-      text-decoration: none;
-      backdrop-filter: blur(8px);
-      transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease, color 180ms ease;
-    }
-
-    .hero-intent-card:hover,
-    .hero-intent-card:focus-visible {
-      transform: translateY(-1px);
-      background: #ffffff;
-      border-color: rgba(255, 255, 255, 0.62);
-      color: var(--primary);
-      outline: none;
-    }
-
-    .hero-intent-card span {
-      font-family: "Sora", sans-serif;
-      font-size: 15px;
-      font-weight: 800;
-      line-height: 1.12;
-    }
-
-    .btn-secondary {
-      border-color: rgba(255, 255, 255, 0.34);
-      background: rgba(255, 255, 255, 0.12);
-      color: #ffffff;
+      max-width: 720px;
     }
 
     section {
       margin-top: 42px;
-    }
-
-    section[id] {
-      scroll-margin-top: 96px;
     }
 
     .content-section {
@@ -444,11 +311,6 @@
       padding: 28px;
     }
 
-    #new-development {
-      margin-top: clamp(110px, 18vh, 210px);
-      background: rgba(255, 255, 255, 0.82);
-    }
-
     .development-layout {
       display: grid;
       grid-template-columns: minmax(0, 0.95fr) minmax(300px, 1.05fr);
@@ -456,17 +318,31 @@
       align-items: stretch;
     }
 
+    .section-head {
+      margin-bottom: 18px;
+    }
+
+    .section-head h3,
+    .development-copy h3 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 30px;
+      line-height: 1.08;
+    }
+
+    .section-head p,
+    .development-copy p {
+      margin: 8px 0 0;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.55;
+      max-width: 780px;
+    }
+
     .development-copy {
       display: grid;
       align-content: center;
       gap: 14px;
-    }
-
-    .development-copy h3 {
-      margin: 0;
-      font-family: "Sora", sans-serif;
-      font-size: 34px;
-      line-height: 1.08;
     }
 
     .development-kicker {
@@ -477,34 +353,15 @@
       text-transform: uppercase;
     }
 
-    .development-copy p {
-      margin: 0;
-      color: var(--text);
-      font-size: 14px;
-      line-height: 1.55;
-      max-width: 520px;
-    }
-
     .development-showcase {
-      min-height: 310px;
-      padding: 12px;
-      border: 1px solid rgba(31, 42, 51, 0.14);
+      min-height: 330px;
+      border: 1px solid rgba(31, 42, 51, 0.12);
       border-radius: var(--radius-md);
-      background: rgba(255, 255, 255, 0.64);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.46);
-      display: flex;
-      overflow: hidden;
-    }
-
-    .development-showcase::before {
-      content: "";
-      flex: 1;
-      min-height: 286px;
-      border-radius: 12px;
       background:
-        linear-gradient(135deg, rgba(12, 31, 40, 0.18), rgba(193, 117, 46, 0.1)),
-        url("jpg/hero-3.jpeg") center / cover no-repeat;
-      box-shadow: 0 14px 26px rgba(13, 59, 82, 0.12);
+        linear-gradient(135deg, rgba(12, 31, 40, 0.32), rgba(193, 117, 46, 0.22)),
+        var(--page-bg-image) center / cover fixed no-repeat;
+      display: grid;
+      align-content: end;
       overflow: hidden;
     }
 
@@ -519,6 +376,44 @@
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.2px;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 16px;
+    }
+
+    .focus-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel);
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+      box-shadow: 0 12px 24px rgba(13, 59, 82, 0.07);
+    }
+
+    .focus-card h4 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    .focus-card p {
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .focus-label {
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.24px;
+      text-transform: uppercase;
     }
 
     .website-link {
@@ -547,21 +442,6 @@
     }
 
     @media (max-width: 1024px) {
-      .hero {
-        min-height: calc(100vh - 104px);
-        padding: 52px 24px;
-      }
-
-      .hero::before {
-        background:
-          radial-gradient(circle at 50% 42%, rgba(28, 106, 127, 0.42) 0%, rgba(13, 59, 82, 0.28) 42%, rgba(13, 59, 82, 0.1) 78%, rgba(13, 59, 82, 0) 100%),
-          linear-gradient(180deg, rgba(12, 31, 40, 0.54), rgba(12, 31, 40, 0.26) 58%, rgba(12, 31, 40, 0.08));
-      }
-
-      .hero h2 {
-        font-size: 44px;
-      }
-
       .desktop-nav {
         display: none;
       }
@@ -572,6 +452,9 @@
         justify-content: center;
       }
 
+      .development-layout {
+        grid-template-columns: 1fr;
+      }
     }
 
     @media (max-width: 560px) {
@@ -592,55 +475,14 @@
         font-size: 16px;
       }
 
-      .hero {
-        min-height: calc(100vh - 96px);
-        padding: 44px 20px;
-      }
-
-      .hero h2 {
-        font-size: 34px;
-      }
-
-      .hero p {
-        font-size: 15px;
-      }
-
-      .hero-intent-card {
-        min-height: 48px;
-        padding: 10px 8px;
-      }
-
-      .hero-intent-card span {
-        font-size: 13px;
-      }
-
-      #new-development {
-        margin-top: 80px;
-      }
-
-      .development-layout {
-        grid-template-columns: 1fr;
-      }
-
-      .development-showcase {
-        min-height: 260px;
-        padding: 10px;
-      }
-
-      .development-showcase::before {
-        min-height: 238px;
-      }
-
-      .development-copy h3 {
-        font-size: 28px;
-      }
-
+      .page-hero,
       .content-section {
-        padding: 20px;
+        padding: 24px 20px;
       }
 
-      section[id] {
-        scroll-margin-top: 84px;
+      .section-head h3,
+      .development-copy h3 {
+        font-size: 26px;
       }
 
       footer {
@@ -648,57 +490,54 @@
         text-align: center;
       }
     }
-
-    @media (max-width: 430px) {
-      .hero h2 {
-        font-size: 29px;
-      }
-    }
-
-    @media (max-width: 390px) {
-      .hero h2 {
-        font-size: 27px;
-      }
-    }
-
-    @media (max-width: 360px) {
-      .hero h2 {
-        font-size: 24px;
-      }
-    }
   </style>
 </head>
 <body>
   <div class="site">
-    <!-- SHARED_HEADER {"depth": 0, "currentNav": "home"} -->
+    <!-- SHARED_HEADER {"depth": 1, "currentNav": "new-development"} -->
 
-    <section class="hero" id="home">
-      <div class="hero-content">
-        <span class="hero-brand">Star Real Estate</span>
-        <h2>Where smart moves shine</h2>
-        <p>A full-service AI-Driven brokerage firm specializing in the <strong>buying, selling, and leasing</strong> of <strong>residential and commercial properties</strong>, with a strong focus on the listing, marketing, and repositioning. Whether representing individual units or entire buildings in NYC, our team is committed to achieving optimal results.</p>
-        <div class="hero-intent" aria-label="Property goals">
-          <p class="hero-intent-kicker">Are you looking to...</p>
-          <div class="hero-intent-grid">
-            <a class="hero-intent-card" href="buy/"><span>Buy</span></a>
-            <a class="hero-intent-card" href="rental/"><span>Rent</span></a>
-            <a class="hero-intent-card" href="contact-us/?intent=sell"><span>Sell Property</span></a>
-          </div>
-        </div>
-      </div>
+    <section class="page-hero">
+      <span class="page-kicker">New Development</span>
+      <h2>Upcoming launches and construction-backed project work.</h2>
+      <p>Dedicated support for development inventory, launch timing, marketing preparation, and project positioning in NYC.</p>
     </section>
 
-    <section id="new-development" class="content-section">
+    <section class="content-section">
       <div class="development-layout">
         <div class="development-copy">
           <span class="development-kicker">New Development</span>
           <h3>Shaping New Developments. Driving NYC Sales.</h3>
           <p>For the past decade, we have specialized in NYC new development, with a focus on strategic marketing and sales for developers and property owners. Our experience and market-driven approach have helped position and successfully launch projects across New York City.</p>
-          <a class="website-link" href="new-development/">Click Here for More Information</a>
+          <a class="website-link" href="./">Click Here for More Information</a>
         </div>
         <div class="development-showcase" aria-label="New development project preview">
           <!-- <span class="development-status">Coming Soon</span> -->
         </div>
+      </div>
+    </section>
+
+    <section class="content-section">
+      <div class="section-head">
+        <h3>Development services</h3>
+        <p>New development work is structured around market readiness, clear positioning, and execution support.</p>
+      </div>
+
+      <div class="card-grid">
+        <article class="focus-card">
+          <span class="focus-label">Positioning</span>
+          <h4>Launch strategy</h4>
+          <p>Market context, unit mix review, and launch recommendations aligned to buyer or tenant demand.</p>
+        </article>
+        <article class="focus-card">
+          <span class="focus-label">Marketing</span>
+          <h4>Project presentation</h4>
+          <p>Listing preparation, project messaging, and campaign coordination for residential or commercial inventory.</p>
+        </article>
+        <article class="focus-card">
+          <span class="focus-label">Reporting</span>
+          <h4>Market feedback</h4>
+          <p>Tour activity, inquiry quality, and pricing feedback summarized for ownership and project teams.</p>
+        </article>
       </div>
     </section>
 
@@ -729,26 +568,15 @@
     }
 
     menuToggle?.addEventListener('click', () => {
-      if (mobileNav?.classList.contains('open')) {
-        closeNav();
-      } else {
-        openNav();
-      }
+      if (mobileNav?.classList.contains('open')) closeNav();
+      else openNav();
     });
 
     closeButton?.addEventListener('click', closeNav);
-
     mobileNav?.addEventListener('click', (event) => {
-      if (event.target === mobileNav) {
-        closeNav();
-      }
+      if (event.target === mobileNav) closeNav();
     });
-
-    mobileLinks.forEach((link) => {
-      link.addEventListener('click', () => {
-        closeNav();
-      });
-    });
+    mobileLinks.forEach((link) => link.addEventListener('click', closeNav));
   </script>
 </body>
 </html>

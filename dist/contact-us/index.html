@@ -1,0 +1,808 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Contact Us | Star Real Estate</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --ink: #1f2a33;
+      --text: #4c5963;
+      --bg: #f7f6f1;
+      --panel: #ffffff;
+      --line: rgba(31, 42, 51, 0.14);
+      --primary: #0d3b52;
+      --primary-soft: #dce9ef;
+      --accent: #c1752e;
+      --page-bg-image: url("../jpg/sell-bkg.jpeg");
+      --radius-lg: 22px;
+      --radius-md: 16px;
+      --radius-sm: 12px;
+      --shadow: 0 20px 38px rgba(13, 59, 82, 0.12);
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Public Sans", system-ui, -apple-system, sans-serif;
+      color: var(--ink);
+      background: var(--page-bg-image) center / cover fixed no-repeat;
+      min-height: 100vh;
+      position: relative;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: -32px;
+      z-index: 0;
+      pointer-events: none;
+      background: var(--page-bg-image) center / cover fixed no-repeat;
+      filter: blur(7px) saturate(1.04);
+      opacity: 0.58;
+      transform: scale(1.018);
+    }
+
+    body.nav-open {
+      overflow: hidden;
+    }
+
+    .site {
+      max-width: 1160px;
+      margin: 0 auto;
+      padding: 22px 18px 70px;
+      overflow-x: clip;
+      position: relative;
+      z-index: 1;
+    }
+
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      padding: 8px 10px;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      background: rgba(12, 31, 40, 0.46);
+      border-radius: 18px;
+      box-shadow: 0 18px 34px rgba(12, 31, 40, 0.14);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-width: 0;
+      text-decoration: none;
+      color: #ffffff;
+    }
+
+    .brand-mark {
+      width: 50px;
+      height: 50px;
+      border-radius: 12px;
+      border: 1px solid rgba(255, 255, 255, 0.24);
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 14px 26px rgba(12, 31, 40, 0.2);
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+
+    .brand-mark img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      transform: scale(1.2);
+    }
+
+    .brand-copy h1 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 20px;
+      line-height: 1.15;
+      text-transform: uppercase;
+      letter-spacing: 0.25px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .nav-wrap {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      margin-left: auto;
+    }
+
+    .desktop-nav {
+      display: flex;
+      gap: 4px;
+      align-items: center;
+    }
+
+    .desktop-nav a {
+      text-decoration: none;
+      color: rgba(255, 255, 255, 0.78);
+      padding: 0 16px;
+      min-height: 42px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      isolation: isolate;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 800;
+    }
+
+    .desktop-nav a:hover,
+    .desktop-nav a[aria-current="page"] {
+      background: transparent;
+      color: #ffffff;
+    }
+
+    .desktop-nav a::before {
+      content: "";
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: calc(100% - 14px);
+      min-width: 46px;
+      height: 30px;
+      border-radius: 10px;
+      background: transparent;
+      transform: translate(-50%, -50%);
+      transition: background-color 180ms ease;
+      z-index: -1;
+    }
+
+    .desktop-nav a:hover::before,
+    .desktop-nav a[aria-current="page"]::before {
+      background: rgba(255, 255, 255, 0.14);
+    }
+
+    .desktop-nav a.intent-nav {
+      min-width: 76px;
+      padding: 0 18px;
+      text-align: center;
+    }
+
+    .menu-toggle {
+      display: none;
+      width: 44px;
+      height: 44px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.1);
+      color: #ffffff;
+      font-size: 18px;
+      cursor: pointer;
+    }
+
+    .mobile-nav {
+      display: none;
+      position: fixed;
+      inset: 0;
+      z-index: 999;
+      background: rgba(31, 42, 51, 0.62);
+      padding: 16px;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .mobile-nav.open {
+      display: flex;
+    }
+
+    .mobile-sheet {
+      width: min(360px, 100%);
+      background: rgba(12, 31, 40, 0.92);
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      border-radius: 15px;
+      padding: 14px;
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 8px;
+    }
+
+    .mobile-sheet a,
+    .close-nav {
+      width: 100%;
+      border: 1px solid rgba(255, 255, 255, 0.14);
+      border-radius: 10px;
+      padding: 10px 12px;
+      text-decoration: none;
+      color: rgba(255, 255, 255, 0.82);
+      font-size: 13px;
+      font-weight: 700;
+      background: rgba(255, 255, 255, 0.08);
+      text-align: left;
+    }
+
+    .mobile-sheet a[aria-current="page"] {
+      background: rgba(255, 255, 255, 0.18);
+      color: #ffffff;
+    }
+
+    .mobile-sheet a.intent-nav {
+      min-height: 48px;
+      padding: 14px;
+      font-size: 14px;
+      font-weight: 800;
+    }
+
+    .close-nav {
+      cursor: pointer;
+      font-family: inherit;
+      color: #ffffff;
+    }
+
+    .page-hero {
+      margin-top: 18px;
+      min-height: 300px;
+      border-radius: var(--radius-lg);
+      padding: 44px 40px;
+      color: #ffffff;
+      background: var(--page-bg-image) center / cover fixed no-repeat;
+      position: relative;
+      overflow: hidden;
+      display: grid;
+      align-content: end;
+      box-shadow: var(--shadow);
+    }
+
+    .page-hero::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(circle at 32% 36%, rgba(28, 106, 127, 0.5), rgba(13, 59, 82, 0.18) 48%, rgba(13, 59, 82, 0) 72%),
+        linear-gradient(90deg, rgba(12, 31, 40, 0.72), rgba(12, 31, 40, 0.22));
+    }
+
+    .page-hero > * {
+      position: relative;
+      z-index: 1;
+    }
+
+    .page-kicker {
+      color: rgba(255, 255, 255, 0.78);
+      font-size: 12px;
+      font-weight: 800;
+      text-transform: uppercase;
+      letter-spacing: 0.24px;
+    }
+
+    .page-hero h2 {
+      margin: 10px 0 0;
+      font-family: "Sora", sans-serif;
+      font-size: clamp(38px, 6vw, 68px);
+      line-height: 1.02;
+      letter-spacing: 0;
+      max-width: 760px;
+    }
+
+    .page-hero p {
+      margin: 14px 0 0;
+      color: rgba(255, 255, 255, 0.86);
+      font-size: 17px;
+      line-height: 1.55;
+      max-width: 720px;
+    }
+
+    section {
+      margin-top: 42px;
+    }
+
+    .content-section {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-lg);
+      background: rgba(255, 255, 255, 0.92);
+      box-shadow: 0 14px 28px rgba(13, 59, 82, 0.08);
+      padding: 28px;
+    }
+
+    .section-head {
+      margin-bottom: 18px;
+    }
+
+    .section-head h3 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 23px;
+      line-height: 1.15;
+    }
+
+    .section-head p {
+      margin: 6px 0 0;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.55;
+      max-width: 760px;
+    }
+
+    .contact-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .card-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 16px;
+    }
+
+    .contact-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel);
+      padding: 18px;
+      display: grid;
+      gap: 10px;
+      box-shadow: 0 12px 24px rgba(13, 59, 82, 0.07);
+    }
+
+    .team-card,
+    .focus-card {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel);
+      padding: 14px;
+      display: grid;
+      gap: 8px;
+      box-shadow: 0 12px 24px rgba(13, 59, 82, 0.07);
+    }
+
+    .contact-label {
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.24px;
+      text-transform: uppercase;
+    }
+
+    .contact-card h4 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 18px;
+      line-height: 1.2;
+    }
+
+    .team-card h4,
+    .focus-card h4 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 16px;
+      line-height: 1.2;
+    }
+
+    .contact-card p {
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .inquiry-form {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: var(--panel);
+      padding: 20px;
+      display: grid;
+      gap: 16px;
+      box-shadow: 0 12px 24px rgba(13, 59, 82, 0.07);
+    }
+
+    .form-grid {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 14px;
+    }
+
+    .form-field {
+      display: grid;
+      gap: 7px;
+    }
+
+    .form-field--full {
+      grid-column: 1 / -1;
+    }
+
+    .form-label {
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.24px;
+      text-transform: uppercase;
+    }
+
+    .form-field input,
+    .form-field textarea {
+      width: 100%;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #ffffff;
+      color: var(--ink);
+      font: inherit;
+      font-size: 14px;
+      padding: 10px 12px;
+    }
+
+    .form-field textarea {
+      min-height: 112px;
+      resize: vertical;
+      line-height: 1.45;
+    }
+
+    .choice-group {
+      display: grid;
+      gap: 8px;
+      min-width: 0;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    .choice-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .choice-pill {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      min-height: 44px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #ffffff;
+      padding: 10px 12px;
+      color: var(--ink);
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .choice-pill input {
+      width: 15px;
+      height: 15px;
+      accent-color: var(--primary);
+    }
+
+    .form-actions {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .form-status {
+      margin: 0;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .form-honeypot {
+      position: absolute;
+      left: -9999px;
+      width: 1px;
+      height: 1px;
+      overflow: hidden;
+    }
+
+    .team-card p,
+    .focus-card p {
+      margin: 0;
+      color: var(--text);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .agent-photo {
+      height: 150px;
+      border: 1px dashed rgba(13, 59, 82, 0.35);
+      border-radius: var(--radius-sm);
+      background:
+        linear-gradient(145deg, #dde8ee, #f3e7dc),
+        repeating-linear-gradient(90deg, rgba(18, 65, 88, 0.1) 0 14px, transparent 14px 24px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      color: #36515f;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 10px;
+    }
+
+    .agent-role,
+    .focus-label {
+      color: var(--text);
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.24px;
+      text-transform: uppercase;
+    }
+
+    .agent-history {
+      border-top: 1px solid var(--line);
+      padding-top: 8px;
+      color: #143848;
+      font-size: 12px;
+    }
+
+    .btn {
+      width: fit-content;
+      border: none;
+      border-radius: 999px;
+      background: linear-gradient(135deg, #0d3b52, #135678);
+      color: #ffffff;
+      padding: 10px 14px;
+      text-decoration: none;
+      font-family: inherit;
+      font-size: 13px;
+      font-weight: 800;
+      cursor: pointer;
+    }
+
+    .website-link {
+      text-decoration: none;
+      color: var(--primary);
+      font-size: 13px;
+      font-weight: 800;
+    }
+
+    .website-link:hover {
+      text-decoration: underline;
+    }
+
+    footer {
+      margin-top: 30px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 8px;
+      color: var(--text);
+      font-size: 12px;
+      font-weight: 600;
+    }
+
+    @media (max-width: 1024px) {
+      .desktop-nav {
+        display: none;
+      }
+
+      .menu-toggle {
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+      }
+    }
+
+    @media (max-width: 560px) {
+      .site {
+        padding: 14px 12px 60px;
+      }
+
+      .topbar {
+        padding: 8px 10px;
+      }
+
+      .brand-mark {
+        width: 48px;
+        height: 48px;
+      }
+
+      .brand-copy h1 {
+        font-size: 16px;
+      }
+
+      .page-hero,
+      .content-section {
+        padding: 24px 20px;
+      }
+
+      .form-grid {
+        grid-template-columns: 1fr;
+      }
+
+      footer {
+        justify-content: center;
+        text-align: center;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="site">
+    <header class="topbar">
+      <a class="brand" href="../" aria-label="Go to homepage">
+        <div class="brand-mark">
+          <img src="../jpg/logo-primary.jpg" alt="Star Real Estate logo">
+        </div>
+        <div class="brand-copy">
+          <h1>Star Real Estate</h1>
+        </div>
+      </a>
+
+      <div class="nav-wrap">
+        <button class="menu-toggle" type="button" aria-label="Open menu" aria-expanded="false">☰</button>
+
+        <nav class="desktop-nav" aria-label="Primary navigation">
+          <a href="../">Home</a>
+          <a class="intent-nav" href="../rental/">Rent</a>
+          <a class="intent-nav" href="../buy/">Buy</a>
+          <a class="intent-nav" href="./?intent=sell" data-sell-nav>Sell</a>
+          <a class="intent-nav" href="../commercial/">Commercial</a>
+          <a href="../new-development/">New Development</a>
+          <a href="./" aria-current="page" data-contact-nav>Contact Us</a>
+        </nav>
+      </div>
+    </header>
+
+    <div class="mobile-nav" aria-hidden="true">
+      <div class="mobile-sheet">
+        <button class="close-nav" type="button" aria-label="Close menu">Close</button>
+        <a href="../">Home</a>
+        <a class="intent-nav" href="../rental/">Rent</a>
+        <a class="intent-nav" href="../buy/">Buy</a>
+        <a class="intent-nav" href="./?intent=sell" data-sell-nav>Sell</a>
+        <a class="intent-nav" href="../commercial/">Commercial</a>
+        <a href="../new-development/">New Development</a>
+        <a href="./" aria-current="page" data-contact-nav>Contact Us</a>
+      </div>
+    </div>
+
+
+    <section class="page-hero">
+      <span class="page-kicker">Contact Us</span>
+      <h2>Start a conversation.</h2>
+      <p>Reach Star Real Estate for residential, commercial, listing, leasing, AI-assisted Services, and new development application support across NYC.</p>
+    </section>
+
+    <section class="content-section">
+      <div class="section-head">
+        <h3>Thinking about selling your property?</h3>
+        <p>Send the team a note about your property.</p>
+      </div>
+
+      <form class="inquiry-form" action="submit-inquiry.php" method="post">
+        <div class="form-grid">
+          <label class="form-honeypot" aria-hidden="true">
+            Website
+            <input type="text" name="website" tabindex="-1" autocomplete="off">
+          </label>
+
+          <label class="form-field">
+            <span class="form-label">Name</span>
+            <input type="text" name="name" autocomplete="name" required>
+          </label>
+
+          <label class="form-field">
+            <span class="form-label">Contact Email</span>
+            <input type="email" name="email" autocomplete="email" required>
+          </label>
+
+          <label class="form-field">
+            <span class="form-label">Phone Number</span>
+            <input type="tel" name="phone" autocomplete="tel" required>
+          </label>
+
+          <fieldset class="choice-group form-field--full">
+            <legend class="form-label">Property Type</legend>
+            <div class="choice-row">
+              <label class="choice-pill"><input type="radio" name="property_type" value="Residential" required> Residential</label>
+              <label class="choice-pill"><input type="radio" name="property_type" value="Commercial"> Commercial</label>
+            </div>
+          </fieldset>
+
+          <fieldset class="choice-group form-field--full">
+            <legend class="form-label">Interested In</legend>
+            <div class="choice-row">
+              <label class="choice-pill"><input type="radio" name="transaction_type" value="Lease" required> Lease</label>
+              <label class="choice-pill"><input type="radio" name="transaction_type" value="Purchase"> Purchase</label>
+            </div>
+          </fieldset>
+
+          <label class="form-field form-field--full">
+            <span class="form-label">Property Details</span>
+            <textarea name="property_details" placeholder="Address, timeline, property size, or anything else the team should know."></textarea>
+          </label>
+        </div>
+
+        <div class="form-actions">
+          <button class="btn" type="submit">Submit Inquiry</button>
+        </div>
+      </form>
+    </section>
+
+    <section class="content-section">
+      <div class="section-head">
+        <h3>Meet the advisors</h3>
+        <p>Our team supports pricing, tours, negotiations, marketing, and closing coordination from first conversation through final handoff.</p>
+      </div>
+
+      <div class="card-grid">
+        <article class="team-card">
+          <div class="agent-photo" role="img" aria-label="Xiao profile picture placeholder">Team Photo Placeholder</div>
+          <h4>Xiao</h4>
+          <div class="agent-role">Senior Realtor</div>
+          <p>Leads listing strategy, pricing, and client representation across active properties.</p>
+          <p class="agent-history">Background: Over 9 years in NYC residential and mixed-use sales, with early experience in property marketing and neighborhood pricing analysis across Manhattan and Queens.</p>
+        </article>
+
+        <article class="team-card">
+          <div class="agent-photo" role="img" aria-label="Wendy profile picture placeholder">Team Photo Placeholder</div>
+          <h4>Wendy</h4>
+          <div class="agent-role">Realtor</div>
+          <p>Handles tours, client communication, and leasing support for available listings.</p>
+          <p class="agent-history">Background: Began in NYC rental operations and client services, then transitioned into full-time brokerage, focusing on tenant placement, negotiations, and smooth move-in coordination.</p>
+        </article>
+      </div>
+    </section>
+
+    <footer>
+      <span>Star Real Estate</span>
+      <span>Property availability and pricing are subject to change.</span>
+    </footer>
+  </div>
+
+  <script>
+    const menuToggle = document.querySelector('.menu-toggle');
+    const mobileNav = document.querySelector('.mobile-nav');
+    const closeButton = document.querySelector('.close-nav');
+    const mobileLinks = document.querySelectorAll('.mobile-sheet a');
+    const params = new URLSearchParams(window.location.search);
+
+    if (params.get('intent') === 'sell') {
+      document.querySelectorAll('[data-contact-nav]').forEach((link) => {
+        link.removeAttribute('aria-current');
+      });
+      document.querySelectorAll('[data-sell-nav]').forEach((link) => {
+        link.setAttribute('aria-current', 'page');
+      });
+    }
+
+    function openNav() {
+      mobileNav?.classList.add('open');
+      mobileNav?.setAttribute('aria-hidden', 'false');
+      menuToggle?.setAttribute('aria-expanded', 'true');
+      document.body.classList.add('nav-open');
+    }
+
+    function closeNav() {
+      mobileNav?.classList.remove('open');
+      mobileNav?.setAttribute('aria-hidden', 'true');
+      menuToggle?.setAttribute('aria-expanded', 'false');
+      document.body.classList.remove('nav-open');
+    }
+
+    menuToggle?.addEventListener('click', () => {
+      if (mobileNav?.classList.contains('open')) closeNav();
+      else openNav();
+    });
+
+    closeButton?.addEventListener('click', closeNav);
+    mobileNav?.addEventListener('click', (event) => {
+      if (event.target === mobileNav) closeNav();
+    });
+    mobileLinks.forEach((link) => link.addEventListener('click', closeNav));
+  </script>
+</body>
+</html>

@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: sync-listings
+  cancel-in-progress: true
+
 jobs:
   sync-listings:
     runs-on: ubuntu-latest
@@ -25,22 +29,47 @@ jobs:
         run: pip install -r backend/requirements.txt
 
       - name: Sync Listings
+        id: sync
         env:
           GOOGLE_SERVICE_ACCOUNT_JSON: ${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}
           PRIMARY_SHEET_ID: ${{ secrets.PRIMARY_SHEET_ID }}
           PRIMARY_SHEET_RANGE: ${{ secrets.PRIMARY_SHEET_RANGE }}
           SECONDARY_SHEET_ID: ${{ secrets.SECONDARY_SHEET_ID }}
           SECONDARY_SHEET_RANGE: ${{ secrets.SECONDARY_SHEET_RANGE }}
-        run: python backend/sync_listings.py
+        run: |
+          set +e
+          python backend/sync_listings.py
+          sync_exit_code=$?
+          echo "exit_code=$sync_exit_code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: Mirror Data To dist/data
+        if: always()
+        run: |
+          if [ -d dist ] && [ -f data/listings.json ] && [ -f data/listings_meta.json ]; then
+            mkdir -p dist/data
+            cp -f data/listings.json dist/data/listings.json
+            cp -f data/listings_meta.json dist/data/listings_meta.json
+          fi
 
       - name: Commit Updated Data
+        if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/listings.json data/listings_meta.json
+          if [ -f dist/data/listings.json ] && [ -f dist/data/listings_meta.json ]; then
+            git add dist/data/listings.json dist/data/listings_meta.json
+          fi
           if git diff --cached --quiet; then
             echo "No listing changes to commit."
             exit 0
           fi
           git commit -m "chore: sync listings data"
           git push
+
+      - name: Fail Job If Sync Failed
+        if: always() && steps.sync.outputs.exit_code != '0'
+        run: |
+          echo "Listings sync failed with exit code ${{ steps.sync.outputs.exit_code }}."
+          exit 1
