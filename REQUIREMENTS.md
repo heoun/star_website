@@ -1,4 +1,4 @@
-# Codex Requirements Intake
+# Project Requirements Intake
 
 This file tracks confirmed requirements before implementation.
 
