@@ -43,24 +43,12 @@ jobs:
           echo "exit_code=$sync_exit_code" >> "$GITHUB_OUTPUT"
           exit 0
 
-      - name: Mirror Data To dist/data
-        if: always()
-        run: |
-          if [ -d dist ] && [ -f data/listings.json ] && [ -f data/listings_meta.json ]; then
-            mkdir -p dist/data
-            cp -f data/listings.json dist/data/listings.json
-            cp -f data/listings_meta.json dist/data/listings_meta.json
-          fi
-
       - name: Commit Updated Data
         if: always()
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add data/listings.json data/listings_meta.json
-          if [ -f dist/data/listings.json ] && [ -f dist/data/listings_meta.json ]; then
-            git add dist/data/listings.json dist/data/listings_meta.json
-          fi
           if git diff --cached --quiet; then
             echo "No listing changes to commit."
             exit 0

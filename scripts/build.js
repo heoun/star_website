@@ -17,6 +17,8 @@ for (const target of copyTargets) {
   copyRendered(source, destination);
 }
 
+fs.writeFileSync(path.join(dist, ".assetsignore"), "*.php\n");
+
 console.log("Build complete. Deploy files from ./dist");
 
 function copyRendered(source, destination) {
