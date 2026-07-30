@@ -16,6 +16,9 @@ jobs:
   sync-listings:
     runs-on: ubuntu-latest
 
+    outputs:
+      committed: ${{ steps.commit.outputs.committed }}
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,6 +47,7 @@ jobs:
           exit 0
 
       - name: Commit Updated Data
+        id: commit
         if: always()
         run: |
           git config user.name "github-actions[bot]"
@@ -51,13 +55,23 @@ jobs:
           git add data/listings.json data/listings_meta.json
           if git diff --cached --quiet; then
             echo "No listing changes to commit."
+            echo "committed=false" >> "$GITHUB_OUTPUT"
             exit 0
           fi
           git commit -m "chore: sync listings data"
           git push
+          echo "committed=true" >> "$GITHUB_OUTPUT"
 
       - name: Fail Job If Sync Failed
         if: always() && steps.sync.outputs.exit_code != '0'
         run: |
           echo "Listings sync failed with exit code ${{ steps.sync.outputs.exit_code }}."
           exit 1
+
+  # Pushes made with GITHUB_TOKEN do not trigger other workflows, so the deploy
+  # is called directly instead of relying on the push above.
+  deploy:
+    needs: sync-listings
+    if: always() && needs.sync-listings.outputs.committed == 'true'
+    uses: ./.github/workflows/deploy.yml
+    secrets: inherit

@@ -68,7 +68,7 @@ See [backend/README.md](backend/README.md) for credentials, sheet requirements, 
 
 ## What is `dist/`?
 
-`dist/` is generated output produced from the source files by `npm run build`. It is not tracked in Git: Cloudflare Workers Builds regenerates it in CI on every push to `main`, and local builds exist only for preview or a manual `npm run deploy`.
+`dist/` is generated output produced from the source files by `npm run build`. It is not tracked in Git: the deploy workflow regenerates it in CI on every push to `main`, and local builds exist only for preview or a manual `npm run deploy`.
 
 Important rules:
 
@@ -101,8 +101,10 @@ To add another deployable top-level page or asset directory, add it to `copyTarg
 
 The site runs on Cloudflare Workers as the `star-website` Worker, with `starreusa.com` and `www.starreusa.com` bound as custom domains.
 
-- Automatic: Cloudflare Workers Builds is connected to this repository. Every push to `main` runs `npm run build` and deploys the result.
+- Automatic: `.github/workflows/deploy.yml` builds and deploys on every push to `main`. The listings sync workflow calls it directly after committing new data, because pushes made with `GITHUB_TOKEN` do not trigger workflows on their own.
 - Manual fallback: `npm run build && npm run deploy` (requires a wrangler login on the Cloudflare account).
+
+Deploying from CI requires two repository secrets: `CLOUDFLARE_API_TOKEN` (create it in Cloudflare with the "Edit Cloudflare Workers" template) and `CLOUDFLARE_ACCOUNT_ID`.
 
 The contact form endpoint `/api/contact` is implemented in `worker/index.js` and sends inquiry email through Resend. The Resend API key lives in the Worker secret `RESEND_API_KEY` (set once with `npx wrangler secret put RESEND_API_KEY`); secrets persist across deployments and are never part of the repository.
 
@@ -122,7 +124,7 @@ npm run sync:listings
 npm run build
 ```
 
-The scheduled GitHub Actions workflow performs the Sheets sync and commits changed JSON in `data/`. That push triggers Cloudflare Workers Builds, which rebuilds and deploys the site with the fresh data.
+The scheduled GitHub Actions workflow performs the Sheets sync, commits changed JSON in `data/`, and then runs the deploy workflow so the refreshed data reaches the live site.
 
 ## What belongs in the repository
 
