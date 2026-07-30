@@ -1,6 +1,6 @@
 # Star Website
 
-Static real-estate website for Star Realty, with property data synchronized from private Google Sheets. The site is designed to be built locally and uploaded to a static/PHP-capable host such as Hostinger.
+Static real-estate website for Star Realty, with property data synchronized from private Google Sheets. The site is hosted on Cloudflare Workers (static assets plus a small Worker) at https://starreusa.com; the contact form sends inquiry email through Resend.
 
 ## Quick start
 
@@ -9,17 +9,20 @@ Requirements:
 - Node.js 18 or newer
 - Python 3.11 or newer only when synchronizing Google Sheets data
 
-No npm dependencies need to be installed. The development server and build use Node.js built-in modules.
+No npm dependencies need to be installed. The development server and build use Node.js built-in modules; Cloudflare's wrangler CLI is fetched on demand through npx.
 
 ```bash
 # Preview the source site at http://127.0.0.1:8000
 npm run dev
 
-# Rebuild the deployable dist/ directory
+# Rebuild the dist/ output
 npm run build
+
+# Manual deploy to Cloudflare (normally not needed; pushing to main auto-deploys)
+npm run deploy
 ```
 
-`npm run dev` serves the source files from the repository root and renders shared HTML partials in memory. `npm run build` creates the static version that should be deployed.
+`npm run dev` serves the source files from the repository root and renders shared HTML partials in memory; it does not run the Worker, so `/api/contact` is unavailable there. To preview the full site including the Worker, run `npm run build` followed by `npx wrangler dev`.
 
 ## How the project is organized
 
@@ -31,7 +34,7 @@ npm run build
 ├── commercial/                   Commercial property page
 ├── listings/                     General listings page
 ├── new-development/              New development page
-├── contact-us/                   Contact page and PHP form handler
+├── contact-us/                   Contact page (form posts to /api/contact)
 ├── our-team/                     Team page
 ├── partials/                     Shared HTML fragments
 ├── shared/                       Shared listing-page CSS and JavaScript
@@ -40,9 +43,11 @@ npm run build
 ├── scripts/                       Static build and HTML rendering scripts
 ├── backend/                       Google Sheets synchronization tools
 ├── .github/workflows/             Scheduled listings synchronization
-├── dist/                          Generated deployment snapshot
+├── worker/                        Cloudflare Worker (routing + contact form email)
+├── wrangler.jsonc                 Cloudflare Workers configuration
+├── dist/                          Generated build output (not tracked in Git)
 ├── server.js                      Local development server
-└── package.json                   Local development and build commands
+└── package.json                   Local development, build, and deploy commands
 ```
 
 ### Source pages
@@ -63,7 +68,7 @@ See [backend/README.md](backend/README.md) for credentials, sheet requirements, 
 
 ## What is `dist/`?
 
-`dist/` is generated output: a complete static deployment snapshot produced from the source files. It is useful as a sample of the final directory layout, but it is also the actual folder intended for deployment.
+`dist/` is generated output produced from the source files by `npm run build`. It is not tracked in Git: Cloudflare Workers Builds regenerates it in CI on every push to `main`, and local builds exist only for preview or a manual `npm run deploy`.
 
 Important rules:
 
@@ -71,7 +76,7 @@ Important rules:
 - `npm run build` deletes the existing `dist/` directory and recreates it from scratch.
 - HTML partial markers are expanded into complete HTML during the build.
 - Images, shared assets, page directories, and listings JSON are copied into the output.
-- This repository currently tracks `dist/` so a known deployable snapshot is available for direct upload. After source changes, rebuild and commit the corresponding `dist/` changes.
+- The build writes `dist/.assetsignore` to keep non-asset files (e.g. stray `.php`) out of the static upload.
 
 The build currently copies these source targets:
 
@@ -92,29 +97,14 @@ shared/
 
 To add another deployable top-level page or asset directory, add it to `copyTargets` in `scripts/build.js`.
 
-## Generate a fresh deployment snapshot
+## Deployment
 
-For normal website changes:
+The site runs on Cloudflare Workers as the `star-website` Worker, with `starreusa.com` and `www.starreusa.com` bound as custom domains.
 
-```bash
-# 1. Edit source files outside dist/
-# 2. Rebuild dist/ from those sources
-npm run build
+- Automatic: Cloudflare Workers Builds is connected to this repository. Every push to `main` runs `npm run build` and deploys the result.
+- Manual fallback: `npm run build && npm run deploy` (requires a wrangler login on the Cloudflare account).
 
-# 3. Review which generated files changed
-git status --short
-git diff --stat
-```
-
-The resulting `dist/` folder can be uploaded as the web root. For Hostinger, upload the contents of `dist/` into the target domain's `public_html` directory. The contact form requires PHP support; the Node development server only serves files and does not execute the PHP handler.
-
-To preview the exact static build without PHP execution:
-
-```bash
-python3 -m http.server 8000 --directory dist
-```
-
-Then open `http://127.0.0.1:8000`.
+The contact form endpoint `/api/contact` is implemented in `worker/index.js` and sends inquiry email through Resend. The Resend API key lives in the Worker secret `RESEND_API_KEY` (set once with `npx wrangler secret put RESEND_API_KEY`); secrets persist across deployments and are never part of the repository.
 
 ## Refresh listings and rebuild
 
@@ -128,34 +118,35 @@ pip install -r backend/requirements.txt
 # Writes data/listings.json and data/listings_meta.json
 npm run sync:listings
 
-# Copies the refreshed data into a fresh deployment snapshot
+# Optional: rebuild locally to preview the refreshed data
 npm run build
 ```
 
-The scheduled GitHub Actions workflow performs the Sheets sync and mirrors changed JSON into `dist/data/`. It does not rebuild every site page because listing-only changes do not require HTML regeneration.
+The scheduled GitHub Actions workflow performs the Sheets sync and commits changed JSON in `data/`. That push triggers Cloudflare Workers Builds, which rebuilds and deploys the site with the fresh data.
 
 ## What belongs in the repository
 
 Commit these files when they change:
 
-- Source HTML pages and `contact-us/submit-inquiry.php`
+- Source HTML pages
+- `worker/` and `wrangler.jsonc`
 - `partials/`, `shared/`, and `scripts/`
 - Optimized website assets in `jpg/` and `png/`
 - `data/listings.json` and `data/listings_meta.json`
 - `backend/` code, example configuration, and documentation
 - `.github/workflows/`
-- The rebuilt `dist/` snapshot
 - Project documentation and package metadata
 
 Do not commit:
 
-- Google service-account JSON or other credentials
+- `dist/` build output (regenerated in CI on every deploy)
+- Google service-account JSON, the Resend API key, or other credentials
 - A real `backend/sheets_config.json` containing private sheet IDs
 - `.env` files containing secrets
-- `.venv/`, `node_modules/`, Python caches, editor files, or operating-system metadata
+- `.venv/`, `node_modules/`, `.wrangler/`, Python caches, editor files, or operating-system metadata
 - Temporary exports or unoptimized working assets that are not used by the site
 
-The `.ai` and `.pdf` files at the repository root are original logo source documents. Keep them only if the repository is intended to remain the canonical archive for those brand assets; the website itself uses the optimized files in `jpg/` and `png/`.
+The original logo source documents (`.ai`/`.pdf`) are intentionally not tracked: the website only uses the optimized image in `jpg/`. Archive the brand source files in shared storage (e.g. Google Drive), not in this repository.
 
 ## Common workflows
 
@@ -163,21 +154,20 @@ The `.ai` and `.pdf` files at the repository root are original logo source docum
 
 1. Edit the source page, shared CSS/JavaScript, or partial.
 2. Preview with `npm run dev`.
-3. Run `npm run build`.
-4. Review both source and generated changes before committing.
+3. Commit and push; merging to `main` deploys automatically.
 
 ### Change the shared header
 
 1. Edit `partials/site-header.html` for markup.
 2. Edit navigation definitions in `scripts/render-html.js` when labels or routes change.
-3. Run `npm run build` so every generated page receives the update.
+3. Push to `main`; the CI build regenerates every page.
 
 ### Update listing content
 
 1. Update the configured private Google Sheet.
 2. Run or dispatch the listings sync.
 3. Confirm `data/listings_meta.json` reports a successful result.
-4. Run `npm run build` locally when preparing a complete deployment snapshot.
+4. The sync commit triggers an automatic rebuild and deploy.
 
 ## Future roadmap and backlog
 
@@ -187,8 +177,9 @@ The items below are proposed work, not implemented features or delivery commitme
 
 - [ ] Confirm final navigation labels, page order, and property information architecture.
 - [ ] Replace remaining sample listing content and placeholder links with production data.
-- [ ] Configure and test the contact form on the production PHP host, including recipient addresses, spam protection, validation, and failure handling.
-- [ ] Add production domain configuration, canonical URLs, page titles, descriptions, Open Graph metadata, `robots.txt`, and `sitemap.xml`.
+- [ ] Add spam protection (e.g. Cloudflare Turnstile) to the contact form, which currently relies on a honeypot field only.
+- [ ] Tighten DMARC from `p=none` to `p=quarantine` once SPF/DKIM have been stable for a few weeks.
+- [ ] Add canonical URLs, page titles, descriptions, Open Graph metadata, `robots.txt`, and `sitemap.xml`.
 - [ ] Run responsive, cross-browser, keyboard-navigation, and accessibility checks on every page.
 - [ ] Optimize large images and document target dimensions and compression settings.
 - [ ] Decide whether the original `.ai` and `.pdf` brand files belong in Git or in a separate brand-assets archive.
@@ -206,11 +197,8 @@ The items below are proposed work, not implemented features or delivery commitme
 ### Priority 3: build, deployment, and maintenance
 
 - [ ] Add automated HTML, link, JavaScript, and accessibility checks to continuous integration.
-- [ ] Add a deployment workflow so a successful build can publish `dist/` without a manual upload.
-- [ ] Decide whether `dist/` should remain tracked long term or become a CI-generated deployment artifact. Until that decision changes, keep rebuilding and committing it.
 - [ ] Add cache-control guidance and asset versioning for production deployments.
 - [ ] Add monitoring for failed scheduled listing syncs and failed contact-form submissions.
-- [ ] Expand `.gitignore` for local environments, secrets, editor metadata, and operating-system files; remove any already tracked local-only files after review.
 - [ ] Add dependency and runtime version checks if third-party npm tooling is introduced.
 
 ### Later enhancements
@@ -224,20 +212,21 @@ The items below are proposed work, not implemented features or delivery commitme
 ### Backlog maintenance rules
 
 - Keep secrets and private customer data out of issues, documentation, JSON fixtures, and commits.
-- Treat source files outside `dist/` as authoritative; regenerate `dist/` after relevant changes.
+- Treat source files as authoritative; `dist/` is regenerated by CI on every deploy.
 - Keep listing output backward-compatible unless source pages and deployment data are updated together.
 - Move an item into active work only after its requirements and acceptance criteria are clear.
 - Remove completed checklist items during periodic documentation cleanup; Git history remains the record of completed work.
 
 ## Deployment checklist
 
-Before uploading `dist/`:
+Before merging to `main`:
 
 ```bash
 npm run build
 node --check server.js
 node --check scripts/build.js
 node --check scripts/render-html.js
+node --check worker/index.js
 python3 -m py_compile backend/sync_listings.py
 ```
 
@@ -246,5 +235,5 @@ Also verify that:
 - The main navigation works from both root and nested pages.
 - Listing pages load `data/listings.json` without browser errors.
 - `data/listings_meta.json` reflects the expected sync state.
-- The production host is configured to execute `contact-us/submit-inquiry.php`.
-- No credential or local configuration file is included in the upload or commit.
+- The contact form submits successfully on the deployed site (`/api/contact`).
+- No credential or local configuration file is included in the commit.

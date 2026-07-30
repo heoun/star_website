@@ -6,6 +6,7 @@
     "sync:listings": "python3 backend/sync_listings.py",
     "build": "node scripts/build.js",
     "dev": "node server.js",
-    "start": "node server.js"
+    "start": "node server.js",
+    "deploy": "npx --yes wrangler deploy"
   }
 }
