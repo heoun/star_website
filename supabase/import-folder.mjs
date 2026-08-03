@@ -14,13 +14,19 @@
 //   7A.mp4         optional video tour
 
 import { execFileSync } from "node:child_process";
-import { mkdtempSync, readdirSync, rmSync, statSync } from "node:fs";
+import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 
 const BUCKET = "listing-media";
+
+// Child processes (wrangler, sips, textutil) have no business seeing the
+// database key, so they run with it stripped from their environment.
+const SAFE_ENV = { ...process.env };
+delete SAFE_ENV.SUPABASE_SERVICE_ROLE_KEY;
+delete SAFE_ENV.SUPABASE_URL;
 const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif"]);
 const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".webm"]);
 const VIDEO_TYPES = { ".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm" };
@@ -75,8 +81,8 @@ if (!docx) {
 const scratch = mkdtempSync(path.join(os.tmpdir(), "listing-import-"));
 const docText = (() => {
   const out = path.join(scratch, "copy.txt");
-  execFileSync("textutil", ["-convert", "txt", "-output", out, path.join(folder, docx)]);
-  return execFileSync("cat", [out], { encoding: "utf8" });
+  execFileSync("textutil", ["-convert", "txt", "-output", out, path.join(folder, docx)], { env: SAFE_ENV });
+  return readFileSync(out, "utf8");
 })();
 
 const lines = docText.split("\n").map((line) => line.trim()).filter(Boolean);
@@ -163,12 +169,12 @@ function uploadToR2(objectKey, filePath, contentType) {
   execFileSync("npx", [
     "--yes", "wrangler@4", "r2", "object", "put", `${BUCKET}/${objectKey}`,
     "--file", filePath, "--content-type", contentType, "--remote"
-  ], { stdio: ["ignore", "ignore", "inherit"] });
+  ], { stdio: ["ignore", "ignore", "inherit"], env: SAFE_ENV });
 }
 
 function resizeImage(sourcePath, maxDimension) {
   const out = path.join(scratch, `${crypto.randomUUID()}.jpg`);
-  execFileSync("sips", ["-Z", String(maxDimension), "-s", "format", "jpeg", "-s", "formatOptions", "82", sourcePath, "--out", out], { stdio: "ignore" });
+  execFileSync("sips", ["-Z", String(maxDimension), "-s", "format", "jpeg", "-s", "formatOptions", "82", sourcePath, "--out", out], { stdio: "ignore", env: SAFE_ENV });
   return out;
 }
 
