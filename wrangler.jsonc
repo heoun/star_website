@@ -8,8 +8,14 @@
     "directory": "./dist",
     "binding": "ASSETS",
     "html_handling": "auto-trailing-slash",
-    "not_found_handling": "404-page"
+    "not_found_handling": "404-page",
+    // These paths must reach the Worker even though matching assets exist:
+    // the listings feed is served from Supabase, and /admin is access-checked.
+    "run_worker_first": ["/data/listings.json", "/admin", "/admin/*", "/api/*", "/media/*"]
   },
+  "r2_buckets": [
+    { "binding": "MEDIA", "bucket_name": "listing-media" }
+  ],
   "observability": {
     "enabled": true
   }

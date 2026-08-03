@@ -5,7 +5,7 @@ const { renderHtmlFile } = require("./render-html");
 const root = path.resolve(__dirname, "..");
 const dist = path.join(root, "dist");
 
-const copyTargets = ["index.html", "buy", "rental", "commercial", "listings", "new-development", "contact-us", "our-team", "jpg", "png", "data", "shared"];
+const copyTargets = ["index.html", "buy", "rental", "commercial", "listings", "new-development", "contact-us", "our-team", "admin", "jpg", "png", "data", "shared"];
 
 fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(dist, { recursive: true });

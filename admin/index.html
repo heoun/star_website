@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="robots" content="noindex, nofollow">
+  <title>Listings Admin | Star Real Estate</title>
+  <style>
+    :root {
+      --ink: #1f2a33;
+      --text: #4c5963;
+      --bg: #f7f6f1;
+      --panel: #ffffff;
+      --line: rgba(31, 42, 51, 0.16);
+      --primary: #0d3b52;
+      --accent: #c1752e;
+      --danger: #b3261e;
+      --radius: 14px;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      line-height: 1.5;
+    }
+
+    header {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 24px;
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    header h1 { margin: 0; font-size: 20px; }
+    header .who { font-size: 13px; opacity: 0.85; }
+
+    main { max-width: 1180px; margin: 0 auto; padding: 24px; }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 12px;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 18px;
+    }
+
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+
+    button {
+      font: inherit;
+      font-weight: 600;
+      border-radius: 999px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      color: var(--ink);
+      padding: 8px 16px;
+      cursor: pointer;
+    }
+
+    button:hover { border-color: var(--primary); }
+    button.primary { background: var(--primary); border-color: var(--primary); color: #ffffff; }
+    button.danger { color: var(--danger); border-color: rgba(179, 38, 30, 0.4); }
+    button.chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #ffffff; }
+    button.small { padding: 3px 10px; font-size: 12px; }
+    button:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .status {
+      margin-bottom: 16px;
+      padding: 10px 14px;
+      border-radius: var(--radius);
+      border: 1px solid var(--line);
+      background: var(--panel);
+      font-size: 14px;
+    }
+
+    .status[data-tone="error"] { border-color: rgba(179, 38, 30, 0.4); color: var(--danger); }
+    .status[hidden] { display: none; }
+
+    .rows { display: grid; gap: 10px; }
+
+    .row {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 12px;
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+
+    .row .thumb {
+      width: 88px;
+      height: 66px;
+      border-radius: 10px;
+      object-fit: cover;
+      background: #e7eaec;
+      display: block;
+    }
+
+    .row h2 { margin: 0 0 2px; font-size: 16px; }
+    .row p { margin: 0; font-size: 13px; color: var(--text); }
+
+    .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+
+    .tag {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      padding: 2px 8px;
+      border-radius: 999px;
+      background: #e8eef1;
+      color: var(--primary);
+    }
+
+    .tag.draft { background: #fbeee0; color: var(--accent); }
+    .actions { display: flex; gap: 8px; }
+
+    dialog {
+      width: min(760px, 94vw);
+      max-height: 92vh;
+      border: none;
+      border-radius: 18px;
+      padding: 0;
+      background: var(--panel);
+    }
+
+    dialog::backdrop { background: rgba(12, 31, 40, 0.5); }
+
+    form { padding: 22px; }
+    form h2 { margin: 0 0 16px; font-size: 20px; color: var(--primary); }
+    form h3 {
+      margin: 22px 0 10px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--primary);
+      border-top: 1px solid var(--line);
+      padding-top: 16px;
+    }
+
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+    .grid .wide { grid-column: 1 / -1; }
+
+    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
+    .hint { font-weight: 400; color: var(--text); }
+
+    input, select, textarea {
+      font: inherit;
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #ffffff;
+      color: var(--ink);
+    }
+
+    textarea { min-height: 90px; resize: vertical; }
+    input[type="checkbox"] { width: auto; }
+    input[type="file"] { padding: 6px; }
+    .checkbox { display: flex; align-items: center; gap: 8px; }
+    .checkbox label { margin: 0; }
+
+    .media-note { font-size: 13px; color: var(--text); margin: 4px 0 0; }
+
+    .photo-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+      gap: 10px;
+      margin-top: 10px;
+    }
+
+    .photo-item {
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      overflow: hidden;
+      background: #fbfaf7;
+    }
+
+    .photo-item img { width: 100%; height: 96px; object-fit: cover; display: block; }
+    .photo-item .photo-tools { padding: 6px; display: grid; gap: 6px; }
+    .photo-item input { padding: 4px 8px; font-size: 12px; }
+    .photo-item .photo-buttons { display: flex; gap: 4px; justify-content: space-between; }
+
+    .plan-preview img { max-width: 260px; max-height: 180px; border-radius: 10px; display: block; margin-top: 8px; }
+    .video-preview { font-size: 13px; margin-top: 6px; word-break: break-all; }
+
+    .form-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+      margin-top: 18px;
+      padding-top: 16px;
+      border-top: 1px solid var(--line);
+    }
+
+    @media (max-width: 640px) {
+      .grid { grid-template-columns: 1fr; }
+      .row { grid-template-columns: 64px minmax(0, 1fr); }
+      .row .actions { grid-column: 1 / -1; }
+      .row .thumb { width: 64px; height: 52px; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Listings Admin</h1>
+    <span class="who" id="who"></span>
+  </header>
+
+  <main>
+    <div class="toolbar">
+      <div class="filters">
+        <button type="button" class="chip" data-filter="all" aria-pressed="true">All</button>
+        <button type="button" class="chip" data-filter="residential" aria-pressed="false">Residential</button>
+        <button type="button" class="chip" data-filter="commercial" aria-pressed="false">Commercial</button>
+        <button type="button" class="chip" data-filter="draft" aria-pressed="false">Unpublished</button>
+      </div>
+      <button type="button" class="primary" id="new-listing">New listing</button>
+    </div>
+
+    <p class="status" id="status" hidden></p>
+    <div class="rows" id="rows"></div>
+  </main>
+
+  <dialog id="editor">
+    <form id="listing-form" method="dialog">
+      <h2 id="editor-title">New listing</h2>
+
+      <div class="grid">
+        <div>
+          <label for="category">Category</label>
+          <select id="category" name="category" required>
+            <option value="residential">Residential</option>
+            <option value="commercial">Commercial</option>
+          </select>
+        </div>
+
+        <div>
+          <label for="transaction_type">Transaction</label>
+          <select id="transaction_type" name="transaction_type" required>
+            <option value="sale">For sale</option>
+            <option value="rental">For rent / lease</option>
+          </select>
+        </div>
+
+        <div class="wide">
+          <label for="title">Title <span class="hint">(e.g. "Kew Gardens Luxury Rental")</span></label>
+          <input id="title" name="title" maxlength="200" required>
+        </div>
+
+        <div>
+          <label for="building_name">Building <span class="hint">(e.g. "Evergarden")</span></label>
+          <input id="building_name" name="building_name" maxlength="120">
+        </div>
+
+        <div>
+          <label for="unit">Unit <span class="hint">(e.g. "7A")</span></label>
+          <input id="unit" name="unit" maxlength="30">
+        </div>
+
+        <div>
+          <label for="price_amount">Price <span class="hint">(numbers only, e.g. 4500)</span></label>
+          <input id="price_amount" name="price_amount" type="number" min="0" step="1" inputmode="numeric">
+        </div>
+
+        <div>
+          <label for="price_display">Price override <span class="hint">(optional)</span></label>
+          <input id="price_display" name="price_display" maxlength="60" placeholder="Price on request">
+        </div>
+
+        <div>
+          <label for="location">Address</label>
+          <input id="location" name="location" maxlength="300" placeholder="81-07 Kew Gardens Road, NY">
+        </div>
+
+        <div>
+          <label for="neighborhood">Neighborhood</label>
+          <input id="neighborhood" name="neighborhood" maxlength="120" placeholder="Kew Gardens">
+        </div>
+
+        <div>
+          <label for="property_type">Property type</label>
+          <input id="property_type" name="property_type" maxlength="60" placeholder="Apartment, Condo, House">
+        </div>
+
+        <div>
+          <label for="use_type">Use type <span class="hint">(commercial)</span></label>
+          <input id="use_type" name="use_type" maxlength="60" placeholder="Retail, Office">
+        </div>
+
+        <div>
+          <label for="bedrooms">Bedrooms <span class="hint">(0 = studio)</span></label>
+          <input id="bedrooms" name="bedrooms" type="number" min="0" step="1">
+        </div>
+
+        <div>
+          <label for="bathrooms">Bathrooms</label>
+          <input id="bathrooms" name="bathrooms" type="number" min="0" step="0.5">
+        </div>
+
+        <div>
+          <label for="size">Size</label>
+          <input id="size" name="size" maxlength="60" placeholder="2,400 sf">
+        </div>
+
+        <div>
+          <label for="term_label">Term <span class="hint">(lease)</span></label>
+          <input id="term_label" name="term_label" maxlength="60" placeholder="5-year term">
+        </div>
+
+        <div class="wide">
+          <label for="description">Description</label>
+          <textarea id="description" name="description" maxlength="4000" placeholder="Modern Comfort at Evergarden&#10;Stylish 2-bed, 2-bath residence featuring..."></textarea>
+        </div>
+
+        <div class="wide">
+          <label for="details_url">External details link <span class="hint">(optional)</span></label>
+          <input id="details_url" name="details_url" type="url" maxlength="500" placeholder="https://">
+        </div>
+
+        <div>
+          <label for="kind_label">Card badge</label>
+          <input id="kind_label" name="kind_label" maxlength="80" placeholder="Kew Gardens Luxury Rental">
+        </div>
+
+        <div>
+          <label for="position">Sort order <span class="hint">(low first)</span></label>
+          <input id="position" name="position" type="number" step="1" value="0">
+        </div>
+
+        <div class="checkbox wide">
+          <input id="published" name="published" type="checkbox" checked>
+          <label for="published">Published on the website</label>
+        </div>
+      </div>
+
+      <div id="media-section" hidden>
+        <h3>Photos</h3>
+        <input id="photo-files" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple>
+        <p class="media-note">Photos are compressed in the browser before upload. The first photo is the card cover; use the arrows to reorder and name each room in the caption.</p>
+        <div class="photo-grid" id="photo-grid"></div>
+
+        <h3>Floor plan</h3>
+        <input id="plan-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif">
+        <div class="plan-preview" id="plan-preview"></div>
+
+        <h3>Video</h3>
+        <input id="video-file" type="file" accept="video/mp4,video/quicktime,video/webm">
+        <p class="media-note">Up to 60 MB (1080p recommended), or paste an external link below.</p>
+        <input id="video_url" name="video_url" maxlength="500" placeholder="/media/… or https://youtu.be/…">
+        <div class="video-preview" id="video-preview"></div>
+      </div>
+
+      <p class="media-note" id="media-locked">Save the listing first, then photos, floor plan, and video can be added.</p>
+
+      <div class="form-actions">
+        <button type="button" id="cancel">Close</button>
+        <button type="submit" class="primary" id="save">Save listing</button>
+      </div>
+    </form>
+  </dialog>
+
+  <script src="admin.js"></script>
+</body>
+</html>

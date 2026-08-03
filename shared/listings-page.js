@@ -51,6 +51,14 @@
     }
   };
 
+  // Listing photos are served same-origin from /media/, so root-relative
+  // paths are allowed in addition to absolute http(s) URLs.
+  const toSafeImageUrl = (value) => {
+    const text = String(value ?? "").trim();
+    if (text.startsWith("/") && !text.startsWith("//")) return text;
+    return toSafeHttpUrl(text);
+  };
+
   const normalizeListingsPayload = (payload) => {
     const rawListings = Array.isArray(payload?.listings) ? payload.listings : Array.isArray(payload) ? payload : [];
     return rawListings
@@ -76,7 +84,8 @@
           bathroom: item.bathroom || item.bathrooms || "",
           details_url: item.details_url || item.url || item.link || "",
           kind_label: item.kind_label || item.project_kind || item.kind || "",
-          image_label: item.image_label || item.photo_label || ""
+          image_label: item.image_label || item.photo_label || "",
+          image_url: item.image_url || item.photo_url || item.image || ""
         };
       })
       .filter((item) => item.category && item.title && item.transaction_group);
@@ -149,11 +158,16 @@
       .map((fact) => `<span class="listing-fact">${escapeHtml(fact)}</span>`)
       .join("");
 
+    const photoUrl = toSafeImageUrl(listing.image_url);
+    const photoMarkup = photoUrl
+      ? `<img class="listing-photo" src="${escapeHtml(photoUrl)}" alt="${escapeHtml(photoLabel)}" loading="lazy" decoding="async">`
+      : listingPhotoCopyMarkup(photoLabel, config);
+
     return `
       <article class="listing-card">
         <div class="listing-media" role="img" aria-label="${escapeHtml(photoLabel)}">
+          ${photoMarkup}
           ${listingMetaMarkup(kindLabel, statusLabel, config)}
-          ${listingPhotoCopyMarkup(photoLabel, config)}
         </div>
         <div class="listing-body">
           <p class="listing-price">${escapeHtml(safeText(listing.price))}</p>

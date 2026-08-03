@@ -103,6 +103,15 @@
     url("../jpg/unit-bkg.jpeg") center / cover no-repeat;
 }
 
+.listing-photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
 .listing-media::after {
   content: "";
   position: absolute;
