@@ -69,6 +69,7 @@
         );
 
         return {
+          id: item.id || "",
           category,
           transaction_group: transactionGroup,
           status: deriveStatusLabel(transactionGroup, item.status || item.listing_status || "Available"),
@@ -143,11 +144,23 @@
   };
 
   const listingCardMarkup = (listing, config) => {
-    const detailsUrl = toSafeHttpUrl(listing.details_url);
-    const linkAttributes = detailsUrl
-      ? `href="${escapeHtml(detailsUrl)}" target="_blank" rel="noopener noreferrer"`
-      : 'href="#" aria-disabled="true"';
-    const linkText = detailsUrl ? "Property Details" : "Details unavailable";
+    // An external listing system wins when one is configured; otherwise the
+    // card opens the property page built from our own data.
+    const externalUrl = toSafeHttpUrl(listing.details_url);
+    const propertyPath = listing.id
+      ? `${config.propertyPath || "../property/"}?id=${encodeURIComponent(listing.id)}`
+      : "";
+
+    let linkAttributes = 'href="#" aria-disabled="true"';
+    let linkText = "Details unavailable";
+
+    if (externalUrl) {
+      linkAttributes = `href="${escapeHtml(externalUrl)}" target="_blank" rel="noopener noreferrer"`;
+      linkText = "Property Details";
+    } else if (propertyPath) {
+      linkAttributes = `href="${escapeHtml(propertyPath)}"`;
+      linkText = "Property Details";
+    }
     const defaultKind = safeText(config.defaultKind, "Residential Listing");
     const photoLabel = safeText(listing.image_label, config.emptyPhotoLabel || "Listing preview");
     const addressParts = [safeText(listing.neighborhood, ""), safeText(listing.location, "")].filter(Boolean);

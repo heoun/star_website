@@ -54,6 +54,27 @@
     }
 
     .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+    .toolbar-actions { display: flex; gap: 8px; }
+
+    .dropzone {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      align-items: center;
+      text-align: center;
+      padding: 22px;
+      margin-bottom: 18px;
+      border: 2px dashed var(--line);
+      border-radius: var(--radius);
+      background: var(--panel);
+      color: var(--text);
+      font-size: 13.5px;
+      cursor: pointer;
+      transition: border-color .2s, background .2s;
+    }
+
+    .dropzone strong { color: var(--primary); font-size: 15px; }
+    .dropzone:hover, .dropzone[data-active="true"] { border-color: var(--primary); background: #f2f7f9; }
 
     button {
       font: inherit;
@@ -129,6 +150,7 @@
     dialog {
       width: min(760px, 94vw);
       max-height: 92vh;
+      overflow-y: auto;
       border: none;
       border-radius: 18px;
       padding: 0;
@@ -171,7 +193,23 @@
     .checkbox { display: flex; align-items: center; gap: 8px; }
     .checkbox label { margin: 0; }
 
-    .media-note { font-size: 13px; color: var(--text); margin: 4px 0 0; }
+    .media-note { font-size: 13px; color: var(--text); margin: 4px 0 10px; }
+
+    .media-lock {
+      display: none;
+      margin: 0 0 14px;
+      padding: 12px 14px;
+      border-radius: 10px;
+      background: #fbeee0;
+      border: 1px solid rgba(193, 117, 46, 0.35);
+      color: #7a4a15;
+      font-size: 13.5px;
+    }
+
+    #media-section[data-pending="true"] .media-lock { display: block; }
+    #media-section .media-fields label { margin-top: 14px; }
+    .photo-item[data-pending="true"] { border-color: rgba(193, 117, 46, 0.5); }
+    .photo-item .pending-flag { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; }
 
     .photo-grid {
       display: grid;
@@ -193,7 +231,9 @@
     .photo-item .photo-buttons { display: flex; gap: 4px; justify-content: space-between; }
 
     .plan-preview img { max-width: 260px; max-height: 180px; border-radius: 10px; display: block; margin-top: 8px; }
-    .video-preview { font-size: 13px; margin-top: 6px; word-break: break-all; }
+    .video-preview { font-size: 13px; margin-top: 8px; word-break: break-all; }
+    .video-preview video { width: 100%; max-height: 300px; border-radius: 10px; background: #000; display: block; }
+    .video-preview p { margin: 6px 0 0; color: var(--text); }
 
     .form-actions {
       display: flex;
@@ -226,7 +266,16 @@
         <button type="button" class="chip" data-filter="commercial" aria-pressed="false">Commercial</button>
         <button type="button" class="chip" data-filter="draft" aria-pressed="false">Unpublished</button>
       </div>
-      <button type="button" class="primary" id="new-listing">New listing</button>
+      <div class="toolbar-actions">
+        <button type="button" id="import-folder">Import folder…</button>
+        <button type="button" class="primary" id="new-listing">New listing</button>
+      </div>
+    </div>
+
+    <div class="dropzone" id="dropzone">
+      <strong>Drop a marketing folder here</strong>
+      <span>The Word document, photos, floor plan, and video are read on this computer and filled in for you to check before saving.</span>
+      <input type="file" id="folder-input" webkitdirectory directory multiple hidden>
     </div>
 
     <p class="status" id="status" hidden></p>
@@ -345,24 +394,27 @@
         </div>
       </div>
 
-      <div id="media-section" hidden>
-        <h3>Photos</h3>
-        <input id="photo-files" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple>
-        <p class="media-note">Photos are compressed in the browser before upload. The first photo is the card cover; use the arrows to reorder and name each room in the caption.</p>
-        <div class="photo-grid" id="photo-grid"></div>
+      <div id="media-section">
+        <h3>Photos, floor plan &amp; video</h3>
+        <p class="media-lock" id="media-locked">These files upload when you save the listing.</p>
 
-        <h3>Floor plan</h3>
-        <input id="plan-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif">
-        <div class="plan-preview" id="plan-preview"></div>
+        <div class="media-fields">
+          <label for="photo-files">Photos</label>
+          <input id="photo-files" type="file" accept="image/jpeg,image/png,image/webp,image/avif" multiple>
+          <p class="media-note">Compressed in the browser before upload. The first photo is the card cover; reorder with the arrows and name each room in the caption.</p>
+          <div class="photo-grid" id="photo-grid"></div>
 
-        <h3>Video</h3>
-        <input id="video-file" type="file" accept="video/mp4,video/quicktime,video/webm">
-        <p class="media-note">Up to 60 MB (1080p recommended), or paste an external link below.</p>
-        <input id="video_url" name="video_url" maxlength="500" placeholder="/media/… or https://youtu.be/…">
-        <div class="video-preview" id="video-preview"></div>
+          <label for="plan-file">Floor plan</label>
+          <input id="plan-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif">
+          <div class="plan-preview" id="plan-preview"></div>
+
+          <label for="video-file">Video</label>
+          <input id="video-file" type="file" accept="video/mp4,video/quicktime,video/webm">
+          <p class="media-note">Up to 60 MB (1080p recommended), or paste an external link below.</p>
+          <input id="video_url" name="video_url" maxlength="500" placeholder="/media/… or https://youtu.be/…">
+          <div class="video-preview" id="video-preview"></div>
+        </div>
       </div>
-
-      <p class="media-note" id="media-locked">Save the listing first, then photos, floor plan, and video can be added.</p>
 
       <div class="form-actions">
         <button type="button" id="cancel">Close</button>
@@ -371,6 +423,6 @@
     </form>
   </dialog>
 
-  <script src="admin.js"></script>
+  <script type="module" src="admin.js"></script>
 </body>
 </html>

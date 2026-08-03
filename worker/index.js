@@ -1,6 +1,6 @@
 import { guardAdminPage, handleAdminRequest } from "./admin.js";
 import { handleInquiry, renderPage } from "./contact.js";
-import { serveListingsFeed } from "./listings.js";
+import { serveListingsFeed, servePropertyDetail } from "./listings.js";
 import { serveMedia } from "./media.js";
 
 export default {
@@ -13,6 +13,11 @@ export default {
     // still used as the offline fallback.
     if (pathname === "/data/listings.json") {
       return serveListingsFeed(request, env, ctx);
+    }
+
+    // One listing with its full copy and media, for the property page.
+    if (pathname === "/data/property.json") {
+      return servePropertyDetail(request, env, ctx);
     }
 
     // Listing photos, floor plans, and videos stored in R2.

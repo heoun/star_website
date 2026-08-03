@@ -65,6 +65,19 @@ export async function fetchListings(env, { publishedOnly = true } = {}) {
   return response.json();
 }
 
+export async function fetchListing(env, id, { publishedOnly = true } = {}) {
+  const filters = [
+    `select=${LISTING_COLUMNS},listing_media(${MEDIA_COLUMNS})`,
+    `id=eq.${encodeURIComponent(id)}`,
+    "listing_media.order=kind.asc,position.asc"
+  ];
+  if (publishedOnly) filters.push("published=eq.true");
+
+  const response = await restRequest(env, `listings?${filters.join("&")}`);
+  const [row] = await response.json();
+  return row || null;
+}
+
 export async function insertListing(env, values) {
   const response = await restRequest(env, "listings", {
     method: "POST",
@@ -161,6 +174,7 @@ export function toFeedListing(row) {
   const cover = sortedPhotos(row)[0];
 
   return {
+    id: row.id,
     category: row.category,
     transaction_group: row.transaction_type,
     status: row.transaction_type === "rental" ? "For Rent" : "For Sale",
@@ -178,6 +192,25 @@ export function toFeedListing(row) {
     kind_label: row.kind_label || "",
     image_label: cover?.caption || "",
     image_url: mediaUrl(cover?.path)
+  };
+}
+
+// Everything a property detail page needs: the feed fields plus the copy and
+// media the cards have no room for.
+export function toDetailListing(row) {
+  const plan = (row.listing_media || []).find((item) => item.kind === "floor_plan");
+
+  return {
+    ...toFeedListing(row),
+    building_name: row.building_name || "",
+    unit: row.unit || "",
+    description: row.description || "",
+    video_url: row.video_url || "",
+    photos: sortedPhotos(row).map((photo) => ({
+      url: mediaUrl(photo.path),
+      caption: photo.caption || ""
+    })),
+    floor_plan: plan ? { url: mediaUrl(plan.path), caption: plan.caption || "Floor plan" } : null
   };
 }
 

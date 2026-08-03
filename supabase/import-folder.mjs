@@ -19,6 +19,12 @@ import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
+import {
+  captionFromFilename,
+  classifyFiles,
+  parseFolderName,
+  parseListingCopy
+} from "../shared/listing-parse.js";
 
 const BUCKET = "listing-media";
 
@@ -27,8 +33,6 @@ const BUCKET = "listing-media";
 const SAFE_ENV = { ...process.env };
 delete SAFE_ENV.SUPABASE_SERVICE_ROLE_KEY;
 delete SAFE_ENV.SUPABASE_URL;
-const IMAGE_EXTENSIONS = new Set([".png", ".jpg", ".jpeg", ".webp", ".avif"]);
-const VIDEO_EXTENSIONS = new Set([".mp4", ".mov", ".webm"]);
 const VIDEO_TYPES = { ".mp4": "video/mp4", ".mov": "video/quicktime", ".webm": "video/webm" };
 
 const args = [];
@@ -65,14 +69,13 @@ if (!dryRun && (!url || !key)) {
 // ---- Parse the folder name: "Evergarden 7A" -> building + unit ----
 
 const folderName = path.basename(folder.replace(/\/+$/, ""));
-const unitMatch = folderName.match(/^(.*?)\s+([0-9]+[A-Za-z]?)$/);
-const buildingName = unitMatch ? unitMatch[1].trim() : folderName;
-const unit = unitMatch ? unitMatch[2] : null;
+const { building_name: buildingName, unit } = parseFolderName(folderName);
 
 // ---- Parse the .docx copy ----
 
-const entries = readdirSync(folder).filter((name) => !name.startsWith("."));
-const docx = entries.find((name) => name.toLowerCase().endsWith(".docx"));
+const entries = readdirSync(folder);
+const { document: docx, photos, floorPlan, video } = classifyFiles(entries);
+
 if (!docx) {
   console.error("No .docx file found in the folder.");
   process.exit(1);
@@ -85,67 +88,18 @@ const docText = (() => {
   return readFileSync(out, "utf8");
 })();
 
-const lines = docText.split("\n").map((line) => line.trim()).filter(Boolean);
-
-const priceLine = lines[0] || "";
-const priceAmount = Number((priceLine.match(/[\d,]+(?:\.\d+)?/) || [""])[0].replace(/,/g, "")) || null;
-const transactionType = /\/\s*mo|month|\brent\b|\blease\b/i.test(priceLine) ? "rental" : "sale";
-
-const title = lines[1] || folderName;
-
-const addressLine = lines[2] || "";
-const addressParts = addressLine.split(",").map((part) => part.trim()).filter(Boolean);
-const neighborhood = addressParts[0] || null;
-const location = addressParts.slice(1).join(", ") || null;
-
-const factsLine = lines[3] || "";
-const propertyType = (factsLine.split(",")[0] || "").trim() || null;
-const bedrooms = (() => {
-  const match = factsLine.match(/(\d+)\s*bed/i);
-  if (match) return Number(match[1]);
-  return /\bstudio\b/i.test(factsLine) ? 0 : null;
-})();
-const bathrooms = (() => {
-  const match = factsLine.match(/([\d.]+)\s*bath/i);
-  return match ? Number(match[1]) : null;
-})();
-
-const description = lines.slice(4).join("\n").replace(/[“”]/g, "").trim() || null;
-
-// ---- Classify media files ----
-
-const isFloorPlan = (name) => {
-  const base = name.toLowerCase();
-  // "5A-7A.png", "3D-4D,5C-7C.png" — unit-range names — or anything with "plan".
-  return base.includes("plan") || /\d+[a-z]\s*-\s*\d+[a-z]/i.test(path.basename(name, path.extname(name)));
-};
-
-const photos = [];
-let floorPlan = null;
-let video = null;
-
-for (const name of entries) {
-  const extension = path.extname(name).toLowerCase();
-  if (IMAGE_EXTENSIONS.has(extension)) {
-    if (isFloorPlan(name)) floorPlan = name;
-    else photos.push(name);
-  } else if (VIDEO_EXTENSIONS.has(extension)) {
-    video = name;
-  }
-}
-
-photos.sort();
-
-const caption = (name) => path.basename(name, path.extname(name)).replace(/[_]+/g, "/").trim();
+const copy = parseListingCopy(docText);
+const title = copy.title || folderName;
 
 console.log("Parsed listing:");
 console.log(JSON.stringify({
-  category, transaction_type: transactionType, title,
+  category, transaction_type: copy.transaction_type, title,
   building_name: buildingName, unit,
-  price_amount: priceAmount, property_type: propertyType,
-  bedrooms, bathrooms, neighborhood, location,
-  description: description ? `${description.slice(0, 60)}…` : null,
-  photos: photos.map(caption), floor_plan: floorPlan, video
+  price_amount: copy.price_amount, property_type: copy.property_type,
+  bedrooms: copy.bedrooms, bathrooms: copy.bathrooms,
+  neighborhood: copy.neighborhood, location: copy.location,
+  description: copy.description ? `${copy.description.slice(0, 60)}…` : null,
+  photos: photos.map(captionFromFilename), floor_plan: floorPlan, video
 }, null, 2));
 
 if (dryRun) {
@@ -185,17 +139,17 @@ const listingResponse = await rest("listings", {
   headers: { Prefer: "return=representation" },
   body: JSON.stringify({
     category,
-    transaction_type: transactionType,
+    transaction_type: copy.transaction_type,
     title,
     building_name: buildingName,
     unit,
-    description,
-    price_amount: priceAmount,
-    property_type: propertyType,
-    bedrooms,
-    bathrooms,
-    neighborhood,
-    location,
+    description: copy.description || null,
+    price_amount: copy.price_amount,
+    property_type: copy.property_type || null,
+    bedrooms: copy.bedrooms,
+    bathrooms: copy.bathrooms,
+    neighborhood: copy.neighborhood || null,
+    location: copy.location || null,
     kind_label: title,
     published: true
   })
@@ -209,7 +163,7 @@ for (const [index, name] of photos.entries()) {
   const resized = resizeImage(path.join(folder, name), 1600);
   const objectKey = `${listing.id}/${crypto.randomUUID()}.jpg`;
   uploadToR2(objectKey, resized, "image/jpeg");
-  mediaRows.push({ listing_id: listing.id, kind: "photo", path: objectKey, caption: caption(name), position: index });
+  mediaRows.push({ listing_id: listing.id, kind: "photo", path: objectKey, caption: captionFromFilename(name), position: index });
   console.log(`Uploaded photo: ${name} (${Math.round(statSync(resized).size / 1024)} KB)`);
 }
 

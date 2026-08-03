@@ -206,14 +206,14 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
 
       const row = await updateListing(env, id, values);
       if (!row) return json({ error: "Listing not found." }, 404);
-      ctx.waitUntil(purgeListingsCache(request));
+      ctx.waitUntil(purgeListingsCache(request, id));
       return json({ listing: row });
     }
 
     if (request.method === "DELETE") {
       await deleteListing(env, id);
       ctx.waitUntil(deleteObjectsByPrefix(env, `${id.toLowerCase()}/`));
-      ctx.waitUntil(purgeListingsCache(request));
+      ctx.waitUntil(purgeListingsCache(request, id));
       return json({ deleted: true });
     }
 
@@ -251,7 +251,7 @@ async function handleMediaCreate(request, env, ctx, listingId) {
     position: optionalNumber(body.position, { integer: true }) ?? 0
   });
 
-  ctx.waitUntil(purgeListingsCache(request));
+  ctx.waitUntil(purgeListingsCache(request, listingId));
   return json({ media: { ...row, url: `/media/${row.path}` } }, 201);
 }
 
@@ -269,7 +269,7 @@ async function handleMediaItem(request, env, ctx, mediaId) {
 
     const row = await updateMedia(env, mediaId, values);
     if (!row) return json({ error: "Media not found." }, 404);
-    ctx.waitUntil(purgeListingsCache(request));
+    ctx.waitUntil(purgeListingsCache(request, row.listing_id));
     return json({ media: { ...row, url: `/media/${row.path}` } });
   }
 
@@ -279,7 +279,7 @@ async function handleMediaItem(request, env, ctx, mediaId) {
 
     await deleteMediaRow(env, mediaId);
     ctx.waitUntil(deleteObject(env, row.path));
-    ctx.waitUntil(purgeListingsCache(request));
+    ctx.waitUntil(purgeListingsCache(request, row.listing_id));
     return json({ deleted: true });
   }
 
