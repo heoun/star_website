@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-  workflow_call:
   workflow_dispatch:
 
 permissions:
@@ -19,13 +18,8 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      # Always deploy the current tip of main: when this workflow is called by
-      # the listings sync, the sync's own commit is newer than the SHA that
-      # triggered the run.
       - name: Checkout
         uses: actions/checkout@v4
-        with:
-          ref: main
 
       - name: Setup Node
         uses: actions/setup-node@v4

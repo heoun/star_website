@@ -1,6 +1,3 @@
-__pycache__/
-*.pyc
-.venv/
 dist/
 .DS_Store
 node_modules/
@@ -8,6 +5,5 @@ node_modules/
 .dev.vars
 .env
 .env.*
-backend/sheets_config.json
 20250421 星维地产标志定稿（源文件）.ai
 20250421 星维地产标志定稿（源文件）.pdf
