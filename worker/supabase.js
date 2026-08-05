@@ -135,6 +135,41 @@ export async function deleteMediaRow(env, id) {
   await restRequest(env, `listing_media?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+const APPLICATION_COLUMNS =
+  "id,listing_id,name,email,phone,move_in,household_size,income_note,message,status,notes,created_at,updated_at";
+
+export async function insertApplication(env, values) {
+  const response = await restRequest(env, "applications", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(values)
+  });
+  const [row] = await response.json();
+  return row;
+}
+
+export async function fetchApplications(env) {
+  const response = await restRequest(
+    env,
+    `applications?select=${APPLICATION_COLUMNS},listings(title,building_name,unit)&order=created_at.desc`
+  );
+  return response.json();
+}
+
+export async function updateApplication(env, id, values) {
+  const response = await restRequest(env, `applications?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(values)
+  });
+  const [row] = await response.json();
+  return row;
+}
+
+export async function deleteApplication(env, id) {
+  await restRequest(env, `applications?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
 export function mediaUrl(path) {
   return path ? `/media/${path}` : "";
 }

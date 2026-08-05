@@ -1,13 +1,16 @@
 import { verifyAccessRequest } from "./access.js";
 import { purgeListingsCache } from "./listings.js";
 import {
+  deleteApplication,
   deleteListing,
   deleteMediaRow,
+  fetchApplications,
   fetchListings,
   fetchMediaRow,
   insertListing,
   insertMedia,
   toAdminListing,
+  updateApplication,
   updateListing,
   updateMedia
 } from "./supabase.js";
@@ -23,6 +26,7 @@ import {
 const CATEGORIES = ["residential", "commercial"];
 const TRANSACTION_TYPES = ["sale", "rental"];
 const MEDIA_KINDS = ["photo", "floor_plan"];
+const APPLICATION_STATUSES = ["new", "contacted", "screening", "approved", "declined"];
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -161,6 +165,10 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
       return await handleMediaItem(request, env, ctx, id);
     }
 
+    if (resource === "applications") {
+      return await handleApplications(request, env, id, subresource);
+    }
+
     if (resource !== "listings") {
       return json({ error: "Unknown endpoint." }, 404);
     }
@@ -222,6 +230,52 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
     console.error("Admin request failed", error);
     return json({ error: "The request could not be completed." }, 500);
   }
+}
+
+async function handleApplications(request, env, id, subresource) {
+  if (subresource) {
+    return json({ error: "Unknown endpoint." }, 404);
+  }
+
+  if (!id) {
+    if (request.method === "GET") {
+      const rows = await fetchApplications(env);
+      return json({ applications: rows });
+    }
+    return json({ error: "Method not allowed." }, 405);
+  }
+
+  if (!UUID_PATTERN.test(id)) {
+    return json({ error: "Application not found." }, 404);
+  }
+
+  if (request.method === "PATCH") {
+    const body = await request.json();
+    const values = {};
+
+    if (body.status !== undefined) {
+      const status = cleanLine(body.status, 20).toLowerCase();
+      if (!APPLICATION_STATUSES.includes(status)) return json({ error: "Invalid status." }, 422);
+      values.status = status;
+    }
+
+    if (body.notes !== undefined) {
+      values.notes = cleanMultiline(body.notes) || null;
+    }
+
+    if (Object.keys(values).length === 0) return json({ error: "Nothing to update." }, 400);
+
+    const row = await updateApplication(env, id, values);
+    if (!row) return json({ error: "Application not found." }, 404);
+    return json({ application: row });
+  }
+
+  if (request.method === "DELETE") {
+    await deleteApplication(env, id);
+    return json({ deleted: true });
+  }
+
+  return json({ error: "Method not allowed." }, 405);
 }
 
 async function handleMediaCreate(request, env, ctx, listingId) {

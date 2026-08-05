@@ -83,14 +83,47 @@ create trigger listings_set_updated_at
   before update on public.listings
   for each row execute function public.set_updated_at();
 
+-- Rental applications submitted from the public website. Deliberately low
+-- sensitivity: no SSN, no document uploads, no credit data — screening
+-- happens outside this system and only its outcome lands in `notes`.
+create table if not exists public.applications (
+  id uuid primary key default gen_random_uuid(),
+  listing_id uuid not null references public.listings (id) on delete cascade,
+
+  name text not null,
+  email text not null,
+  phone text,
+  move_in text,
+  household_size integer check (household_size >= 1),
+  income_note text,
+  message text,
+
+  status text not null default 'new'
+    check (status in ('new', 'contacted', 'screening', 'approved', 'declined')),
+  notes text,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index if not exists applications_listing_idx
+  on public.applications (listing_id, created_at desc);
+
+drop trigger if exists applications_set_updated_at on public.applications;
+create trigger applications_set_updated_at
+  before update on public.applications
+  for each row execute function public.set_updated_at();
+
 -- No policies are defined, so anon and authenticated roles can do nothing.
 -- Every read and write goes through the Worker using the service role key,
 -- which bypasses RLS. No database key is ever shipped to a browser.
 alter table public.listings enable row level security;
 alter table public.listing_media enable row level security;
+alter table public.applications enable row level security;
 
 -- Newer Supabase projects no longer grant table privileges to service_role
 -- automatically, so grant them explicitly.
 grant usage on schema public to service_role;
 grant select, insert, update, delete on public.listings to service_role;
 grant select, insert, update, delete on public.listing_media to service_role;
+grant select, insert, update, delete on public.applications to service_role;

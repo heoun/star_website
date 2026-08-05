@@ -1,4 +1,5 @@
 import { guardAdminPage, handleAdminRequest } from "./admin.js";
+import { handleApplication } from "./apply.js";
 import { handleInquiry, renderPage } from "./contact.js";
 import { serveListingsFeed, servePropertyDetail } from "./listings.js";
 import { serveMedia } from "./media.js";
@@ -27,6 +28,17 @@ export default {
 
     if (pathname === "/api/admin" || pathname.startsWith("/api/admin/")) {
       return handleAdminRequest(request, env, ctx, pathname);
+    }
+
+    // Rental applications submitted from the apply page.
+    if (pathname === "/api/apply") {
+      if (request.method !== "POST") {
+        return new Response(JSON.stringify({ error: "Method not allowed." }), {
+          status: 405,
+          headers: { "Content-Type": "application/json; charset=utf-8" }
+        });
+      }
+      return handleApplication(request, env, ctx);
     }
 
     // Cloudflare Access already gates these routes; this is a second check so

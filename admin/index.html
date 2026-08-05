@@ -165,6 +165,36 @@
     .tag.draft { background: #fbeee0; color: var(--accent); }
     .actions { display: flex; gap: 8px; }
 
+    .app-row { grid-template-columns: minmax(0, 1fr) 220px; align-items: start; }
+    .app-row .contact a { color: var(--primary); text-decoration: none; font-weight: 600; }
+    .app-row .contact a:hover { text-decoration: underline; }
+    .app-row .app-message { white-space: pre-line; margin-top: 6px; }
+
+    .app-controls { display: grid; gap: 8px; }
+
+    .app-controls select,
+    .app-controls textarea {
+      font: inherit;
+      font-size: 13px;
+      width: 100%;
+      padding: 6px 9px;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      background: #ffffff;
+      color: var(--ink);
+    }
+
+    .app-controls textarea { min-height: 56px; resize: vertical; }
+
+    .tag.st-new { background: #fbeee0; color: var(--accent); }
+    .tag.st-screening { background: #e4e9f7; color: #3949ab; }
+    .tag.st-approved { background: #e3f2e6; color: #2e7d32; }
+    .tag.st-declined { background: #fdecea; color: var(--danger); }
+
+    @media (max-width: 640px) {
+      .app-row { grid-template-columns: minmax(0, 1fr); }
+    }
+
     dialog {
       width: min(760px, 94vw);
       max-height: 92vh;
@@ -286,6 +316,7 @@
         <button type="button" class="chip" data-filter="residential" aria-pressed="false">Residential</button>
         <button type="button" class="chip" data-filter="commercial" aria-pressed="false">Commercial</button>
         <button type="button" class="chip" data-filter="draft" aria-pressed="false">Unpublished</button>
+        <button type="button" class="chip" data-filter="applications" aria-pressed="false">Applications</button>
       </div>
       <div class="toolbar-actions">
         <button type="button" id="import-folder">Import folder…</button>

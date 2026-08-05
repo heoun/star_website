@@ -33,6 +33,8 @@ const TEXT_FIELDS = [
 const NUMBER_FIELDS = ["price_amount", "bedrooms", "bathrooms", "position"];
 
 let listings = [];
+let applications = [];
+let applicationsLoaded = false;
 let filter = "all";
 let editingId = null;
 let currentMedia = [];
@@ -373,6 +375,13 @@ function coverUrl(listing) {
 }
 
 function render() {
+  dropzone.hidden = filter === "applications";
+
+  if (filter === "applications") {
+    renderApplications();
+    return;
+  }
+
   const visible = listings.filter((listing) => {
     if (filter === "all") return true;
     if (filter === "draft") return !listing.published;
@@ -404,6 +413,81 @@ function render() {
       </div>
     </article>
   `).join("");
+}
+
+// ---- Applications ----
+
+const APP_STATUSES = [
+  ["new", "New"],
+  ["contacted", "Contacted"],
+  ["screening", "Screening"],
+  ["approved", "Approved"],
+  ["declined", "Declined"]
+];
+
+function applicationListingLabel(app) {
+  if (!app.listings) return "Listing removed";
+  const home = [app.listings.building_name, app.listings.unit].filter(Boolean).join(" ");
+  return home ? `${app.listings.title} — ${home}` : app.listings.title;
+}
+
+function renderApplications() {
+  if (!applicationsLoaded) {
+    rowsEl.innerHTML = '<p class="status">Loading applications…</p>';
+    return;
+  }
+
+  if (applications.length === 0) {
+    rowsEl.innerHTML = '<p class="status">No applications yet. They will appear here as soon as someone applies from a property page.</p>';
+    return;
+  }
+
+  rowsEl.innerHTML = applications.map((app) => {
+    const submitted = new Date(app.created_at).toLocaleString("en-US", {
+      month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit"
+    });
+    const facts = [
+      app.move_in ? `Move-in: ${app.move_in}` : "",
+      app.household_size ? `Household: ${app.household_size}` : "",
+      app.income_note ? `Income: ${app.income_note}` : ""
+    ].filter(Boolean).join(" · ");
+
+    return `
+      <article class="row app-row" data-app-id="${escapeHtml(app.id)}">
+        <div>
+          <h2>${escapeHtml(app.name)}</h2>
+          <p>${escapeHtml(applicationListingLabel(app))} · ${escapeHtml(submitted)}</p>
+          <p class="contact">
+            <a href="mailto:${escapeHtml(app.email)}">${escapeHtml(app.email)}</a>
+            ${app.phone ? ` · <a href="tel:${escapeHtml(app.phone)}">${escapeHtml(app.phone)}</a>` : ""}
+          </p>
+          ${facts ? `<p>${escapeHtml(facts)}</p>` : ""}
+          ${app.message ? `<p class="app-message">${escapeHtml(app.message)}</p>` : ""}
+          <div class="tags"><span class="tag st-${escapeHtml(app.status)}">${escapeHtml(app.status)}</span></div>
+        </div>
+        <div class="app-controls">
+          <select data-role="app-status" aria-label="Application status">
+            ${APP_STATUSES.map(([value, label]) =>
+              `<option value="${value}" ${app.status === value ? "selected" : ""}>${label}</option>`
+            ).join("")}
+          </select>
+          <textarea data-role="app-notes" placeholder="Notes (screening outcome, follow-ups…)">${escapeHtml(app.notes || "")}</textarea>
+          <button type="button" class="danger small" data-role="app-delete">Delete</button>
+        </div>
+      </article>
+    `;
+  }).join("");
+}
+
+async function refreshApplications() {
+  try {
+    const { applications: rows } = await api("/applications");
+    applications = rows;
+    applicationsLoaded = true;
+    if (filter === "applications") renderApplications();
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
 }
 
 async function load() {
@@ -721,7 +805,52 @@ for (const button of document.querySelectorAll("button[data-filter]")) {
       other.setAttribute("aria-pressed", String(other === button));
     }
     render();
+    if (filter === "applications") refreshApplications();
   });
 }
+
+rowsEl.addEventListener("click", async (event) => {
+  const button = event.target.closest('button[data-role="app-delete"]');
+  if (!button) return;
+
+  const row = button.closest(".app-row");
+  const app = applications.find((item) => item.id === row.dataset.appId);
+  if (!app) return;
+
+  if (!confirm(`Delete the application from "${app.name}"? This cannot be undone.`)) return;
+
+  try {
+    await api(`/applications/${encodeURIComponent(app.id)}`, { method: "DELETE" });
+    applications = applications.filter((item) => item.id !== app.id);
+    setStatus("Application deleted.");
+    renderApplications();
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+});
+
+rowsEl.addEventListener("change", async (event) => {
+  const control = event.target.closest('[data-role="app-status"], [data-role="app-notes"]');
+  if (!control) return;
+
+  const row = control.closest(".app-row");
+  const app = applications.find((item) => item.id === row.dataset.appId);
+  if (!app) return;
+
+  const isStatus = control.dataset.role === "app-status";
+  const values = isStatus ? { status: control.value } : { notes: control.value };
+
+  try {
+    const { application } = await api(`/applications/${encodeURIComponent(app.id)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(values)
+    });
+    Object.assign(app, application);
+    if (isStatus) renderApplications();
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+});
 
 load();

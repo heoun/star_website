@@ -117,7 +117,10 @@
         <aside class="aside">
           <h2>Details</h2>
           <dl>${detailRows(property)}</dl>
-          <a class="cta" href="../contact-us/?intent=inquiry">Ask about this property</a>
+          ${property.id && property.category === "residential" && property.transaction_group === "rental"
+            ? `<a class="cta" href="../apply/?id=${encodeURIComponent(property.id)}">Apply for this home</a>
+               <a class="cta secondary" href="../contact-us/?intent=inquiry">Ask about this property</a>`
+            : `<a class="cta" href="../contact-us/?intent=inquiry">Ask about this property</a>`}
           ${externalDetails ? `<a class="cta secondary" href="${escapeHtml(externalDetails)}" target="_blank" rel="noopener noreferrer">External listing</a>` : ""}
         </aside>
       </div>
