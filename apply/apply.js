@@ -84,6 +84,13 @@
 
       const field = (name) => form.elements[name].value;
 
+      // The date input reports yyyy-mm-dd; store the familiar US format.
+      const moveIn = (() => {
+        const raw = field("move_in");
+        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+        return match ? `${match[2]}/${match[3]}/${match[1]}` : raw;
+      })();
+
       try {
         const response = await fetch("/api/apply", {
           method: "POST",
@@ -93,7 +100,7 @@
             name: field("name"),
             email: field("email"),
             phone: field("phone"),
-            move_in: field("move_in"),
+            move_in: moveIn,
             household_size: field("household_size"),
             income_note: field("income_note"),
             message: field("message"),
