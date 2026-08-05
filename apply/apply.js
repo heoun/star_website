@@ -63,6 +63,23 @@
     wireForm(property);
   };
 
+  const isRealDate = (value) => {
+    const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+    if (!match) return false;
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    const year = Number(match[3]);
+    const date = new Date(year, month - 1, day);
+    return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+  };
+
+  const isValidPhone = (value) => {
+    const digits = value.replace(/\D/g, "");
+    return digits.length === 10 || (digits.length === 11 && digits.startsWith("1"));
+  };
+
+  const isValidEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
   const wireForm = (property) => {
     const form = document.getElementById("apply-form");
     const submitButton = document.getElementById("submit-button");
@@ -73,23 +90,46 @@
       errorEl.hidden = false;
     };
 
+    // Typing digits fills MM/DD/YYYY automatically; the slashes are inserted
+    // for the visitor, and anything that is not a digit is dropped.
+    const moveInInput = form.elements.move_in;
+    moveInInput.addEventListener("input", () => {
+      const digits = moveInInput.value.replace(/\D/g, "").slice(0, 8);
+      let formatted = digits;
+      if (digits.length > 4) formatted = `${digits.slice(0, 2)}/${digits.slice(2, 4)}/${digits.slice(4)}`;
+      else if (digits.length > 2) formatted = `${digits.slice(0, 2)}/${digits.slice(2)}`;
+      moveInInput.value = formatted;
+    });
+
     form.addEventListener("submit", async (event) => {
       event.preventDefault();
       errorEl.hidden = true;
 
       if (!form.reportValidity()) return;
 
-      submitButton.disabled = true;
-      submitButton.textContent = "Submitting…";
-
       const field = (name) => form.elements[name].value;
 
-      // The date input reports yyyy-mm-dd; store the familiar US format.
-      const moveIn = (() => {
-        const raw = field("move_in");
-        const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
-        return match ? `${match[2]}/${match[3]}/${match[1]}` : raw;
-      })();
+      const problems = [];
+      if (!isValidEmail(field("email").trim())) {
+        problems.push("Please enter a valid email address.");
+      }
+      if (field("phone").trim() !== "" && !isValidPhone(field("phone"))) {
+        problems.push("Please enter a valid phone number, e.g. (718) 555-0123.");
+      }
+      if (!isRealDate(field("move_in"))) {
+        problems.push("Please enter the move-in date as MM/DD/YYYY.");
+      }
+      const household = Number(field("household_size"));
+      if (!Number.isInteger(household) || household < 1 || household > 20) {
+        problems.push("Please enter the number of occupants (1-20).");
+      }
+      if (problems.length > 0) {
+        showError(problems.join(" "));
+        return;
+      }
+
+      submitButton.disabled = true;
+      submitButton.textContent = "Submitting…";
 
       try {
         const response = await fetch("/api/apply", {
@@ -100,7 +140,7 @@
             name: field("name"),
             email: field("email"),
             phone: field("phone"),
-            move_in: moveIn,
+            move_in: field("move_in"),
             household_size: field("household_size"),
             income_note: field("income_note"),
             message: field("message"),

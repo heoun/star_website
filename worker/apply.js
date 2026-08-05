@@ -26,11 +26,25 @@ function cleanMultiline(value, maxLength) {
     .slice(0, maxLength);
 }
 
-function optionalHouseholdSize(value) {
-  if (value === null || value === undefined || String(value).trim() === "") return null;
-  const parsed = Number(value);
+function parseHouseholdSize(value) {
+  const parsed = Number(String(value ?? "").trim());
   if (!Number.isInteger(parsed) || parsed < 1 || parsed > 20) return null;
   return parsed;
+}
+
+function isRealDate(value) {
+  const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(value);
+  if (!match) return false;
+  const month = Number(match[1]);
+  const day = Number(match[2]);
+  const year = Number(match[3]);
+  const date = new Date(year, month - 1, day);
+  return date.getFullYear() === year && date.getMonth() === month - 1 && date.getDate() === day;
+}
+
+function isValidPhone(value) {
+  const digits = value.replace(/\D/g, "");
+  return digits.length === 10 || (digits.length === 11 && digits.startsWith("1"));
 }
 
 async function verifyTurnstile(env, token, remoteIp) {
@@ -103,13 +117,19 @@ export async function handleApplication(request, env, ctx) {
   const name = cleanLine(body.name, 120);
   const email = cleanLine(body.email, 180);
   const phone = cleanLine(body.phone, 60);
+  const moveIn = cleanLine(body.move_in, 10);
+  const householdSize = parseHouseholdSize(body.household_size);
+  const incomeNote = cleanLine(body.income_note, 300);
 
   const errors = [];
   if (!name) errors.push("name");
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push("email");
-  if (!phone) errors.push("phone");
+  if (phone && !isValidPhone(phone)) errors.push("phone");
+  if (!isRealDate(moveIn)) errors.push("move-in date");
+  if (householdSize === null) errors.push("household size");
+  if (!incomeNote) errors.push("annual income");
   if (errors.length > 0) {
-    return json({ error: `Please complete the required fields: ${errors.join(", ")}.` }, 422);
+    return json({ error: `Please check these fields: ${errors.join(", ")}.` }, 422);
   }
 
   // Human verification is enforced whenever the secret is configured; a
@@ -142,10 +162,10 @@ export async function handleApplication(request, env, ctx) {
       listing_id: listingId,
       name,
       email,
-      phone,
-      move_in: cleanLine(body.move_in, 60) || null,
-      household_size: optionalHouseholdSize(body.household_size),
-      income_note: cleanLine(body.income_note, 300) || null,
+      phone: phone || null,
+      move_in: moveIn,
+      household_size: householdSize,
+      income_note: incomeNote,
       message: cleanMultiline(body.message, 2000) || null
     });
   } catch (error) {

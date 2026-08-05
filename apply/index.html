@@ -457,23 +457,23 @@
         </div>
 
         <div>
-          <label for="phone">Phone *</label>
-          <input id="phone" name="phone" maxlength="60" autocomplete="tel" required>
+          <label for="phone">Phone</label>
+          <input id="phone" name="phone" maxlength="60" autocomplete="tel">
         </div>
 
         <div>
-          <label for="move_in">Desired move-in <span class="hint">(optional)</span></label>
-          <input id="move_in" name="move_in" type="date">
+          <label for="move_in">Desired move-in *</label>
+          <input id="move_in" name="move_in" maxlength="10" placeholder="MM/DD/YYYY" inputmode="numeric" autocomplete="off" required>
         </div>
 
         <div>
-          <label for="household_size">Household size <span class="hint">(number of occupants)</span></label>
-          <input id="household_size" name="household_size" type="number" min="1" max="20" step="1" inputmode="numeric">
+          <label for="household_size">Household size * <span class="hint">(number of occupants)</span></label>
+          <input id="household_size" name="household_size" type="number" min="1" max="20" step="1" inputmode="numeric" required>
         </div>
 
         <div>
-          <label for="income_note">Annual income <span class="hint">(e.g. $120,000)</span></label>
-          <input id="income_note" name="income_note" maxlength="300">
+          <label for="income_note">Annual income * <span class="hint">(e.g. $120,000)</span></label>
+          <input id="income_note" name="income_note" maxlength="300" required>
         </div>
 
         <div class="wide">
