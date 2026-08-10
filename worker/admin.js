@@ -5,6 +5,7 @@ import {
   deleteListing,
   deleteMediaRow,
   fetchApplications,
+  fetchApplicationSsn,
   fetchListings,
   fetchMediaRow,
   insertListing,
@@ -14,6 +15,7 @@ import {
   updateListing,
   updateMedia
 } from "./supabase.js";
+import { decryptSsn, formatSsn } from "./ssn.js";
 import {
   IMAGE_TYPES,
   VIDEO_TYPES,
@@ -26,7 +28,10 @@ import {
 const CATEGORIES = ["residential", "commercial"];
 const TRANSACTION_TYPES = ["sale", "rental"];
 const MEDIA_KINDS = ["photo", "floor_plan"];
-const APPLICATION_STATUSES = ["new", "contacted", "screening", "approved", "declined"];
+const APPLICATION_STATUSES = [
+  "new", "contacted", "fee_pending", "screening", "review",
+  "sent_to_landlord", "approved", "declined", "lease_sent", "lease_signed"
+];
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -233,6 +238,20 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
 }
 
 async function handleApplications(request, env, id, subresource) {
+  // Reveal endpoint: decrypts one SSN on demand for an authenticated staff
+  // member. The list payload never carries more than the last four digits.
+  if (subresource === "ssn" && id && request.method === "GET") {
+    if (!UUID_PATTERN.test(id)) return json({ error: "Application not found." }, 404);
+
+    const row = await fetchApplicationSsn(env, id);
+    if (!row) return json({ error: "Application not found." }, 404);
+
+    const digits = await decryptSsn(env, row.ssn_encrypted);
+    if (!digits) return json({ error: "No SSN is stored for this application." }, 404);
+
+    return json({ ssn: formatSsn(digits) });
+  }
+
   if (subresource) {
     return json({ error: "Unknown endpoint." }, 404);
   }

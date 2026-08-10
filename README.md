@@ -83,7 +83,37 @@ Required Worker secrets and variables:
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side database key (secret) |
 | `CF_ACCESS_TEAM_DOMAIN` | Zero Trust team domain, e.g. `starrealty.cloudflareaccess.com` |
 | `CF_ACCESS_AUD` | Application Audience tag of the Access application |
-| `RESEND_API_KEY` | Contact form email (secret) |
+| `RESEND_API_KEY` | Contact form and application notification email (secret) |
+| `APP_ENCRYPTION_KEY` | AES-256 key for applicant SSNs, 32 random bytes base64 (secret) |
+| `TURNSTILE_SECRET_KEY` | Optional; enforces human verification on the application form (secret) |
+
+### Rental applications
+
+`/apply/?id=<listing>` is the full rental application: applicant identity (name,
+date of birth, SSN), current residence, desired move-in and lease term,
+employment and income with supervisor contact, previous employment, rental
+history, three required references, emergency contacts, pets, and whether
+children under 11 will live in the home. Repeated sections follow the same
+structure Innago uses, so agents can review them the way they are used to.
+
+The SSN is handled more strictly than everything else:
+
+- The Worker encrypts it with AES-256-GCM before insert (`worker/ssn.js`); the
+  key lives only in the `APP_ENCRYPTION_KEY` secret. Generate it once with
+  `openssl rand -base64 32` and set it with `npx wrangler secret put APP_ENCRYPTION_KEY`.
+  Submissions fail closed with a 503 while the secret is missing.
+- The database stores the ciphertext plus the last four digits. Admin list
+  responses only ever include the last four; the full number is decrypted on
+  demand through `GET /api/admin/applications/<id>/ssn` (behind Cloudflare
+  Access) when staff click "Reveal SSN".
+- Notification email carries the applicant's name only — never form contents.
+
+The admin Applications tab shows each submission with the full detail
+(employment, rental history, references, emergency contacts, pets) and tracks
+it through the pipeline: new → contacted → fee pending → screening → in review
+→ sent to landlord → approved / declined → lease sent → lease signed. Credit
+reports, application-fee payment, and DocuSign signing happen in outside
+systems for now; record their outcomes with the status dropdown and notes.
 
 ## What is `dist/`?
 

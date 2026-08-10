@@ -135,8 +135,13 @@ export async function deleteMediaRow(env, id) {
   await restRequest(env, `listing_media?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
 }
 
+// ssn_encrypted is deliberately excluded: the ciphertext only leaves the
+// database through fetchApplicationSsn for the admin reveal endpoint.
 const APPLICATION_COLUMNS =
-  "id,listing_id,name,email,phone,move_in,household_size,income_note,message,status,notes,created_at,updated_at";
+  "id,listing_id,name,first_name,last_name,email,phone,current_address,move_in," +
+  "lease_term_months,dob,ssn_last4,household_size,children_under_11,income_note," +
+  "current_employer,employment_history,rental_history,reference_contacts," +
+  "emergency_contacts,pets,message,status,notes,created_at,updated_at";
 
 export async function insertApplication(env, values) {
   const response = await restRequest(env, "applications", {
@@ -168,6 +173,15 @@ export async function updateApplication(env, id, values) {
 
 export async function deleteApplication(env, id) {
   await restRequest(env, `applications?id=eq.${encodeURIComponent(id)}`, { method: "DELETE" });
+}
+
+export async function fetchApplicationSsn(env, id) {
+  const response = await restRequest(
+    env,
+    `applications?id=eq.${encodeURIComponent(id)}&select=id,ssn_encrypted`
+  );
+  const [row] = await response.json();
+  return row ?? null;
 }
 
 export function mediaUrl(path) {

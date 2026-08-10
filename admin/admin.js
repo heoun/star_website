@@ -417,18 +417,131 @@ function render() {
 
 // ---- Applications ----
 
+// Mirrors the application pipeline: applicant pays the fee, screening runs,
+// the agent reviews, the landlord decides, the lease goes out for signing.
 const APP_STATUSES = [
   ["new", "New"],
   ["contacted", "Contacted"],
+  ["fee_pending", "Fee pending"],
   ["screening", "Screening"],
+  ["review", "In review"],
+  ["sent_to_landlord", "Sent to landlord"],
   ["approved", "Approved"],
-  ["declined", "Declined"]
+  ["declined", "Declined"],
+  ["lease_sent", "Lease sent"],
+  ["lease_signed", "Lease signed"]
 ];
 
 function applicationListingLabel(app) {
   if (!app.listings) return "Listing removed";
   const home = [app.listings.building_name, app.listings.unit].filter(Boolean).join(" ");
   return home ? `${app.listings.title} — ${home}` : app.listings.title;
+}
+
+function statusLabel(status) {
+  const found = APP_STATUSES.find(([value]) => value === status);
+  return found ? found[1] : status;
+}
+
+function detailSection(title, inner) {
+  if (!inner) return "";
+  return `<section class="detail-section"><h3>${escapeHtml(title)}</h3>${inner}</section>`;
+}
+
+function detailRowsInner(pairs) {
+  return pairs
+    .filter(([, value]) => value !== "" && value !== null && value !== undefined)
+    .map(([label, value]) => `<div class="detail-row"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`)
+    .join("");
+}
+
+function detailRows(pairs) {
+  const rows = detailRowsInner(pairs);
+  return rows ? `<dl class="detail-dl">${rows}</dl>` : "";
+}
+
+function personItems(list) {
+  const items = (list || []).map((person) => {
+    const label = person.relationship ? `${person.name} (${person.relationship})` : person.name;
+    const contact = [person.phone, person.email].filter(Boolean).join(" · ");
+    return `<li><strong>${escapeHtml(label || "—")}</strong>${contact ? `<br>${escapeHtml(contact)}` : ""}</li>`;
+  }).join("");
+  return items ? `<ul class="detail-list">${items}</ul>` : "";
+}
+
+function employmentItems(list) {
+  const items = (list || []).map((job) => {
+    const when = job.start || job.end ? `${job.start || "?"} – ${job.end || "Present"}` : "";
+    const role = [job.position, job.employer].filter(Boolean).join(", ");
+    const supervisor = [job.supervisor_name, job.supervisor_phone, job.supervisor_email].filter(Boolean).join(" · ");
+    return `<li><strong>${escapeHtml(role || "—")}</strong>${when ? ` <span class="detail-muted">(${escapeHtml(when)})</span>` : ""}${supervisor ? `<br>Supervisor: ${escapeHtml(supervisor)}` : ""}</li>`;
+  }).join("");
+  return items ? `<ul class="detail-list">${items}</ul>` : "";
+}
+
+function rentalItems(list) {
+  const items = (list || []).map((home) => {
+    const when = home.start || home.end ? `${home.start || "?"} – ${home.end || "Present"}` : "";
+    const landlord = [home.landlord_name, home.landlord_phone, home.landlord_email].filter(Boolean).join(" · ");
+    const lines = [
+      home.monthly_rent ? `Rent: ${home.monthly_rent}` : "",
+      landlord ? `Landlord: ${landlord}` : ""
+    ].filter(Boolean).map(escapeHtml).join("<br>");
+    return `<li><strong>${escapeHtml(home.address || "—")}</strong>${when ? ` <span class="detail-muted">(${escapeHtml(when)})</span>` : ""}${lines ? `<br>${lines}` : ""}</li>`;
+  }).join("");
+  return items ? `<ul class="detail-list">${items}</ul>` : "";
+}
+
+function petItems(list) {
+  const items = (list || []).map((pet) => {
+    const label = [pet.type ? pet.type[0].toUpperCase() + pet.type.slice(1) : "", pet.species].filter(Boolean).join(" · ");
+    return `<li><strong>${escapeHtml(label || "—")}</strong>${pet.weight ? ` <span class="detail-muted">(${escapeHtml(pet.weight)} lbs)</span>` : ""}</li>`;
+  }).join("");
+  return items ? `<ul class="detail-list">${items}</ul>` : "";
+}
+
+function renderApplicationDetail(app) {
+  const employer = app.current_employer || {};
+  const supervisor = [employer.supervisor_name, employer.supervisor_phone, employer.supervisor_email]
+    .filter(Boolean).join(" · ");
+
+  // The SSN row carries its own reveal button; the full number only exists
+  // in the page after an explicit request to the admin API.
+  const ssnRow = app.ssn_last4
+    ? `<div class="detail-row"><dt>SSN</dt><dd><span data-role="ssn-cell">•••-••-${escapeHtml(app.ssn_last4)}</span> <button type="button" class="small" data-role="ssn-reveal">Reveal SSN</button></dd></div>`
+    : "";
+  const applicantRows = detailRowsInner([
+    ["Date of birth", app.dob],
+    ["Current address", app.current_address],
+    ["Lease term", app.lease_term_months ? `${app.lease_term_months} months` : ""],
+    ["Children under 11", app.children_under_11 === true ? "Yes" : app.children_under_11 === false ? "No" : ""]
+  ]);
+
+  const sections = [
+    detailSection("Applicant", applicantRows || ssnRow
+      ? `<dl class="detail-dl">${applicantRows}${ssnRow}</dl>`
+      : ""),
+    detailSection("Current employment", detailRows([
+      ["Employer", employer.employer],
+      ["Position", employer.position],
+      ["Since", employer.start],
+      ["Supervisor", supervisor]
+    ])),
+    detailSection("Employment history", employmentItems(app.employment_history)),
+    detailSection("Rental history", rentalItems(app.rental_history)),
+    detailSection("References", personItems(app.reference_contacts)),
+    detailSection("Emergency contacts", personItems(app.emergency_contacts)),
+    detailSection("Pets", petItems(app.pets))
+  ].filter(Boolean).join("");
+
+  if (!sections) return "";
+
+  return `
+    <details class="app-detail">
+      <summary>Full application</summary>
+      <div class="detail-grid">${sections}</div>
+    </details>
+  `;
 }
 
 function renderApplications() {
@@ -448,6 +561,7 @@ function renderApplications() {
     });
     const facts = [
       app.move_in ? `Move-in: ${app.move_in}` : "",
+      app.lease_term_months ? `Term: ${app.lease_term_months} mo` : "",
       app.household_size ? `Household: ${app.household_size}` : "",
       app.income_note ? `Income: ${app.income_note}` : ""
     ].filter(Boolean).join(" · ");
@@ -463,7 +577,8 @@ function renderApplications() {
           </p>
           ${facts ? `<p>${escapeHtml(facts)}</p>` : ""}
           ${app.message ? `<p class="app-message">${escapeHtml(app.message)}</p>` : ""}
-          <div class="tags"><span class="tag st-${escapeHtml(app.status)}">${escapeHtml(app.status)}</span></div>
+          ${renderApplicationDetail(app)}
+          <div class="tags"><span class="tag st-${escapeHtml(app.status)}">${escapeHtml(statusLabel(app.status))}</span></div>
         </div>
         <div class="app-controls">
           <select data-role="app-status" aria-label="Application status">
@@ -810,6 +925,36 @@ for (const button of document.querySelectorAll("button[data-filter]")) {
 }
 
 rowsEl.addEventListener("click", async (event) => {
+  const revealButton = event.target.closest('button[data-role="ssn-reveal"]');
+  if (revealButton) {
+    const row = revealButton.closest(".app-row");
+    const app = applications.find((item) => item.id === row.dataset.appId);
+    if (!app) return;
+
+    const ssnCell = row.querySelector('[data-role="ssn-cell"]');
+
+    // Second click re-masks without another round trip.
+    if (revealButton.dataset.shown === "true") {
+      if (ssnCell) ssnCell.textContent = `•••-••-${app.ssn_last4}`;
+      revealButton.dataset.shown = "false";
+      revealButton.textContent = "Reveal SSN";
+      return;
+    }
+
+    revealButton.disabled = true;
+    try {
+      const { ssn } = await api(`/applications/${encodeURIComponent(app.id)}/ssn`);
+      if (ssnCell) ssnCell.textContent = ssn;
+      revealButton.dataset.shown = "true";
+      revealButton.textContent = "Hide SSN";
+    } catch (error) {
+      setStatus(error.message, "error");
+    } finally {
+      revealButton.disabled = false;
+    }
+    return;
+  }
+
   const button = event.target.closest('button[data-role="app-delete"]');
   if (!button) return;
 

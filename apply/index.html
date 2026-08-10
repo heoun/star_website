@@ -321,7 +321,117 @@
     }
 
     textarea { min-height: 110px; resize: vertical; }
-    input:focus, textarea:focus { outline: 2px solid var(--primary-soft); border-color: var(--primary); }
+
+    select {
+      font: inherit;
+      width: 100%;
+      min-height: 41px;
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: #ffffff;
+      color: var(--ink);
+    }
+
+    input:focus, textarea:focus, select:focus { outline: 2px solid var(--primary-soft); border-color: var(--primary); }
+
+    .section { margin-top: 28px; padding-top: 20px; border-top: 1px solid var(--line); }
+    .section.first { margin-top: 0; padding-top: 0; border-top: none; }
+
+    .section > h2 {
+      font-family: "Sora", system-ui, sans-serif;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.6px;
+      text-transform: uppercase;
+      color: var(--primary);
+      margin: 0 0 4px;
+    }
+
+    .section-note { margin: 0 0 14px; color: var(--text); font-size: 13px; line-height: 1.5; }
+
+    .rep-items { display: grid; gap: 12px; }
+
+    .rep-item {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: #fbfaf7;
+      padding: 14px;
+    }
+
+    .rep-head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 10px;
+    }
+
+    .rep-label {
+      font-weight: 800;
+      font-size: 12px;
+      color: var(--primary);
+      text-transform: uppercase;
+      letter-spacing: 0.4px;
+    }
+
+    .remove-entry {
+      border: none;
+      background: none;
+      color: #b3261e;
+      font: inherit;
+      font-weight: 700;
+      font-size: 12.5px;
+      cursor: pointer;
+      padding: 4px 6px;
+    }
+
+    .add-entry {
+      margin-top: 12px;
+      border: 1px dashed var(--primary);
+      background: #ffffff;
+      color: var(--primary);
+      border-radius: 10px;
+      padding: 9px 16px;
+      font: inherit;
+      font-weight: 700;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .add-entry:hover { background: var(--primary-soft); }
+    .add-entry[hidden] { display: none; }
+
+    .radio-row { display: flex; gap: 20px; align-items: center; min-height: 41px; }
+
+    .radio-row label {
+      display: inline-flex;
+      gap: 7px;
+      align-items: center;
+      margin: 0;
+      font-weight: 600;
+      font-size: 13.5px;
+      cursor: pointer;
+    }
+
+    .radio-row input { width: auto; margin: 0; }
+
+    .ssn-wrap { position: relative; }
+    .ssn-wrap input { padding-right: 62px; }
+
+    .ssn-toggle {
+      position: absolute;
+      right: 5px;
+      top: 50%;
+      transform: translateY(-50%);
+      border: none;
+      background: none;
+      color: var(--primary);
+      font: inherit;
+      font-weight: 700;
+      font-size: 12px;
+      cursor: pointer;
+      padding: 6px 8px;
+    }
 
     /* The native date input shows a locale format hint (e.g. mm/dd/yyyy)
        while empty; hide it until the visitor picks or types a date so the
@@ -457,43 +567,157 @@
     </div>
 
     <h1>Apply for this home</h1>
-    <p class="lede">Tell us a little about yourself and we will follow up with the next steps. Fields marked * are required.</p>
+    <p class="lede">Please complete every section below — it takes about five minutes. Fields marked * are required.</p>
 
     <form id="apply-form" novalidate>
-      <div class="grid">
-        <div>
-          <label for="name">Full name *</label>
-          <input id="name" name="name" maxlength="120" autocomplete="name" required>
+      <div class="section first">
+        <h2>Applicant</h2>
+        <div class="grid">
+          <div>
+            <label for="first_name">First name *</label>
+            <input id="first_name" name="first_name" maxlength="80" autocomplete="given-name" required>
+          </div>
+
+          <div>
+            <label for="last_name">Last name *</label>
+            <input id="last_name" name="last_name" maxlength="80" autocomplete="family-name" required>
+          </div>
+
+          <div>
+            <label for="dob">Date of birth *</label>
+            <input id="dob" name="dob" type="date" required>
+          </div>
+
+          <div>
+            <label for="ssn">Social Security Number * <span class="hint">(encrypted on submit)</span></label>
+            <div class="ssn-wrap">
+              <input id="ssn" name="ssn" type="password" inputmode="numeric" maxlength="11"
+                     autocomplete="off" spellcheck="false" placeholder="###-##-####" required>
+              <button type="button" class="ssn-toggle" id="ssn-toggle" aria-label="Show SSN">Show</button>
+            </div>
+          </div>
+
+          <div>
+            <label for="phone">Phone number *</label>
+            <input id="phone" name="phone" maxlength="30" autocomplete="tel" required>
+          </div>
+
+          <div>
+            <label for="email">Email *</label>
+            <input id="email" name="email" type="email" maxlength="180" autocomplete="email" required>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Residence</h2>
+        <div class="grid">
+          <div class="wide">
+            <label for="current_address">Current address *</label>
+            <input id="current_address" name="current_address" maxlength="300" autocomplete="street-address" required>
+          </div>
+
+          <div>
+            <label for="move_in">Desired move-in date *</label>
+            <input id="move_in" name="move_in" type="date" required>
+          </div>
+
+          <div>
+            <label for="lease_term_months">Preferred lease term * <span class="hint">(months)</span></label>
+            <input id="lease_term_months" name="lease_term_months" type="number" min="1" max="60" step="1" inputmode="numeric" placeholder="12" required>
+          </div>
+
+          <div>
+            <label for="household_size">Household size * <span class="hint">(number of occupants)</span></label>
+            <input id="household_size" name="household_size" type="number" min="1" max="20" step="1" inputmode="numeric" required>
+          </div>
+
+          <div>
+            <label>Children under 11? *</label>
+            <div class="radio-row">
+              <label><input type="radio" name="children_under_11" value="yes" required> Yes</label>
+              <label><input type="radio" name="children_under_11" value="no"> No</label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2>Employment &amp; income</h2>
+        <div class="grid">
+          <div>
+            <label for="employer">Current employer *</label>
+            <input id="employer" name="employer" maxlength="160" autocomplete="organization" required>
+          </div>
+
+          <div>
+            <label for="employer_position">Position</label>
+            <input id="employer_position" name="employer_position" maxlength="120" autocomplete="organization-title">
+          </div>
+
+          <div>
+            <label for="employer_start">Employed since <span class="hint">(MM/YYYY)</span></label>
+            <input id="employer_start" name="employer_start" maxlength="20" placeholder="06/2021">
+          </div>
+
+          <div>
+            <label for="income_note">Annual income * <span class="hint">(e.g. $120,000)</span></label>
+            <input id="income_note" name="income_note" maxlength="300" required>
+          </div>
+
+          <div>
+            <label for="supervisor_name">Supervisor name</label>
+            <input id="supervisor_name" name="supervisor_name" maxlength="120">
+          </div>
+
+          <div>
+            <label for="supervisor_phone">Supervisor phone</label>
+            <input id="supervisor_phone" name="supervisor_phone" maxlength="30">
+          </div>
+
+          <div>
+            <label for="supervisor_email">Supervisor email</label>
+            <input id="supervisor_email" name="supervisor_email" type="email" maxlength="180">
+          </div>
         </div>
 
-        <div>
-          <label for="email">Email *</label>
-          <input id="email" name="email" type="email" maxlength="180" autocomplete="email" required>
-        </div>
+        <div class="rep-items" id="rep-employment"></div>
+        <button type="button" class="add-entry" id="add-employment">+ Add previous employment</button>
+      </div>
 
-        <div>
-          <label for="phone">Phone</label>
-          <input id="phone" name="phone" maxlength="60" autocomplete="tel">
-        </div>
+      <div class="section">
+        <h2>Rental history</h2>
+        <p class="section-note">Start with your most recent home. Leave “Until” blank if you still live there.</p>
+        <div class="rep-items" id="rep-rental"></div>
+        <button type="button" class="add-entry" id="add-rental">+ Add rental history</button>
+      </div>
 
-        <div>
-          <label for="move_in">Desired move-in *</label>
-          <input id="move_in" name="move_in" type="date" required>
-        </div>
+      <div class="section">
+        <h2>References</h2>
+        <p class="section-note">Three references are required — for example an employer, a previous landlord, or a colleague.</p>
+        <div class="rep-items" id="rep-references"></div>
+      </div>
 
-        <div>
-          <label for="household_size">Household size * <span class="hint">(number of occupants)</span></label>
-          <input id="household_size" name="household_size" type="number" min="1" max="20" step="1" inputmode="numeric" required>
-        </div>
+      <div class="section">
+        <h2>Emergency contact</h2>
+        <div class="rep-items" id="rep-emergency"></div>
+        <button type="button" class="add-entry" id="add-emergency">+ Add another emergency contact</button>
+      </div>
 
-        <div>
-          <label for="income_note">Annual income * <span class="hint">(e.g. $120,000)</span></label>
-          <input id="income_note" name="income_note" maxlength="300" required>
-        </div>
+      <div class="section">
+        <h2>Pets</h2>
+        <p class="section-note">Skip this section if you have no pets.</p>
+        <div class="rep-items" id="rep-pets"></div>
+        <button type="button" class="add-entry" id="add-pet">+ Add a pet</button>
+      </div>
 
-        <div class="wide">
-          <label for="message">Anything else you would like us to know?</label>
-          <textarea id="message" name="message" maxlength="2000"></textarea>
+      <div class="section">
+        <h2>Anything else?</h2>
+        <div class="grid">
+          <div class="wide">
+            <label for="message">Anything else you would like us to know?</label>
+            <textarea id="message" name="message" maxlength="2000"></textarea>
+          </div>
         </div>
       </div>
 
@@ -505,9 +729,10 @@
       <div class="turnstile-box" id="turnstile-box"></div>
 
       <p class="privacy-note">
-        We only collect the information you enter on this form, and we will never ask for your SSN or
-        financial documents here. What you submit is encrypted and visible only to the Star Real Estate
-        team. We use it solely to process this application and delete it once it is no longer needed.
+        Everything you enter is used only to process this rental application. Your Social Security
+        Number is encrypted before it is stored, is never included in any email, and is visible only
+        to authorized Star Real Estate staff for tenant screening. We delete application data once
+        it is no longer needed.
       </p>
 
       <div class="form-actions">
@@ -515,6 +740,78 @@
       </div>
       <p class="form-error" id="form-error" hidden></p>
     </form>
+  </template>
+
+  <template id="tpl-employment">
+    <div class="rep-item">
+      <div class="rep-head"><span class="rep-label">Previous employment</span><button type="button" class="remove-entry">Remove</button></div>
+      <div class="grid">
+        <div><label>Employer</label><input data-field="employer" maxlength="160"></div>
+        <div><label>Position</label><input data-field="position" maxlength="120"></div>
+        <div><label>From <span class="hint">(MM/YYYY)</span></label><input data-field="start" maxlength="20" placeholder="01/2019"></div>
+        <div><label>Until <span class="hint">(MM/YYYY)</span></label><input data-field="end" maxlength="20" placeholder="05/2021"></div>
+        <div><label>Supervisor name</label><input data-field="supervisor_name" maxlength="120"></div>
+        <div><label>Supervisor phone</label><input data-field="supervisor_phone" maxlength="30"></div>
+        <div><label>Supervisor email</label><input data-field="supervisor_email" type="email" maxlength="180"></div>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-rental">
+    <div class="rep-item">
+      <div class="rep-head"><span class="rep-label">Rental history</span><button type="button" class="remove-entry">Remove</button></div>
+      <div class="grid">
+        <div class="wide"><label>Address</label><input data-field="address" maxlength="300"></div>
+        <div><label>From <span class="hint">(MM/YYYY)</span></label><input data-field="start" maxlength="20" placeholder="08/2022"></div>
+        <div><label>Until <span class="hint">(blank if current)</span></label><input data-field="end" maxlength="20" placeholder="MM/YYYY"></div>
+        <div><label>Monthly rent</label><input data-field="monthly_rent" maxlength="30" placeholder="$2,950"></div>
+        <div><label>Landlord / manager</label><input data-field="landlord_name" maxlength="120"></div>
+        <div><label>Landlord phone</label><input data-field="landlord_phone" maxlength="30"></div>
+        <div><label>Landlord email</label><input data-field="landlord_email" type="email" maxlength="180"></div>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-reference">
+    <div class="rep-item">
+      <div class="rep-head"><span class="rep-label">Reference</span></div>
+      <div class="grid">
+        <div><label>Name *</label><input data-field="name" maxlength="120" required></div>
+        <div><label>Relationship <span class="hint">(e.g. employer)</span></label><input data-field="relationship" maxlength="80"></div>
+        <div><label>Phone *</label><input data-field="phone" maxlength="30" required></div>
+        <div><label>Email</label><input data-field="email" type="email" maxlength="180"></div>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-emergency">
+    <div class="rep-item">
+      <div class="rep-head"><span class="rep-label">Emergency contact</span><button type="button" class="remove-entry">Remove</button></div>
+      <div class="grid">
+        <div><label>Name *</label><input data-field="name" maxlength="120"></div>
+        <div><label>Relationship</label><input data-field="relationship" maxlength="80"></div>
+        <div><label>Phone *</label><input data-field="phone" maxlength="30"></div>
+        <div><label>Email</label><input data-field="email" type="email" maxlength="180"></div>
+      </div>
+    </div>
+  </template>
+
+  <template id="tpl-pet">
+    <div class="rep-item">
+      <div class="rep-head"><span class="rep-label">Pet</span><button type="button" class="remove-entry">Remove</button></div>
+      <div class="grid">
+        <div>
+          <label>Type</label>
+          <select data-field="type">
+            <option value="dog">Dog</option>
+            <option value="cat">Cat</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div><label>Breed / species</label><input data-field="species" maxlength="80"></div>
+        <div><label>Weight <span class="hint">(lbs)</span></label><input data-field="weight" maxlength="20" inputmode="numeric"></div>
+      </div>
+    </div>
   </template>
 
   <script src="apply.js"></script>
