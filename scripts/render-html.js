@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 
 const root = path.resolve(__dirname, "..");
-const headerTemplatePath = path.join(root, "partials", "site-header.html");
+const headerTemplatePath = path.join(root, "site", "partials", "site-header.html");
 const sharedHeaderPattern = /^([ \t]*)<!--\s*SHARED_HEADER\s*(\{[\s\S]*?\})\s*-->$/gm;
 
 const NAV_ITEMS = [

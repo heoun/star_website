@@ -3,6 +3,9 @@ const path = require("path");
 const { renderHtmlFile } = require("./render-html");
 
 const root = path.resolve(__dirname, "..");
+// Page sources live under site/; the build flattens them into dist/, so the
+// deployed URL structure is unchanged by the site/ prefix.
+const site = path.join(root, "site");
 const dist = path.join(root, "dist");
 
 const copyTargets = ["index.html", "buy", "rental", "commercial", "listings", "new-development", "contact-us", "our-team", "property", "apply", "admin", "jpg", "png", "data", "shared", "favicon.ico", "favicon.svg", "apple-touch-icon.png"];
@@ -11,7 +14,7 @@ fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(dist, { recursive: true });
 
 for (const target of copyTargets) {
-  const source = path.join(root, target);
+  const source = path.join(site, target);
   const destination = path.join(dist, target);
   if (!fs.existsSync(source)) continue;
   copyRendered(source, destination);

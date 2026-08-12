@@ -25,36 +25,47 @@ npm run deploy
 
 ## How the project is organized
 
+Everything the visitor's browser receives lives under `site/`; everything that
+builds, serves, or feeds the site lives at the root. The build flattens `site/`
+into `dist/`, so deployed URLs never contain the `site/` prefix.
+
 ```text
 .
-├── index.html                    Home page source
-├── buy/                          Residential properties for sale
-├── rental/                       Residential properties for rent
-├── commercial/                   Commercial property page
-├── listings/                     General listings page
-├── new-development/              New development page
-├── contact-us/                   Contact page (form posts to /api/contact)
-├── our-team/                     Team page
-├── partials/                     Shared HTML fragments
-├── shared/                       Shared listing-page CSS and JavaScript
-├── jpg/ and png/                 Website image assets
-├── data/                          Offline fallback listings JSON
+├── site/                          Website source (flattened into dist/ by the build)
+│   ├── index.html                 Home page
+│   ├── buy/                       Residential properties for sale
+│   ├── rental/                    Residential properties for rent
+│   ├── commercial/                Commercial property page
+│   ├── listings/                  General listings page
+│   ├── new-development/           New development page
+│   ├── property/                  Single-property page
+│   ├── apply/                     Rental application form
+│   ├── contact-us/                Contact page (form posts to /api/contact)
+│   ├── our-team/                  Team page
+│   ├── admin/                     Listings admin page (behind Cloudflare Access)
+│   ├── partials/                  Shared HTML fragments (not deployed)
+│   ├── shared/                    Shared listing-page CSS and JavaScript
+│   ├── jpg/ and png/              Website image assets
+│   └── data/                      Offline fallback listings JSON
+├── worker/                        Cloudflare Worker (listings feed, admin API, applications, contact form)
+├── supabase/                      Database schema and one-off import scripts
 ├── scripts/                       Static build and HTML rendering scripts
 ├── .github/workflows/             CI build and deploy workflow
-├── admin/                         Listings admin page (behind Cloudflare Access)
-├── supabase/                      Database schema and one-off import script
-├── worker/                        Cloudflare Worker (listings feed, admin API, contact form)
+├── notes/                         Working files — design drafts, requirement docs (not tracked in Git)
 ├── wrangler.jsonc                 Cloudflare Workers configuration
 ├── dist/                          Generated build output (not tracked in Git)
 ├── server.js                      Local development server
 └── package.json                   Local development, build, and deploy commands
 ```
 
+Copy conventions worth keeping: residential rentals are labeled "For Rent",
+commercial rentals "For Lease".
+
 ### Source pages
 
-The root `index.html` and page directories such as `buy/`, `rental/`, and `contact-us/` are the editable source files. Each page directory contains an `index.html` so the deployed site can use clean paths such as `/buy/`.
+`site/index.html` and page directories such as `site/buy/`, `site/rental/`, and `site/contact-us/` are the editable source files. Each page directory contains an `index.html` so the deployed site can use clean paths such as `/buy/`.
 
-Pages that use the shared navigation contain a `SHARED_HEADER` marker. The renderer replaces that marker with `partials/site-header.html` while serving or building the site. Edit the partial or `scripts/render-html.js` for site-wide navigation changes; do not copy the generated header markup back from `dist/`.
+Pages that use the shared navigation contain a `SHARED_HEADER` marker. The renderer replaces that marker with `site/partials/site-header.html` while serving or building the site. Edit the partial or `scripts/render-html.js` for site-wide navigation changes; do not copy the generated header markup back from `dist/`.
 
 ### Listings data
 
@@ -63,7 +74,7 @@ Listing data lives in Supabase Postgres; media bytes (photos, floor plans, video
 - `supabase/schema.sql` creates the `listings` table (structured columns: numeric price, integer bedrooms, building/unit, description, video URL) and the `listing_media` table that ties R2 object keys to listings with captions and ordering.
 - `worker/listings.js` serves the feed; `worker/supabase.js` maps database rows to the frontend contract; `worker/media.js` serves and manages R2 objects.
 - `supabase/import-folder.mjs` imports one marketing folder (docx copy + photos + floor plan + video) as a complete listing; `supabase/import-seed.mjs` loads the old sample data as placeholder inventory.
-- `data/listings.json` is no longer generated data. It stays in the repository as the offline fallback the Worker serves whenever Supabase is unreachable, so the site never renders an empty grid.
+- `site/data/listings.json` is no longer generated data. It stays in the repository as the offline fallback the Worker serves whenever Supabase is unreachable, so the site never renders an empty grid.
 - `shared/listings-page.js` contains shared browser-side listing behavior.
 - `buy/`, `rental/`, and `commercial/` filter the dataset for their respective views.
 
@@ -127,24 +138,19 @@ Important rules:
 - Images, shared assets, page directories, and listings JSON are copied into the output.
 - The build writes `dist/.assetsignore` to keep non-asset files (e.g. stray `.php`) out of the static upload.
 
-The build currently copies these source targets:
+The build currently copies these targets from `site/` into `dist/`:
 
 ```text
 index.html
-buy/
-rental/
-commercial/
-listings/
-new-development/
-contact-us/
-our-team/
-jpg/
-png/
-data/
-shared/
+buy/            rental/          commercial/
+listings/       new-development/ property/
+apply/          contact-us/      our-team/
+admin/          jpg/             png/
+data/           shared/
+favicon.ico     favicon.svg      apple-touch-icon.png
 ```
 
-To add another deployable top-level page or asset directory, add it to `copyTargets` in `scripts/build.js`.
+To add another deployable page or asset directory, create it under `site/` and add it to `copyTargets` in `scripts/build.js`.
 
 ## Deployment
 
@@ -186,18 +192,17 @@ Until step 3 is complete the admin routes reject every request, and the listings
 
 Commit these files when they change:
 
-- Source HTML pages, including `admin/`
-- `worker/`, `supabase/`, and `wrangler.jsonc`
-- `partials/`, `shared/`, and `scripts/`
-- Optimized website assets in `jpg/` and `png/`
-- `data/listings.json`, which is the offline fallback for the listings feed
+- Everything under `site/` — pages, `admin/`, `partials/`, `shared/`, optimized
+  assets in `jpg/` and `png/`, and the `data/listings.json` offline fallback
+- `worker/`, `supabase/`, `scripts/`, and `wrangler.jsonc`
 - `.github/workflows/`
 - Project documentation and package metadata
 
 Do not commit:
 
 - `dist/` build output (regenerated in CI on every deploy)
-- The Supabase service role key, the Resend API key, or any other credential
+- `notes/` — design drafts, requirement docs, and other working files
+- The Supabase service role key, the Resend API key, the SSN encryption key, or any other credential
 - `.env` files containing secrets
 - `node_modules/`, `.wrangler/`, editor files, or operating-system metadata
 - Temporary exports or unoptimized working assets that are not used by the site
@@ -214,7 +219,7 @@ The original logo source documents (`.ai`/`.pdf`) are intentionally not tracked:
 
 ### Change the shared header
 
-1. Edit `partials/site-header.html` for markup.
+1. Edit `site/partials/site-header.html` for markup.
 2. Edit navigation definitions in `scripts/render-html.js` when labels or routes change.
 3. Push to `main`; the CI build regenerates every page.
 

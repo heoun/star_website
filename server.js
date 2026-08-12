@@ -4,7 +4,7 @@ const path = require("path");
 const { renderHtmlFile } = require("./scripts/render-html");
 
 const PORT = process.env.PORT || 8000;
-const root = __dirname;
+const root = path.join(__dirname, "site");
 
 const mime = {
   ".html": "text/html; charset=utf-8",

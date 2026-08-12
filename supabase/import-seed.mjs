@@ -75,7 +75,7 @@ function toRow(listing, index) {
   };
 }
 
-const payload = JSON.parse(await readFile(path.join(root, "data", "listings.json"), "utf8"));
+const payload = JSON.parse(await readFile(path.join(root, "site", "data", "listings.json"), "utf8"));
 const rows = (payload.listings || []).map(toRow);
 
 if (rows.length === 0) {
