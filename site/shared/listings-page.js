@@ -222,9 +222,16 @@
 
     const maxVisibleListings = Number.isFinite(config.maxVisibleListings) ? config.maxVisibleListings : 9;
 
+    // The home page's search hands over a ?q= term; match it against the
+    // fields a person would type (neighborhood, address, title).
+    const query = (new URLSearchParams(window.location.search).get("q") || "").trim().toLowerCase();
+    const matchesQuery = (item) => !query || [item.title, item.neighborhood, item.location]
+      .some((value) => String(value ?? "").toLowerCase().includes(query));
+
     const renderListings = (listings) => {
       const filteredListings = listings
         .filter((item) => item.transaction_group === config.transactionGroup && item.category === targetCategory)
+        .filter(matchesQuery)
         .slice(0, maxVisibleListings);
 
       grid.innerHTML = filteredListings.length > 0

@@ -1,757 +1,1254 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="no-js">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/favicon.ico" sizes="48x48">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
-  <title>Star Real Estate</title>
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
-  <style>
-    :root {
-      --ink: #1f2a33;
-      --text: #4c5963;
-      --bg: #f7f6f1;
-      --panel: #ffffff;
-      --line: rgba(31, 42, 51, 0.14);
-      --primary: #0d3b52;
-      --primary-soft: #dce9ef;
-      --accent: #c1752e;
-      --page-bg-image: url("jpg/bkg.jpeg");
-      --radius-lg: 22px;
-      --radius-md: 16px;
-      --radius-sm: 12px;
-      --shadow: 0 20px 38px rgba(13, 59, 82, 0.12);
-    }
-
-    * {
-      box-sizing: border-box;
-    }
-
-    html {
-      scroll-behavior: smooth;
-    }
-
-    body {
-      margin: 0;
-      font-family: "Public Sans", system-ui, -apple-system, sans-serif;
-      color: var(--ink);
-      background: var(--page-bg-image) center / cover fixed no-repeat;
-      min-height: 100vh;
-      position: relative;
-    }
-
-    body::before {
-      content: "";
-      position: fixed;
-      inset: -32px;
-      z-index: 0;
-      pointer-events: none;
-      background: var(--page-bg-image) center / cover fixed no-repeat;
-      filter: blur(7px) saturate(1.04);
-      opacity: 0.58;
-      transform: scale(1.018);
-    }
-
-    body.nav-open {
-      overflow: hidden;
-    }
-
-    .site {
-      max-width: 1160px;
-      margin: 0 auto;
-      padding: 22px 18px 70px;
-      overflow-x: clip;
-      position: relative;
-      z-index: 1;
-    }
-
-    .topbar {
-      position: sticky;
-      top: 0;
-      z-index: 20;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 10px;
-      padding: 8px 10px;
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      background: rgba(12, 31, 40, 0.46);
-      border-radius: 18px;
-      box-shadow: 0 18px 34px rgba(12, 31, 40, 0.14);
-    }
-
-    .brand {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      min-width: 0;
-      text-decoration: none;
-      color: #ffffff;
-    }
-
-    .brand-mark {
-      width: 50px;
-      height: 50px;
-      border-radius: 12px;
-      border: 1px solid rgba(255, 255, 255, 0.24);
-      background: rgba(255, 255, 255, 0.92);
-      box-shadow: 0 14px 26px rgba(12, 31, 40, 0.2);
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-
-    .brand-mark img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-      transform: scale(1.2);
-    }
-
-    .brand-copy h1 {
-      margin: 0;
-      font-family: "Sora", sans-serif;
-      font-size: 20px;
-      line-height: 1.15;
-      text-transform: uppercase;
-      letter-spacing: 0.25px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-
-    .brand-copy p {
-      margin: 3px 0 0;
-      font-size: 12px;
-      color: var(--text);
-      font-weight: 600;
-    }
-
-    .nav-wrap {
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      margin-left: auto;
-    }
-
-    .desktop-nav {
-      display: flex;
-      gap: 4px;
-      align-items: center;
-    }
-
-    .desktop-nav a {
-      text-decoration: none;
-      color: rgba(255, 255, 255, 0.78);
-      padding: 0 16px;
-      min-height: 42px;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      position: relative;
-      isolation: isolate;
-      border-radius: 10px;
-      font-size: 12px;
-      font-weight: 800;
-    }
-
-    .desktop-nav a:hover,
-    .desktop-nav a[aria-current="page"] {
-      background: transparent;
-      color: #ffffff;
-    }
-
-    .desktop-nav a::before {
-      content: "";
-      position: absolute;
-      left: 50%;
-      top: 50%;
-      width: calc(100% - 14px);
-      min-width: 46px;
-      height: 30px;
-      border-radius: 10px;
-      background: transparent;
-      transform: translate(-50%, -50%);
-      transition: background-color 180ms ease;
-      z-index: -1;
-    }
-
-    .desktop-nav a:hover::before,
-    .desktop-nav a[aria-current="page"]::before {
-      background: rgba(255, 255, 255, 0.14);
-    }
-
-    .desktop-nav a.intent-nav {
-      min-width: 76px;
-      padding: 0 18px;
-      text-align: center;
-    }
-
-    .btn {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      text-decoration: none;
-      border-radius: 10px;
-      font-size: 13px;
-      font-weight: 700;
-      border: 1px solid transparent;
-      padding: 10px 12px;
-      cursor: pointer;
-    }
-
-    .btn-primary {
-      background: linear-gradient(135deg, #0d3b52, #135678);
-      color: #ffffff;
-      box-shadow: 0 12px 22px rgba(13, 59, 82, 0.24);
-    }
-
-    .menu-toggle {
-      display: none;
-      width: 44px;
-      height: 44px;
-      border: 1px solid rgba(255, 255, 255, 0.22);
-      border-radius: 10px;
-      background: rgba(255, 255, 255, 0.1);
-      color: #ffffff;
-      font-size: 18px;
-      cursor: pointer;
-    }
-
-    .mobile-nav {
-      display: none;
-      position: fixed;
-      inset: 0;
-      z-index: 999;
-      background: rgba(31, 42, 51, 0.62);
-      padding: 16px;
-      align-items: center;
-      justify-content: center;
-    }
-
-    .mobile-nav.open {
-      display: flex;
-    }
-
-    .mobile-sheet {
-      width: min(360px, 100%);
-      background: rgba(12, 31, 40, 0.92);
-      border: 1px solid rgba(255, 255, 255, 0.18);
-      border-radius: 15px;
-      padding: 14px;
-      box-shadow: var(--shadow);
-      display: grid;
-      gap: 8px;
-    }
-
-    .mobile-sheet a,
-    .close-nav {
-      width: 100%;
-      border: 1px solid rgba(255, 255, 255, 0.14);
-      border-radius: 10px;
-      padding: 10px 12px;
-      text-decoration: none;
-      color: rgba(255, 255, 255, 0.82);
-      font-size: 13px;
-      font-weight: 700;
-      background: rgba(255, 255, 255, 0.08);
-      text-align: left;
-    }
-
-    .mobile-sheet a.btn-primary {
-      color: #ffffff;
-      border: none;
-    }
-
-    .mobile-sheet a.intent-nav {
-      min-height: 48px;
-      padding: 14px;
-      font-size: 14px;
-      font-weight: 800;
-    }
-
-    .mobile-sheet a[aria-current="page"] {
-      background: rgba(255, 255, 255, 0.18);
-      color: #ffffff;
-    }
-
-    .close-nav {
-      cursor: pointer;
-      font-family: inherit;
-      color: #ffffff;
-    }
-
-    .hero {
-      margin-top: 18px;
-      margin-left: calc(50% - 50vw);
-      margin-right: calc(50% - 50vw);
-      min-height: calc(100vh - 112px);
-      width: 100vw;
-      display: flex;
-      align-items: center;
-      position: relative;
-      overflow: hidden;
-      border: 0;
-      border-radius: 0;
-      padding: 72px max(32px, calc((100vw - 1160px) / 2 + 18px));
-      color: #ffffff;
-      background: var(--page-bg-image) center / cover fixed no-repeat;
-    }
-
-    .hero::before,
-    .hero::after {
-      content: "";
-      position: absolute;
-      inset: 0;
-      pointer-events: none;
-    }
-
-    .hero::before {
-      z-index: 0;
-      background:
-        radial-gradient(circle at 42% 46%, rgba(28, 106, 127, 0.44) 0%, rgba(13, 59, 82, 0.32) 38%, rgba(13, 59, 82, 0.12) 70%, rgba(13, 59, 82, 0) 100%),
-        linear-gradient(90deg, rgba(12, 31, 40, 0.56), rgba(12, 31, 40, 0.24) 50%, rgba(12, 31, 40, 0.04) 100%);
-    }
-
-    .hero::after {
-      z-index: 0;
-      background:
-        linear-gradient(180deg, rgba(247, 246, 241, 0.18) 0%, rgba(247, 246, 241, 0.04) 12%, rgba(247, 246, 241, 0) 28%, rgba(247, 246, 241, 0) 72%, rgba(247, 246, 241, 0.22) 100%),
-        linear-gradient(90deg, rgba(247, 246, 241, 0.12) 0%, rgba(247, 246, 241, 0.02) 8%, rgba(247, 246, 241, 0) 18%, rgba(247, 246, 241, 0) 86%, rgba(247, 246, 241, 0.02) 95%, rgba(247, 246, 241, 0.14) 100%);
-    }
-
-    .hero-content {
-      max-width: 900px;
-      min-width: min(100%, 0);
-      display: grid;
-      gap: 18px;
-      align-content: start;
-      position: relative;
-      z-index: 1;
-    }
-
-    .hero-brand {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      width: fit-content;
-      color: rgba(255, 255, 255, 0.78);
-      font-size: 12px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.24px;
-    }
-
-    .hero-brand::before {
-      content: "";
-      width: 42px;
-      height: 1px;
-      background: rgba(255, 255, 255, 0.46);
-    }
-
-    .hero h2 {
-      margin: 0;
-      font-family: "Sora", sans-serif;
-      font-size: 64px;
-      line-height: 1.02;
-      letter-spacing: 0;
-      max-width: 820px;
-      text-wrap: balance;
-    }
-
-    .hero p {
-      margin: 0;
-      color: rgba(255, 255, 255, 0.84);
-      font-size: 17px;
-      line-height: 1.55;
-      max-width: 680px;
-    }
-
-    .hero-intent {
-      width: min(520px, 100%);
-      display: grid;
-      gap: 8px;
-      margin-top: 6px;
-    }
-
-    .hero-intent-kicker {
-      margin: 0;
-      color: rgba(255, 255, 255, 0.82);
-      font-size: 13px;
-      font-weight: 800;
-      line-height: 1.2;
-      letter-spacing: 0.22px;
-    }
-
-    .hero-intent-grid {
-      display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
-      gap: 8px;
-    }
-
-    .hero-intent-card {
-      min-height: 54px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 11px 12px;
-      border: 1px solid rgba(255, 255, 255, 0.3);
-      border-radius: 8px;
-      background: rgba(255, 255, 255, 0.14);
-      box-shadow: 0 12px 24px rgba(0, 0, 0, 0.14);
-      color: #ffffff;
-      text-align: center;
-      text-decoration: none;
-      backdrop-filter: blur(8px);
-      transition: transform 180ms ease, background-color 180ms ease, border-color 180ms ease, color 180ms ease;
-    }
-
-    .hero-intent-card:hover,
-    .hero-intent-card:focus-visible {
-      transform: translateY(-1px);
-      background: #ffffff;
-      border-color: rgba(255, 255, 255, 0.62);
-      color: var(--primary);
-      outline: none;
-    }
-
-    .hero-intent-card span {
-      font-family: "Sora", sans-serif;
-      font-size: 15px;
-      font-weight: 800;
-      line-height: 1.12;
-    }
-
-    .btn-secondary {
-      border-color: rgba(255, 255, 255, 0.34);
-      background: rgba(255, 255, 255, 0.12);
-      color: #ffffff;
-    }
-
-    section {
-      margin-top: 42px;
-    }
-
-    section[id] {
-      scroll-margin-top: 96px;
-    }
-
-    .content-section {
-      border: 1px solid var(--line);
-      border-radius: var(--radius-lg);
-      background: rgba(255, 255, 255, 0.92);
-      box-shadow: 0 14px 28px rgba(13, 59, 82, 0.08);
-      padding: 28px;
-    }
-
-    #new-development {
-      margin-top: clamp(110px, 18vh, 210px);
-      background: rgba(255, 255, 255, 0.82);
-    }
-
-    .development-layout {
-      display: grid;
-      grid-template-columns: minmax(0, 0.95fr) minmax(300px, 1.05fr);
-      gap: 24px;
-      align-items: stretch;
-    }
-
-    .development-copy {
-      display: grid;
-      align-content: center;
-      gap: 14px;
-    }
-
-    .development-copy h3 {
-      margin: 0;
-      font-family: "Sora", sans-serif;
-      font-size: 34px;
-      line-height: 1.08;
-    }
-
-    .development-kicker {
-      color: var(--text);
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.24px;
-      text-transform: uppercase;
-    }
-
-    .development-copy p {
-      margin: 0;
-      color: var(--text);
-      font-size: 14px;
-      line-height: 1.55;
-      max-width: 520px;
-    }
-
-    .development-showcase {
-      min-height: 310px;
-      padding: 12px;
-      border: 1px solid rgba(31, 42, 51, 0.14);
-      border-radius: var(--radius-md);
-      background: rgba(255, 255, 255, 0.64);
-      box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.46);
-      display: flex;
-      overflow: hidden;
-    }
-
-    .development-showcase::before {
-      content: "";
-      flex: 1;
-      min-height: 286px;
-      border-radius: 12px;
-      background:
-        linear-gradient(135deg, rgba(12, 31, 40, 0.18), rgba(193, 117, 46, 0.1)),
-        url("jpg/hero-3.jpeg") center / cover no-repeat;
-      box-shadow: 0 14px 26px rgba(13, 59, 82, 0.12);
-      overflow: hidden;
-    }
-
-    .development-status {
-      margin: 16px;
-      width: fit-content;
-      border-radius: 999px;
-      background: rgba(255, 255, 255, 0.86);
-      color: var(--primary);
-      padding: 7px 10px;
-      font-size: 11px;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.2px;
-    }
-
-    .website-link {
-      text-decoration: none;
-      color: var(--primary);
-      font-size: 13px;
-      font-weight: 800;
-    }
-
-    .website-link:hover {
-      text-decoration: underline;
-    }
-
-    footer {
-      margin-top: 30px;
-      padding-top: 16px;
-      border-top: 1px solid var(--line);
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 8px;
-      color: var(--text);
-      font-size: 12px;
-      font-weight: 600;
-    }
-
-    @media (max-width: 1024px) {
-      .hero {
-        min-height: calc(100vh - 104px);
-        padding: 52px 24px;
-      }
-
-      .hero::before {
-        background:
-          radial-gradient(circle at 50% 42%, rgba(28, 106, 127, 0.42) 0%, rgba(13, 59, 82, 0.28) 42%, rgba(13, 59, 82, 0.1) 78%, rgba(13, 59, 82, 0) 100%),
-          linear-gradient(180deg, rgba(12, 31, 40, 0.54), rgba(12, 31, 40, 0.26) 58%, rgba(12, 31, 40, 0.08));
-      }
-
-      .hero h2 {
-        font-size: 44px;
-      }
-
-      .desktop-nav {
-        display: none;
-      }
-
-      .menu-toggle {
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-      }
-
-    }
-
-    @media (max-width: 560px) {
-      .site {
-        padding: 14px 12px 60px;
-      }
-
-      .topbar {
-        padding: 8px 10px;
-      }
-
-      .brand-mark {
-        width: 48px;
-        height: 48px;
-      }
-
-      .brand-copy h1 {
-        font-size: 16px;
-      }
-
-      .hero {
-        min-height: calc(100vh - 96px);
-        padding: 44px 20px;
-      }
-
-      .hero h2 {
-        font-size: 34px;
-      }
-
-      .hero p {
-        font-size: 15px;
-      }
-
-      .hero-intent-card {
-        min-height: 48px;
-        padding: 10px 8px;
-      }
-
-      .hero-intent-card span {
-        font-size: 13px;
-      }
-
-      #new-development {
-        margin-top: 80px;
-      }
-
-      .development-layout {
-        grid-template-columns: 1fr;
-      }
-
-      .development-showcase {
-        min-height: 260px;
-        padding: 10px;
-      }
-
-      .development-showcase::before {
-        min-height: 238px;
-      }
-
-      .development-copy h3 {
-        font-size: 28px;
-      }
-
-      .content-section {
-        padding: 20px;
-      }
-
-      section[id] {
-        scroll-margin-top: 84px;
-      }
-
-      footer {
-        justify-content: center;
-        text-align: center;
-      }
-    }
-
-    @media (max-width: 430px) {
-      .hero h2 {
-        font-size: 29px;
-      }
-    }
-
-    @media (max-width: 390px) {
-      .hero h2 {
-        font-size: 27px;
-      }
-    }
-
-    @media (max-width: 360px) {
-      .hero h2 {
-        font-size: 24px;
-      }
-    }
-  </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="format-detection" content="telephone=no,address=no">
+<script>document.documentElement.classList.remove('no-js');</script>
+<title>Star Real Estate | NYC Homes and Commercial Property</title>
+<meta name="description" content="Star Real Estate is a full-service AI-driven brokerage for residential and commercial properties across NYC.">
+<link rel="icon" href="/favicon.ico" sizes="48x48">
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  /* the ground is paper, the ink is the logo blue pushed to near black,
+     and the logo blue itself is reserved for whatever the instrument
+     is measuring right now */
+  --paper: #f6f4ef; --paper2: #efece3; --white: #fff;
+  --ink: #141834; --soft: #666d8a; --line: #dcd8cd; --line2: #c9c4b6;
+  --blue: #3E3EE5; --navy: #101538;
+  --display: "Inter Tight", sans-serif; --text: "Inter", sans-serif; --mono: "IBM Plex Mono", monospace;
+  --ease: cubic-bezier(.22, 1, .36, 1);
+  /* About Star, New Development and Submit Your Request all stand the
+     same height, so the lower half of the page keeps one measure */
+  --sect: clamp(620px, 92svh, 1020px);
+}
+* { box-sizing: border-box; }
+html { scrollbar-width: thin; }
+body { margin: 0; font-family: var(--text); color: var(--ink); background: var(--paper); -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+a { color: inherit; text-decoration: none; }
+::selection { background: var(--blue); color: #fff; }
+.num { font-variant-numeric: tabular-nums; font-feature-settings: "tnum" 1; }
+.wrap { max-width: 1440px; margin: 0 auto; padding: 0 clamp(20px, 3.6vw, 56px); }
+.k { display: inline-block; font-family: var(--mono); font-weight: 500; font-size: 10px; letter-spacing: .24em; text-transform: uppercase; color: var(--soft); }
+.k i { display: inline-block; width: 6px; height: 6px; background: var(--blue); margin-right: 9px; vertical-align: 1px; }
+
+/* scroll progress */
+.progress { position: fixed; top: 0; left: 0; height: 2px; width: 100%; z-index: 120; transform-origin: 0 50%; transform: scaleX(0); background: var(--blue); pointer-events: none; }
+
+/* nav: solid from the first pixel, on the production hook names */
+.topbar { position: fixed; top: 0; left: 0; right: 0; z-index: 100; background: rgba(246,244,239,.94); backdrop-filter: blur(12px); box-shadow: 0 1px 0 var(--line); transition: transform .5s var(--ease); }
+.topbar.hidden { transform: translateY(-100%); }
+.topbar-inner { max-width: 1440px; margin: 0 auto; padding: 13px clamp(20px, 3.6vw, 56px); display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.brand { display: flex; align-items: center; gap: 11px; }
+.brand svg { width: 24px; height: 24px; display: block; }
+.brand b { font-family: var(--display); font-weight: 700; font-size: 12px; letter-spacing: .24em; color: var(--ink); }
+.desktop-nav { display: flex; gap: 24px; align-items: center; }
+.desktop-nav a { font-family: var(--mono); font-size: 10.5px; letter-spacing: .12em; text-transform: uppercase; color: var(--soft); transition: color .3s ease; }
+.desktop-nav a:hover { color: var(--ink); }
+.desktop-nav a[aria-current="page"] { color: var(--ink); box-shadow: inset 0 -1px 0 var(--blue); padding-bottom: 3px; }
+.desktop-nav a[data-contact-nav] { padding: 11px 18px; border: 1px solid var(--ink); color: var(--ink); box-shadow: none; transition: background .3s var(--ease), color .3s var(--ease); }
+.desktop-nav a[data-contact-nav]:hover { background: var(--ink); color: var(--paper); }
+.menu-toggle { display: none; width: 42px; height: 34px; border: 1px solid var(--line2); background: none; cursor: pointer; position: relative; color: transparent; overflow: hidden; }
+.menu-toggle::before, .menu-toggle::after { content: ""; position: absolute; left: 11px; right: 11px; height: 1px; background: var(--ink); }
+.menu-toggle::before { top: 13px; } .menu-toggle::after { bottom: 13px; }
+.mobile-nav { position: fixed; inset: 0; z-index: 110; background: var(--paper); display: none; }
+.mobile-nav.open { display: block; }
+.mobile-sheet { padding: 84px clamp(20px, 3.6vw, 56px) 40px; position: relative; height: 100%; overflow-y: auto; }
+.mobile-sheet a { display: block; font-family: var(--display); font-weight: 700; font-size: 24px; letter-spacing: -.02em; padding: 13px 0; border-bottom: 1px solid var(--line); color: var(--ink); }
+.close-nav { position: absolute; top: 22px; right: clamp(20px, 3.6vw, 56px); font-family: var(--mono); font-size: 11px; letter-spacing: .16em; text-transform: uppercase; background: none; border: 0; cursor: pointer; color: var(--ink); }
+body.nav-open { overflow: hidden; }
+
+/* ------------------------------------------------------------------
+   hero: the footage is the picture. Nothing is drawn on top of it --
+   no lattice, no lines. What makes it feel expensive instead is
+   restraint: a very slow push on the plate, a grade soft enough that
+   the city keeps its own colour, and a search field made of glass
+   rather than a white slab.
+------------------------------------------------------------------ */
+.hero { position: relative; height: 88svh; max-height: 1060px; min-height: 620px; overflow: hidden; background: var(--navy); }
+.hero video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; object-position: center 34%;
+  transform-origin: 56% 44%; animation: heropush 34s ease-in-out infinite alternate; will-change: transform; }
+@keyframes heropush { from { transform: scale(1); } to { transform: scale(1.085); } }
+.reduced .hero video { animation: none; }
+/* one soft wash under the copy, one vignette to hold the frame */
+.hero::after { content: ""; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  background: linear-gradient(96deg, rgba(9,11,22,.7) 0%, rgba(9,11,22,.44) 32%, rgba(9,11,22,.22) 60%, rgba(9,11,22,.03) 86%, rgba(9,11,22,0) 100%),
+              linear-gradient(180deg, rgba(9,11,22,.3) 0%, rgba(9,11,22,0) 26%, rgba(9,11,22,0) 60%, rgba(9,11,22,.36) 100%),
+              radial-gradient(124% 96% at 50% 46%, rgba(9,11,22,0) 48%, rgba(9,11,22,.32) 100%); }
+/* the instrument still opens the page: a paper cover retracts and the
+   city underneath is uncovered, scan line riding the edge */
+.hero .cover { position: absolute; inset: 0; z-index: 5; background: var(--paper); transform-origin: 100% 50%; pointer-events: none; }
+.hero .scan { position: absolute; top: 0; bottom: 0; left: 0; width: 1.5px; z-index: 6; background: #cfd1ff; box-shadow: 0 0 16px rgba(91,91,255,.8); opacity: 0; pointer-events: none; }
+.hero .scan::before { content: ""; position: absolute; top: 0; bottom: 0; right: 0; width: 200px; background: linear-gradient(90deg, rgba(91,91,255,0), rgba(91,91,255,.2)); }
+/* the copy rides the hero's vertical centre at any height; the fixed nav
+   covers the top, so the centre is taken of what is actually visible */
+.hinner { position: absolute; left: 0; right: 0; top: 0; bottom: 0; z-index: 7; display: flex; align-items: center; padding-top: 62px; }
+.hinner .wrap { width: 100%; }
+.hero .k { color: rgba(228,231,252,.74); font-size: 9.5px; letter-spacing: .3em; }
+.hero .k i { background: #8f8fff; }
+/* one line, always: the size is capped so the sentence never reaches
+   the mark on the right and never wraps on a phone */
+.hero h1 { margin: 18px 0 0; font-family: var(--display); font-weight: 700; font-size: clamp(24px, 6.6vw, 84px); line-height: 1.04; letter-spacing: -.04em; white-space: nowrap; color: #f6f7fc; }
+.hero h1 b { font-weight: 700; color: #aeb1ff; }
+/* the search field: the single loudest object on the page */
+.search { margin-top: clamp(28px, 3.4vw, 44px); display: flex; align-items: stretch; max-width: 700px; border: 0; background: rgba(255,255,255,.985);
+  backdrop-filter: blur(16px) saturate(1.08); box-shadow: 0 34px 84px -22px rgba(4,7,22,.7), 0 0 0 1px rgba(255,255,255,.26); }
+.seg { display: flex; flex: 0 0 auto; border-right: 1px solid rgba(20,24,52,.12); }
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label { display: flex; align-items: center; padding: 0 20px; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--soft); cursor: pointer; transition: background .25s ease, color .25s ease; }
+.seg input:checked + label { background: var(--ink); color: var(--paper); }
+.seg input:focus-visible + label { outline: 2px solid var(--blue); outline-offset: -2px; }
+.search .q { flex: 1 1 auto; min-width: 0; appearance: none; border: 0; background: none; padding: 17px 18px; font-family: var(--text); font-size: 14px; color: var(--ink); }
+.search .q::placeholder { color: var(--soft); }
+.search .q:focus { outline: none; box-shadow: inset 0 -2px 0 var(--blue); }
+.search .go { flex: 0 0 auto; border: 0; background: var(--blue); color: #fff; padding: 0 30px; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; cursor: pointer; transition: background .3s var(--ease); }
+.search .go:hover { background: var(--ink); }
+
+/* ------------------------------------------------------------------
+   listings: the spine of the page. Price first, address second,
+   specs third, in one rhythm that never varies.
+------------------------------------------------------------------ */
+.listings { padding: clamp(64px, 7.4vw, 104px) 0 clamp(140px, 15vw, 214px); border-bottom: 1px solid var(--line); position: relative; z-index: 4; background: var(--paper); overflow: hidden; }
+/* the measured city stands along the floor of the shelf. Its mass sits
+   low, inside the shelf's own bottom margin; only One World Trade rises
+   past the copy, and it rises as a needle, which occludes nothing */
+.listings canvas.citybg { position: absolute; left: 0; right: 0; bottom: 0; width: 100%; height: 258px; pointer-events: none; }
+.listings .wrap { position: relative; z-index: 1; }
+.lhead { display: flex; justify-content: space-between; align-items: flex-end; gap: 28px; padding-bottom: clamp(18px, 2.2vw, 28px); border-bottom: 1px solid var(--line); margin-bottom: clamp(26px, 3vw, 38px); }
+.lhead h2 { margin: 11px 0 0; font-family: var(--display); font-weight: 700; font-size: clamp(28px, 3.4vw, 50px); letter-spacing: -.03em; line-height: 1; }
+.btn { display: inline-flex; align-items: center; justify-content: center; min-height: 46px; padding: 12px 26px; font-family: var(--mono); font-size: 11px; letter-spacing: .14em; text-transform: uppercase; border: 1px solid var(--ink); color: var(--ink); background: none; cursor: pointer; white-space: nowrap; transition: background .3s var(--ease), color .3s var(--ease), border-color .3s var(--ease); }
+.btn:hover { background: var(--ink); color: var(--paper); }
+.btn.solid { background: var(--blue); border-color: var(--blue); color: #fff; }
+.btn.solid:hover { background: var(--ink); border-color: var(--ink); }
+.grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: clamp(18px, 1.9vw, 30px); }
+.card { display: flex; flex-direction: column; background: var(--white); border: 1px solid var(--line); padding: 12px 12px 18px; transition: border-color .3s var(--ease); }
+.card:hover { border-color: var(--blue); }
+.card figure { margin: 0 0 15px; position: relative; overflow: hidden; aspect-ratio: 4 / 3; background: var(--paper2); }
+.card img { width: 100%; height: 100%; object-fit: cover; display: block; transform: scale(1.04); transition: transform .9s var(--ease); }
+.card:hover img { transform: scale(1); }
+.card .ph { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--paper2); }
+.card .ph span { font-family: var(--mono); font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--soft); }
+.card .chip { position: absolute; top: 0; left: 0; background: var(--ink); color: var(--paper); font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; padding: 7px 11px; }
+.card .chip.sale { background: var(--blue); }
+/* registration marks: the instrument has looked at this plate */
+.card .rg { position: absolute; width: 11px; height: 11px; border: 0; pointer-events: none; opacity: 0; transition: opacity .3s var(--ease); }
+.card .rg::before, .card .rg::after { content: ""; position: absolute; background: var(--blue); }
+.card .rg::before { left: 0; top: 0; width: 11px; height: 1px; }
+.card .rg::after { left: 0; top: 0; width: 1px; height: 11px; }
+.card .rg.tr { right: 0; top: 0; transform: scaleX(-1); }
+.card .rg.bl { left: 0; bottom: 0; transform: scaleY(-1); }
+.card .rg.br { right: 0; bottom: 0; transform: scale(-1); }
+.card .rg.tl { left: 0; top: 0; }
+.card:hover .rg { opacity: 1; }
+.card .hood { font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--soft); }
+.card .price { margin: 9px 0 0; font-family: var(--display); font-weight: 700; font-size: clamp(23px, 2vw, 30px); letter-spacing: -.03em; line-height: 1; }
+.card .addr { margin: 9px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink); }
+.card .specs { margin-top: auto; padding-top: 14px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--soft); position: relative; }
+.card .specs::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 1px; background: var(--line2); transition: background .35s ease; }
+.card:hover .specs::before { background: var(--blue); }
+.lfoot { margin-top: clamp(26px, 3vw, 40px); display: flex; justify-content: space-between; align-items: center; gap: 24px; }
+.lfoot p { margin: 0; font-family: var(--display); font-weight: 600; font-size: clamp(15px, 1.4vw, 20px); letter-spacing: -.015em; color: var(--soft); max-width: 430px; }
+
+/* ------------------------------------------------------------------
+   the orrery: the dark field stops being an empty void with a small
+   card floating in it. It becomes a lit stage -- the claim is set in
+   the dark itself, the record runs along its foot, and the point body
+   is large, bright and drawn twice so it reads as an object under
+   light instead of a smudge in the dark.
+------------------------------------------------------------------ */
+.stage { position: relative; background: #070b20; color: #eef0fb; overflow: hidden; min-height: var(--sect); display: flex; flex-direction: column; justify-content: center; }
+.stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.stage .veil { content: ""; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(94deg, rgba(6,9,26,.93) 0%, rgba(6,9,26,.8) 34%, rgba(6,9,26,.66) 60%, rgba(6,9,26,.78) 100%),
+              radial-gradient(54% 58% at 72% 44%, rgba(62,62,229,.3), rgba(6,9,26,0) 74%); }
+.stage-in { position: relative; z-index: 2; width: 100%; max-width: 1440px; margin: 0 auto; padding: clamp(56px, 7vw, 96px) clamp(20px, 3.6vw, 56px) clamp(24px, 3vw, 38px); display: grid; grid-template-columns: minmax(0, .9fr) minmax(0, 1.1fr); gap: clamp(24px, 4vw, 64px); align-items: center; }
+.stage .k { color: rgba(226,229,250,.82); }
+.stage .k i { background: #8f8fff; }
+.stage .claim { margin: clamp(16px, 2.2vw, 26px) 0 0; font-family: var(--display); font-weight: 600; font-size: clamp(22px, 2.4vw, 35px); line-height: 1.3; letter-spacing: -.02em; color: #eef0fb; }
+.stage .claim b { font-weight: 600; color: #9fa3ff; }
+.stage .claim .w { color: #eef0fb; opacity: .16; }
+.stage .claim .w.hl { color: #9fa3ff; }
+.reduced .claim .w, .no-js .claim .w { opacity: 1 !important; }
+
+.orbwrap { position: relative; height: clamp(300px, 34vw, 470px); }
+.orbwrap canvas { position: absolute; top: -52px; left: 0; right: 0; width: 100%; height: calc(100% + 104px); display: block; touch-action: none; cursor: grab; }
+.orbwrap canvas:active { cursor: grabbing; }
+
+/* the record runs along the foot of the stage, in the light */
+.stagerec { position: relative; z-index: 2; width: 100%; max-width: 1440px; margin: 0 auto; padding: 0 clamp(20px, 3.6vw, 56px) clamp(48px, 6vw, 82px); }
+.stagerec .inner { display: grid; grid-template-columns: repeat(4, 1fr); gap: clamp(18px, 2.4vw, 34px); border-top: 1px solid rgba(159,163,255,.28); padding-top: clamp(24px, 3vw, 38px); }
+.stagerec .c em { display: block; font-style: normal; font-family: var(--display); font-weight: 700; font-size: clamp(26px, 3vw, 46px); letter-spacing: -.04em; line-height: 1; color: #fff; }
+.stagerec .c span { display: block; margin-top: 9px; font-family: var(--mono); font-size: 10px; letter-spacing: .15em; text-transform: uppercase; color: rgba(226,229,250,.56); }
+
+/* the join: there is no join, because there are no longer two
+   sections. New Development and Submit Your Request are one spread,
+   cut exactly in half, with a single seam down the middle of the page.
+   The photograph holds the left page and stays there; the form runs up
+   the right page past it. Both gutters at the seam are the same, so the
+   fold reads as a fold and not as a column break. */
+.spread { position: relative; display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); background: var(--paper2); }
+.dev { position: sticky; top: 0; height: 100svh; overflow: hidden; display: flex; align-items: flex-end; color: #fff; }
+.dev video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.dev::after { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, rgba(9,11,22,.1), rgba(9,11,22,.34) 55%, rgba(9,11,22,.88) 96%); }
+.dev .inner { position: relative; z-index: 2; width: 100%; padding: 0 clamp(24px, 3.4vw, 52px) clamp(40px, 6vh, 72px) clamp(20px, 3.6vw, 56px); display: flex; flex-direction: column; align-items: flex-start; gap: 24px; }
+.dev .k { color: rgba(244,244,240,.86); }
+.dev .k i { background: #8f8fff; }
+.dev h2 { margin: 14px 0 0; font-family: var(--display); font-weight: 700; font-size: clamp(28px, 3.1vw, 46px); line-height: 1.05; letter-spacing: -.028em; color: #f6f6f2; }
+.dev p { margin: 16px 0 0; max-width: 430px; font-size: 13.5px; line-height: 1.85; color: rgba(244,244,240,.85); }
+.dev .btn { white-space: nowrap; border-color: rgba(255,255,255,.55); color: #fff; }
+.dev .btn:hover { background: #fff; color: var(--ink); }
+
+/* the right page. One hairline is the whole join. */
+.request { position: relative; border-left: 1px solid var(--line); padding: clamp(84px, 26vh, 300px) clamp(20px, 3.6vw, 56px) clamp(84px, 26vh, 300px) clamp(24px, 3.4vw, 52px); }
+.request .split { width: 100%; display: block; }
+.request .split > div { margin-bottom: clamp(44px, 9vh, 104px); }
+/* a narrow page wants one question per line, and the taller column is
+   also what gives the held photograph beside it something to hold for */
+.spread .rform { gap: clamp(28px, 4vh, 44px); }
+.spread .f2 { grid-column: span 6; }
+.request h2 { margin: 12px 0 0; font-family: var(--display); font-weight: 700; font-size: clamp(30px, 3.8vw, 54px); letter-spacing: -.03em; line-height: 1.02; }
+.request .sub { margin: 14px 0 0; color: var(--soft); font-size: 14px; }
+.rform { display: grid; grid-template-columns: repeat(6, 1fr); gap: 26px; }
+.field { display: grid; gap: 9px; align-content: start; }
+.f2 { grid-column: span 2; } .f3 { grid-column: span 3; } .f6 { grid-column: span 6; }
+.field label, .field .lbl { font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--soft); }
+.rform.ruled input, .rform.ruled textarea { appearance: none; width: 100%; background: none; border: 0; border-bottom: 1px solid var(--line2); border-radius: 0; padding: 11px 2px; font-family: var(--text); font-size: 14.5px; color: var(--ink); transition: border-color .25s ease; }
+.rform.ruled textarea { resize: vertical; min-height: 84px; }
+.rform.ruled input::placeholder, .rform.ruled textarea::placeholder { color: var(--soft); }
+.rform.ruled input:focus, .rform.ruled textarea:focus { outline: none; border-bottom-color: var(--blue); border-bottom-width: 2px; }
+.opts { display: flex; gap: 10px; }
+.opt { position: relative; flex: 1; }
+.opt input { position: absolute; opacity: 0; inset: 0; pointer-events: none; }
+.opt b { display: block; text-align: center; padding: 13px 10px; border: 1px solid var(--line2); background: none; font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--soft); font-weight: 500; cursor: pointer; transition: background .25s ease, color .25s ease, border-color .25s ease; }
+.opt:hover b { border-color: var(--ink); }
+.opt input:checked + b { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.submitrow { justify-items: start; margin-top: 4px; }
+
+@media (max-width: 980px) {
+  .stage-in { grid-template-columns: 1fr; gap: 46px; padding-top: clamp(56px, 9vw, 88px); }
+  .orbwrap { height: clamp(300px, 66vw, 420px); order: -1; }
+  .orbwrap canvas { top: -28px; height: calc(100% + 56px); }
+  .stagerec .inner { grid-template-columns: repeat(2, 1fr); gap: 26px 20px; }
+  .spread { grid-template-columns: 1fr; }
+  .dev { position: relative; height: auto; min-height: 74svh; }
+  .dev .inner { flex-direction: column; align-items: flex-start; gap: 22px; }
+  /* stacked, so the tall padding that gave the spread its travel is
+     just dead space -- take it back */
+  .request { border-left: 0; border-top: 1px solid var(--line); padding: clamp(52px, 9vw, 84px) clamp(20px, 3.6vw, 56px) clamp(64px, 11vw, 100px); }
+  .request .split { grid-template-columns: 1fr; gap: 34px; }
+  .stage, .request { min-height: 0; }
+}
+.rform { margin-top: clamp(32px, 4vw, 50px); display: grid; grid-template-columns: repeat(6, 1fr); gap: 24px 26px; max-width: 1080px; }
+.field { display: grid; gap: 9px; align-content: start; }
+.f2 { grid-column: span 2; } .f3 { grid-column: span 3; } .f6 { grid-column: span 6; }
+.field label, .field .lbl { font-family: var(--mono); font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--soft); }
+.field input, .field textarea { appearance: none; width: 100%; background: var(--white); border: 1px solid var(--line2); border-radius: 0; padding: 13px 14px; font-family: var(--text); font-size: 14px; color: var(--ink); transition: border-color .25s ease, box-shadow .25s ease; }
+.field textarea { resize: vertical; min-height: 112px; }
+.field input::placeholder, .field textarea::placeholder { color: var(--soft); }
+.field input:focus, .field textarea:focus { outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(62,62,229,.15); }
+.opts { display: flex; gap: 10px; }
+.opt { position: relative; flex: 1; }
+.opt input { position: absolute; opacity: 0; inset: 0; pointer-events: none; }
+.opt b { display: block; text-align: center; padding: 14px 10px; border: 1px solid var(--line2); background: var(--white); font-family: var(--mono); font-size: 10.5px; letter-spacing: .14em; text-transform: uppercase; color: var(--soft); font-weight: 500; cursor: pointer; transition: background .25s ease, color .25s ease, border-color .25s ease; }
+.opt:hover b { border-color: var(--ink); }
+.opt input:checked + b { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+.submitrow { justify-items: start; margin-top: 4px; }
+
+/* footer */
+.footer { position: relative; z-index: 4; background: var(--navy); color: rgba(238,240,248,.6); text-align: center; padding: clamp(70px, 8vw, 104px) 24px 38px; }
+.footer .crest { width: 162px; margin: 0 auto 38px; }
+.footer .crest svg { width: 100%; height: auto; display: block; }
+.flinks { display: flex; justify-content: center; gap: 13px 28px; flex-wrap: wrap; margin-bottom: 40px; }
+.flinks a { font-family: var(--mono); font-size: 10.5px; letter-spacing: .16em; text-transform: uppercase; color: rgba(238,240,248,.62); transition: color .3s ease; }
+.flinks a:hover { color: #fff; }
+.footer .note { border-top: 1px solid rgba(238,240,248,.12); padding-top: 26px; font-size: 11.5px; color: rgba(238,240,248,.55); max-width: 1292px; margin: 0 auto; }
+
+
+/* the live cards: the production renderer's DOM in the same clothes */
+.listing-card { display: flex; flex-direction: column; background: var(--white); border: 1px solid var(--line); padding: 12px 12px 16px; transition: border-color .3s var(--ease); position: relative; }
+.listing-card:hover { border-color: var(--blue); }
+.listing-media { position: relative; overflow: hidden; aspect-ratio: 4 / 3; background: var(--paper2); margin-bottom: 15px; display: flex; align-items: center; justify-content: center; }
+.listing-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.04); transition: transform .9s var(--ease); }
+.listing-card:hover .listing-photo { transform: scale(1); }
+.reduced .listing-photo { transform: none; }
+.listing-photo-copy { text-align: center; padding: 12px; }
+.listing-photo-copy .listing-photo-kicker { display: none; }
+.listing-photo-copy strong { font-family: var(--mono); font-weight: 500; font-size: 9.5px; letter-spacing: .16em; text-transform: uppercase; color: var(--soft); }
+.listing-meta { position: absolute; top: 0; left: 0; z-index: 2; }
+.listing-status { background: var(--ink); color: var(--paper); font-family: var(--mono); font-size: 9.5px; letter-spacing: .14em; text-transform: uppercase; padding: 7px 11px; }
+.listing-body { display: flex; flex-direction: column; flex: 1; }
+.listing-price { margin: 0; font-family: var(--display); font-weight: 700; font-size: clamp(23px, 2vw, 30px); letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+.listing-body h5 { margin: 9px 0 0; font-family: var(--mono); font-weight: 500; font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: var(--soft); }
+.listing-address { margin: 9px 0 0; font-size: 13px; line-height: 1.5; color: var(--ink); }
+.listing-facts { margin-top: auto; padding-top: 14px; font-family: var(--mono); font-size: 10.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--soft); position: relative; display: flex; flex-wrap: wrap; gap: 4px 0; }
+.listing-facts::before { content: ""; position: absolute; top: 0; left: 0; width: 100%; height: 1px; background: var(--line2); transition: background .35s ease; }
+.listing-card:hover .listing-facts::before { background: var(--blue); }
+.listing-fact:not(:last-child)::after { content: "\00a0\00b7\00a0"; }
+.listing-link { margin-top: 13px; font-family: var(--mono); font-size: 10px; letter-spacing: .14em; text-transform: uppercase; color: var(--ink); }
+.listing-link::after { content: ""; position: absolute; inset: 0; }
+.listing-link:hover { color: var(--blue); }
+.listing-media::before, .listing-media::after { content: ""; position: absolute; width: 11px; height: 11px; opacity: 0; transition: opacity .3s var(--ease); z-index: 2;
+  background: linear-gradient(var(--blue), var(--blue)) top left / 11px 1px no-repeat, linear-gradient(var(--blue), var(--blue)) top left / 1px 11px no-repeat; }
+.listing-media::before { top: 0; left: 0; }
+.listing-media::after { bottom: 0; right: 0; transform: rotate(180deg); }
+.listing-card:hover .listing-media::before, .listing-card:hover .listing-media::after { opacity: 1; }
+
+.field-website { position: absolute !important; left: -9999px; opacity: 0; pointer-events: none; font-size: 10px; }
+
+/* reveal primitives */
+[data-reg] { opacity: 0; transform: translateY(18px); }
+.reduced [data-reg], .no-js [data-reg] { opacity: 1 !important; transform: none !important; }
+.reduced .hero .scan { display: none; }
+.reduced .card img { transform: none; }
+
+@media (max-width: 1120px) {
+  .grid, .listing-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 900px) {
+  .desktop-nav { display: none; }
+  .menu-toggle { display: block; }
+}
+@media (max-width: 900px) {
+  .b-about .fg { padding-top: 56svh; padding-bottom: 24svh; }
+  .b-dev .fg { padding-top: 54svh; padding-bottom: 22svh; }
+  .aboutcard, .devcard { width: 100%; }
+}
+@media (max-width: 860px) {
+  .hero { height: 92svh; max-height: none; min-height: 620px; }
+  .hinner { padding-top: 54px; }
+  .search { flex-wrap: wrap; max-width: none; }
+  .seg { width: 100%; border-right: 0; border-bottom: 1px solid var(--line); }
+  .seg label { flex: 1; justify-content: center; padding: 15px 10px; }
+  .search .q { flex: 1 1 100%; padding: 16px 14px; }
+  .search .go { flex: 1 1 100%; padding: 16px 0; }
+  .counts { grid-template-columns: repeat(2, 1fr); gap: 26px 20px; }
+  .lhead, .lfoot { flex-direction: column; align-items: flex-start; }
+  .f2, .f3 { grid-column: span 6; }
+}
+@media (max-width: 620px) {
+  .grid, .listing-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 400px) {
+  /* the narrowest phones get their margins back so the line still fits */
+  .hero .wrap { padding-left: 16px; padding-right: 16px; }
+}
+</style>
 </head>
 <body>
-  <div class="site">
-    <!-- SHARED_HEADER {"depth": 0, "currentNav": "home"} -->
 
-    <section class="hero" id="home">
-      <div class="hero-content">
-        <span class="hero-brand">Star Real Estate</span>
-        <h2>Where smart moves shine</h2>
-        <p>A full-service AI-Driven brokerage firm specializing in the <strong>buying, selling, and leasing</strong> of <strong>residential and commercial properties</strong>, with a strong focus on the listing, marketing, and repositioning. Whether representing individual units or entire buildings in NYC, our team is committed to achieving optimal results.</p>
-        <div class="hero-intent" aria-label="Property goals">
-          <p class="hero-intent-kicker">Are you looking to...</p>
-          <div class="hero-intent-grid">
-            <a class="hero-intent-card" href="buy/"><span>Buy</span></a>
-            <a class="hero-intent-card" href="rental/"><span>Rent</span></a>
-            <a class="hero-intent-card" href="contact-us/?intent=sell"><span>Sell Property</span></a>
+<div class="progress" aria-hidden="true"></div>
+
+<!-- SHARED_HEADER {"depth": 0, "currentNav": "home"} -->
+
+<header class="hero" id="hero">
+  <video autoplay muted loop playsinline poster="video/hero-manhattanbridge-poster.jpg" src="video/hero-manhattanbridge.mp4"></video>
+  <div class="cover" id="cover" aria-hidden="true"></div>
+  <div class="scan" id="scan" aria-hidden="true"></div>
+  <div class="hinner" id="hinner">
+    <div class="wrap">
+      <div>
+        <span class="k" data-reg><i></i>Residential / Commercial / New Development</span>
+        <h1 data-reg>Where smart moves <b>shine.</b></h1>
+
+        <form class="search" data-reg id="home-search" action="rental/" method="get">
+          <div class="seg">
+            <input type="radio" name="mode" id="m-rent" value="rental/" checked><label for="m-rent">Rent</label>
+            <input type="radio" name="mode" id="m-buy" value="buy/"><label for="m-buy">Buy</label>
+          </div>
+          <input class="q" type="text" name="q" aria-label="Search listings" placeholder="Upper West Side, Astoria, Park Slope">
+          <button class="go" type="submit">Search</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</header>
+
+<section class="listings" id="listings">
+  <canvas class="citybg" id="citybg" aria-hidden="true"></canvas>
+  <div class="wrap">
+    <div class="lhead">
+      <div>
+        <span class="k" data-reg><i></i>Homes in focus.</span>
+        <h2 data-reg>Featured Listings</h2>
+      </div>
+      <a class="btn" href="rental/" data-reg>View All Rentals</a>
+    </div>
+
+    <!-- six is the ceiling. Whatever is chosen for the live feed drops in here;
+         if fewer than six are chosen, the row simply shows those. -->
+    <div class="grid listing-grid" id="featured" data-grid="featured"></div>
+
+
+    <div class="lfoot">
+      <p data-reg>Every listing, complete with pricing, specs and neighborhood.</p>
+      <a class="btn solid" href="rental/" data-reg>Browse Rentals</a>
+    </div>
+  </div>
+</section>
+
+<div id="about">
+
+  <section class="stage">
+    <video autoplay muted loop playsinline poster="video/about-midtown-dusk-poster.jpg" src="video/about-midtown-dusk.mp4"></video>
+    <div class="veil" aria-hidden="true"></div>
+    <div class="stage-in">
+      <div>
+        <span class="k" data-reg><i></i>About Star</span>
+        <p class="claim" id="claim-text">A <b>full-service AI-Driven</b> brokerage firm specializing in the buying, selling, and leasing of residential and commercial properties across <b>NYC.</b></p>
+      </div>
+      <div class="orbwrap" id="orbpane">
+        <canvas id="orb"></canvas>
+      </div>
+    </div>
+    <div class="stagerec num">
+      <div class="inner">
+        <div class="c" data-reg><em>$250M+</em><span>Total Sales</span></div>
+        <div class="c" data-reg><em>10+</em><span>Years Serving New York City</span></div>
+        <div class="c" data-reg><em>180+</em><span>Agents</span></div>
+        <div class="c" data-reg><em>49</em><span>Avg Deals Per Day</span></div>
+      </div>
+    </div>
+  </section>
+
+  <section class="spread">
+    <section class="dev" id="dev">
+    <video autoplay muted loop playsinline poster="video/hero-sunset-poster.jpg" src="video/hero-sunset.mp4"></video>
+    <div class="inner">
+      <div>
+        <span class="k" data-reg><i></i>New Development</span>
+        <h2 data-reg>Shaping New Developments.<br>Driving NYC Sales.</h2>
+        <p data-reg>For the past decade, we have specialized in NYC new development, with a focus on strategic marketing and sales for developers and property owners.</p>
+      </div>
+      <a class="btn" href="#request" data-reg>More Information</a>
+    </div>
+    </section>
+
+    <section class="request" id="request">
+    <div class="wrap split">
+      <div>
+        <span class="k" data-reg><i></i>Contact Us</span>
+        <h2 data-reg>Submit Your Request</h2>
+        <p class="sub" data-reg>Tell us what you're looking for.</p>
+      </div>
+      <form class="rform ruled" action="/api/contact" method="post" data-reg>
+        <label class="field-website" aria-hidden="true">Website
+          <input type="text" name="website" tabindex="-1" autocomplete="off">
+        </label>
+        <div class="field f2"><label for="f-name">Name</label><input id="f-name" type="text" name="name" autocomplete="name" required></div>
+        <div class="field f2"><label for="f-email">Contact Email</label><input id="f-email" type="email" name="email" autocomplete="email" required></div>
+        <div class="field f2"><label for="f-phone">Phone Number</label><input id="f-phone" type="tel" name="phone" autocomplete="tel" required></div>
+        <div class="field f3" role="radiogroup" aria-labelledby="lbl-ptype"><span class="lbl" id="lbl-ptype">Property Type</span>
+          <div class="opts">
+            <label class="opt"><input type="radio" name="property_type" value="Residential" checked required><b>Residential</b></label>
+            <label class="opt"><input type="radio" name="property_type" value="Commercial"><b>Commercial</b></label>
           </div>
         </div>
-      </div>
-    </section>
-
-    <section id="new-development" class="content-section">
-      <div class="development-layout">
-        <div class="development-copy">
-          <span class="development-kicker">New Development</span>
-          <h3>Shaping New Developments. Driving NYC Sales.</h3>
-          <p>For the past decade, we have specialized in NYC new development, with a focus on strategic marketing and sales for developers and property owners. Our experience and market-driven approach have helped position and successfully launch projects across New York City.</p>
-          <a class="website-link" href="new-development/">Click Here for More Information</a>
+        <div class="field f3" role="radiogroup" aria-labelledby="lbl-intent"><span class="lbl" id="lbl-intent">Interested In</span>
+          <div class="opts">
+            <label class="opt"><input type="radio" name="transaction_type" value="Lease" checked required><b>Lease</b></label>
+            <label class="opt"><input type="radio" name="transaction_type" value="Purchase"><b>Purchase</b></label>
+          </div>
         </div>
-        <div class="development-showcase" aria-label="New development project preview">
-          <!-- <span class="development-status">Coming Soon</span> -->
-        </div>
-      </div>
+        <div class="field f6"><label for="f-details">Property Details</label><textarea id="f-details" name="property_details" rows="4" placeholder="Address, timeline, property size, or anything else the team should know."></textarea></div>
+        <div class="field f6 submitrow"><button class="btn solid" type="submit">Submit Inquiry</button></div>
+      </form>
+    </div>
     </section>
+  </section>
 
-    <footer>
-      <span>Star Real Estate</span>
-      <span>Property availability and pricing are subject to change.</span>
-    </footer>
+</div>
+
+<footer class="footer">
+  <div class="crest" role="img" aria-label="Star Real Estate" data-reg><svg xmlns="http://www.w3.org/2000/svg" viewBox="674.3 277.2 569.6 472.4"><g fill="#ffffff"><path d="M 795.382812 623.257812 C 801.398438 625.941406 806.175781 629.570312 809.710938 634.136719 C 813.242188 638.707031 815.007812 643.726562 815.007812 649.191406 C 815.007812 654.65625 813.242188 659.675781 809.710938 664.246094 C 806.175781 668.816406 801.398438 672.441406 795.382812 675.125 C 789.363281 677.808594 782.820312 679.148438 775.753906 679.148438 L 690.964844 679.148438 L 680.3125 663.050781 L 765.15625 663.050781 C 770.257812 663.050781 774.605469 661.710938 778.207031 659.027344 C 781.804688 656.34375 783.605469 653.066406 783.605469 649.191406 C 783.605469 645.316406 781.804688 642.035156 778.207031 639.355469 C 774.605469 636.671875 770.257812 635.328125 765.15625 635.328125 L 724.132812 635.328125 C 717.070312 635.328125 710.589844 634.015625 704.703125 631.378906 C 698.8125 628.75 694.132812 625.171875 690.667969 620.648438 C 687.199219 616.128906 685.46875 611.238281 685.46875 605.96875 C 685.46875 600.601562 687.199219 595.683594 690.667969 591.214844 C 694.132812 586.742188 698.8125 583.191406 704.703125 580.558594 C 710.589844 577.925781 717.070312 576.609375 724.132812 576.609375 L 815.039062 576.609375 L 807.15625 592.554688 L 734.535156 592.554688 C 729.695312 592.554688 725.539062 593.875 722.074219 596.503906 C 718.605469 599.136719 716.871094 602.292969 716.871094 605.96875 C 716.871094 609.648438 718.605469 612.777344 722.074219 615.359375 C 725.539062 617.945312 729.695312 619.234375 734.535156 619.234375 L 775.753906 619.234375 C 782.820312 619.234375 789.363281 620.574219 795.382812 623.257812 "/><path d="M 961.8125 576.457031 L 953.578125 592.554688 L 908.625 592.554688 L 908.625 679.148438 L 877.027344 679.148438 L 877.027344 592.554688 L 823.839844 592.554688 L 832.074219 576.457031 Z M 961.8125 576.457031 "/><path d="M 1064.015625 679.148438 L 1020.835938 601.347656 L 986.292969 663.203125 L 1024.957031 663.203125 L 1034.773438 679.148438 L 946.054688 679.148438 L 1003.367188 576.605469 L 1038.109375 576.605469 L 1095.421875 679.148438 Z M 1064.015625 679.148438 "/><path d="M 1136.441406 627.28125 L 1183.546875 627.28125 C 1189.828125 627.28125 1195.226562 625.59375 1199.738281 622.214844 C 1204.253906 618.839844 1206.511719 614.714844 1206.511719 609.84375 C 1206.511719 605.074219 1204.253906 601.003906 1199.738281 597.621094 C 1195.226562 594.246094 1189.828125 592.554688 1183.546875 592.554688 L 1136.441406 592.554688 Z M 1231.832031 626.984375 C 1227.773438 632.152344 1222.277344 636.175781 1215.34375 639.054688 L 1237.914062 679.148438 L 1206.511719 679.148438 L 1186.097656 643.230469 L 1136.441406 643.230469 L 1136.441406 679.148438 L 1104.839844 679.148438 L 1104.839844 576.605469 L 1193.949219 576.605469 C 1201.929688 576.605469 1209.289062 578.097656 1216.03125 581.078125 C 1222.769531 584.058594 1228.101562 588.085938 1232.027344 593.152344 C 1235.953125 598.21875 1237.914062 603.785156 1237.914062 609.84375 C 1237.914062 616.105469 1235.886719 621.820312 1231.832031 626.984375 "/><path d="M 892.515625 424.273438 L 924.578125 424.273438 C 924.578125 424.273438 940.9375 427.332031 950.960938 438.488281 L 950.960938 475.820312 C 950.960938 475.820312 937.359375 444.34375 892.515625 424.273438 "/><path d="M 966.78125 324.289062 L 966.78125 374.75 C 966.78125 374.75 977.230469 384.414062 986.386719 386.878906 L 1052.832031 386.878906 C 1052.832031 386.878906 1000.71875 375.835938 966.78125 324.289062 "/><path d="M 917.089844 397.144531 C 940.609375 387.851562 954.144531 377.738281 957.855469 374.757812 C 958.523438 374.21875 958.90625 373.382812 958.90625 372.484375 L 958.90625 287.105469 C 958.90625 283.976562 954.90625 283.152344 953.792969 286.042969 C 922.3125 367.789062 867.457031 398.257812 838.277344 409.058594 C 835.4375 410.109375 836.132812 414.601562 839.140625 414.601562 L 999.628906 414.601562 C 976.109375 423.890625 962.574219 434.007812 958.863281 436.988281 C 958.191406 437.527344 957.8125 438.363281 957.8125 439.261719 L 957.8125 548.777344 C 957.8125 552.074219 962.1875 552.730469 963.015625 549.554688 C 989.003906 450.210938 1049.65625 414.574219 1080.015625 402.660156 C 1082.796875 401.566406 1082.042969 397.144531 1079.082031 397.144531 Z M 917.089844 397.144531 "/><path d="M 824.425781 724.710938 C 825.972656 724.710938 827.300781 724.273438 828.410156 723.402344 C 829.5 722.542969 830.042969 721.507812 830.042969 720.289062 C 830.042969 719.054688 829.5 718.003906 828.410156 717.128906 C 827.300781 716.257812 825.972656 715.820312 824.425781 715.820312 L 815.511719 715.820312 L 815.511719 724.710938 Z M 838.527344 743.203125 L 831.507812 743.203125 L 822.535156 729.601562 L 815.511719 729.601562 L 815.511719 743.203125 L 809.292969 743.203125 L 809.292969 710.929688 L 824.425781 710.929688 C 827.691406 710.929688 830.484375 711.84375 832.796875 713.679688 C 835.125 715.5 836.292969 717.703125 836.292969 720.289062 C 836.292969 722.183594 835.613281 723.910156 834.257812 725.476562 C 832.9375 727.011719 831.207031 728.136719 829.070312 728.859375 Z M 838.527344 743.203125 "/><path d="M 862.972656 710.929688 L 862.972656 715.820312 L 848.273438 715.820312 L 848.273438 724.574219 L 859.621094 724.574219 L 859.621094 729.46875 L 848.273438 729.46875 L 848.273438 738.308594 L 862.972656 738.308594 L 862.972656 743.203125 L 842.050781 743.203125 L 842.050781 710.929688 Z M 862.972656 710.929688 "/><path d="M 881.917969 730.777344 L 891.921875 730.777344 L 891.921875 718.347656 Z M 898.167969 710.929688 L 898.167969 743.203125 L 891.921875 743.203125 L 891.921875 735.671875 L 877.992188 735.671875 L 871.945312 743.203125 L 864.578125 743.203125 L 890.515625 710.929688 Z M 898.167969 710.929688 "/><path d="M 911.378906 710.929688 L 911.378906 738.308594 L 926.082031 738.308594 L 926.082031 743.203125 L 905.160156 743.203125 L 905.160156 710.929688 Z M 911.378906 710.929688 "/><path d="M 966.550781 710.929688 L 966.550781 715.820312 L 951.847656 715.820312 L 951.847656 724.574219 L 963.195312 724.574219 L 963.195312 729.46875 L 951.847656 729.46875 L 951.847656 738.308594 L 966.550781 738.308594 L 966.550781 743.203125 L 945.628906 743.203125 L 945.628906 710.929688 Z M 966.550781 710.929688 "/><path d="M 982.457031 743.496094 C 979.742188 743.40625 977.238281 742.835938 974.945312 741.78125 C 972.347656 740.59375 970.582031 739 969.644531 737 L 975.492188 735.308594 C 975.96875 736.300781 976.953125 737.105469 978.445312 737.722656 C 979.761719 738.25 981.195312 738.542969 982.742188 738.601562 C 985.132812 738.679688 987.109375 738.21875 988.675781 737.226562 C 989.992188 736.386719 990.691406 735.421875 990.769531 734.339844 C 990.882812 732.28125 988.140625 730.632812 982.542969 729.402344 C 973.773438 727.460938 969.519531 724.175781 969.789062 719.542969 C 969.960938 716.296875 971.726562 713.867188 975.089844 712.257812 C 977.652344 711.027344 980.726562 710.476562 984.320312 710.613281 C 988.675781 710.761719 992.171875 711.957031 994.808594 714.199219 L 990.253906 717.535156 C 988.761719 716.273438 986.6875 715.597656 984.03125 715.507812 C 982.160156 715.445312 980.566406 715.632812 979.246094 716.070312 C 977.183594 716.761719 976.105469 717.996094 976.007812 719.769531 C 975.894531 721.800781 978.636719 723.429688 984.234375 724.664062 C 989.277344 725.777344 992.851562 727.414062 994.953125 729.582031 C 996.402344 731.085938 997.082031 732.746094 996.988281 734.566406 C 996.835938 737.121094 995.363281 739.285156 992.574219 741.0625 C 989.976562 742.699219 986.859375 743.519531 983.230469 743.519531 C 982.960938 743.519531 982.703125 743.511719 982.457031 743.496094 "/><path d="M 1024.128906 710.929688 L 1024.128906 715.820312 L 1015.445312 715.820312 L 1015.445312 743.203125 L 1009.195312 743.203125 L 1009.195312 715.820312 L 1000.511719 715.820312 L 1000.511719 710.929688 Z M 1024.128906 710.929688 "/><path d="M 1038.570312 730.777344 L 1048.574219 730.777344 L 1048.574219 718.347656 Z M 1054.820312 710.929688 L 1054.820312 743.203125 L 1048.574219 743.203125 L 1048.574219 735.671875 L 1034.644531 735.671875 L 1028.597656 743.203125 L 1021.234375 743.203125 L 1047.171875 710.929688 Z M 1054.820312 710.929688 "/><path d="M 1083.996094 710.929688 L 1083.996094 715.820312 L 1075.3125 715.820312 L 1075.3125 743.203125 L 1069.066406 743.203125 L 1069.066406 715.820312 L 1060.382812 715.820312 L 1060.382812 710.929688 Z M 1083.996094 710.929688 "/><path d="M 1110.507812 710.929688 L 1110.507812 715.820312 L 1095.804688 715.820312 L 1095.804688 724.574219 L 1107.15625 724.574219 L 1107.15625 729.46875 L 1095.804688 729.46875 L 1095.804688 738.308594 L 1110.507812 738.308594 L 1110.507812 743.203125 L 1089.585938 743.203125 L 1089.585938 710.929688 Z M 1110.507812 710.929688 "/></g></svg></div>
+  <div class="flinks" data-reg>
+    <a href="#hero">Home</a><a href="rental/">Rent</a><a href="buy/">Buy</a><a href="commercial/">Commercial</a><a href="new-development/">New Development</a><a href="our-team/">Our Team</a><a href="contact-us/">Contact Us</a>
   </div>
+  <p class="note">Star Real Estate. Property availability and pricing are subject to change.</p>
+</footer>
 
-  <script>
-    const menuToggle = document.querySelector('.menu-toggle');
-    const mobileNav = document.querySelector('.mobile-nav');
-    const closeButton = document.querySelector('.close-nav');
-    const mobileLinks = document.querySelectorAll('.mobile-sheet a');
+<script src="shared/b64-skyline-plate.js"></script>
+<script src="shared/listings-page.js"></script>
+<script>
+  window.renderResidentialListingsPage({
+    gridSelector: '[data-grid="featured"]',
+    transactionGroup: 'rental',
+    defaultKind: 'Rental Listing',
+    collectionLabel: 'Featured Listings',
+    emptyTitle: 'No active listings right now',
+    emptyStatusLabel: 'For Rent',
+    dataPath: 'data/listings.json',
+    propertyPath: 'property/',
+    maxVisibleListings: 6,
+    emptyCtaHref: 'contact-us/',
+    emptyCtaText: 'Ask about current availability',
+    emptyPhotoLabel: 'Listing preview unavailable',
+    showKindBadge: false,
+    showStatusBadge: true,
+    showPhotoCopy: true,
+    photoKicker: 'Listing Preview',
+    fetchErrorMessage: 'Listings sync fetch failed. Rendering placeholders.'
+  });
+</script>
+<script src="shared/vendor/gsap.min.js"></script>
+<script src="shared/vendor/ScrollTrigger.min.js"></script>
+<script src="shared/vendor/lenis.min.js"></script>
+<script>
+(function () {
+  var reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  var hasGsap = !!(window.gsap && window.ScrollTrigger);
+  var motion = !reduced && hasGsap;
+  if (!motion) document.body.classList.add('reduced');
+  window.__MOTION = motion;
+  if (reduced) {
+    document.querySelectorAll('video').forEach(function (v) { v.removeAttribute('autoplay'); try { v.pause(); } catch (e) {} });
+  }
 
-    function openNav() {
-      mobileNav?.classList.add('open');
-      mobileNav?.setAttribute('aria-hidden', 'false');
-      menuToggle?.setAttribute('aria-expanded', 'true');
-      document.body.classList.add('nav-open');
+  /* mobile sheet, on the production hook names */
+  var mobileNav = document.querySelector('.mobile-nav');
+  var menuToggle = document.querySelector('.menu-toggle');
+  var closeNavBtn = document.querySelector('.close-nav');
+  function closeNav() {
+    if (!mobileNav) return;
+    mobileNav.classList.remove('open');
+    mobileNav.setAttribute('aria-hidden', 'true');
+    if (menuToggle) menuToggle.setAttribute('aria-expanded', 'false');
+    document.body.classList.remove('nav-open');
+  }
+  if (menuToggle) menuToggle.addEventListener('click', function () {
+    if (!mobileNav) return;
+    if (mobileNav.classList.contains('open')) { closeNav(); return; }
+    mobileNav.classList.add('open');
+    mobileNav.setAttribute('aria-hidden', 'false');
+    menuToggle.setAttribute('aria-expanded', 'true');
+    document.body.classList.add('nav-open');
+  });
+  if (closeNavBtn) closeNavBtn.addEventListener('click', closeNav);
+  if (mobileNav) {
+    mobileNav.addEventListener('click', function (event) { if (event.target === mobileNav) closeNav(); });
+    mobileNav.querySelectorAll('.mobile-sheet a').forEach(function (a) { a.addEventListener('click', closeNav); });
+  }
+
+  var LOGO_PATHS = [
+    'M 892.515625 424.273438 L 924.578125 424.273438 C 924.578125 424.273438 940.9375 427.332031 950.960938 438.488281 L 950.960938 475.820312 C 950.960938 475.820312 937.359375 444.34375 892.515625 424.273438 Z',
+    'M 966.78125 324.289062 L 966.78125 374.75 C 966.78125 374.75 977.230469 384.414062 986.386719 386.878906 L 1052.832031 386.878906 C 1052.832031 386.878906 1000.71875 375.835938 966.78125 324.289062 Z',
+    'M 917.089844 397.144531 C 940.609375 387.851562 954.144531 377.738281 957.855469 374.757812 C 958.523438 374.21875 958.90625 373.382812 958.90625 372.484375 L 958.90625 287.105469 C 958.90625 283.976562 954.90625 283.152344 953.792969 286.042969 C 922.3125 367.789062 867.457031 398.257812 838.277344 409.058594 C 835.4375 410.109375 836.132812 414.601562 839.140625 414.601562 L 999.628906 414.601562 C 976.109375 423.890625 962.574219 434.007812 958.863281 436.988281 C 958.191406 437.527344 957.8125 438.363281 957.8125 439.261719 L 957.8125 548.777344 C 957.8125 552.074219 962.1875 552.730469 963.015625 549.554688 C 989.003906 450.210938 1049.65625 414.574219 1080.015625 402.660156 C 1082.796875 401.566406 1082.042969 397.144531 1079.082031 397.144531 Z'
+  ];
+
+  var DPR = Math.min(window.devicePixelRatio || 1, 2);
+  var heroEl = document.getElementById('hero');
+  var scanEl = document.getElementById('scan');
+
+  /* ==================================================================
+     the survey: the photograph of Lower Manhattan and the logo outline
+     are both reduced to measured points. The city stands along the floor
+     of the listings shelf; both sets feed the particle instrument.
+  ================================================================== */
+  var CITY = null, STAR = null;
+
+  /* The city is read off a survey plate: one small greyscale image baked
+     from the photograph by tools/bake_skyline_plate.py. Zero is sky. One
+     to 255 is city, and the value is how far that piece of it has receded
+     into the air -- near walls keep their blacks, far ones have taken on
+     the sky and lost theirs. Colour, dot size and weight all hang off
+     that single number, so depth is what the drawing is made of rather
+     than something added to it afterwards. */
+  function samplePlate(img) {
+    var gw = img.naturalWidth, gh = img.naturalHeight;
+    if (!gw || !gh) return null;
+    var cv = document.createElement('canvas');
+    cv.width = gw; cv.height = gh;
+    var c = cv.getContext('2d', { willReadFrequently: true });
+    c.drawImage(img, 0, 0);
+    var d = c.getImageData(0, 0, gw, gh).data;
+    var v = new Uint8Array(gw * gh);
+    for (var i = 0, o = 0; i < gw * gh; i++, o += 4) v[i] = d[o];
+
+    /* a thinned copy of the outline for the particle instrument, which
+       wants the shape of the city and not its ink */
+    var xs = [], ys = [], STEP = 3, gx, gy;
+    for (gy = 0; gy < gh; gy += STEP) {
+      for (gx = 0; gx < gw; gx += STEP) {
+        if (!v[gy * gw + gx]) continue;
+        xs.push(gx / gw - 0.5);
+        ys.push((gh - 1 - gy) / gw);
+      }
     }
+    return { v: v, gw: gw, gh: gh, x: xs, y: ys, n: xs.length,
+             peakNy: gh / gw, spacing: 1 / gw };
+  }
 
-    function closeNav() {
-      mobileNav?.classList.remove('open');
-      mobileNav?.setAttribute('aria-hidden', 'true');
-      menuToggle?.setAttribute('aria-expanded', 'false');
-      document.body.classList.remove('nav-open');
+  function sampleStar() {
+    var OX = 826, OY = 273, S = 300, STEP = 4;
+    var cv = document.createElement('canvas');
+    cv.width = S; cv.height = S;
+    var c = cv.getContext('2d', { willReadFrequently: true });
+    var xs = [], ys = [], cols = [], pars = [];
+    var minx = 1e9, maxx = -1e9, miny = 1e9, maxy = -1e9;
+    for (var p = 0; p < LOGO_PATHS.length; p++) {
+      c.clearRect(0, 0, S, S);
+      c.save(); c.translate(-OX, -OY); c.fillStyle = '#fff';
+      c.fill(new Path2D(LOGO_PATHS[p]));
+      c.restore();
+      var d = c.getImageData(0, 0, S, S).data;
+      for (var y = 0; y < S; y += STEP) {
+        for (var x = 0; x < S; x += STEP) {
+          if (d[(y * S + x) * 4 + 3] < 128) continue;
+          xs.push(x); ys.push(y); pars.push(p);
+          if (x < minx) minx = x; if (x > maxx) maxx = x;
+          if (y < miny) miny = y; if (y > maxy) maxy = y;
+        }
+      }
     }
+    if (!xs.length) return null;
+    var cx = (minx + maxx) / 2, cy = (miny + maxy) / 2;
+    var span = Math.max(maxx - minx, maxy - miny) || 1;
+    var nx = [], ny = [];
+    for (var i = 0; i < xs.length; i++) {
+      var vx = (xs[i] - cx) / span, vy = -(ys[i] - cy) / span;
+      nx.push(vx); ny.push(vy);
+      /* on footage the mark is a light lattice, brightest at the crown */
+      var top = vy + 0.5;
+      cols.push(top > 0.64 ? 'rgb(206,208,255)' : (top > 0.3 ? 'rgb(155,160,251)' : 'rgb(112,120,224)'));
+    }
+    return { x: nx, y: ny, col: cols, par: pars, n: nx.length, spacing: STEP / span };
+  }
 
-    menuToggle?.addEventListener('click', () => {
-      if (mobileNav?.classList.contains('open')) {
-        closeNav();
-      } else {
-        openNav();
+  /* ==================================================================
+     hero: the cover retracts left to right with the scan riding its
+     edge, and the footage is left standing on its own. Nothing is
+     drawn over the plate.
+  ================================================================== */
+  var coverEl = document.getElementById('cover');
+  var REVEAL = { p: 0 };
+  var LAY = { W: 0, H: 0 };
+
+  function applyReveal() {
+    if (coverEl) coverEl.style.transform = 'scaleX(' + Math.max(0, Math.min(1, 1 - REVEAL.p)) + ')';
+    if (scanEl) scanEl.style.transform = 'translateX(' + (REVEAL.p * LAY.W) + 'px)';
+  }
+
+  function layoutHero() {
+    LAY.W = heroEl.clientWidth; LAY.H = heroEl.clientHeight;
+    applyReveal();
+  }
+
+  function heroStatic() {
+    REVEAL.p = 1;
+    layoutHero();
+    if (coverEl) coverEl.style.display = 'none';
+    document.querySelectorAll('.hinner [data-reg]').forEach(function (el) { el.style.opacity = 1; el.style.transform = 'none'; });
+  }
+
+  function startHero() {
+    layoutHero();
+    window.addEventListener('resize', layoutHero);
+    if (!motion) { heroStatic(); return; }
+    var tl = gsap.timeline({ delay: 0.2 });
+    tl.to(scanEl, { opacity: 1, duration: 0.14 }, 0);
+    tl.to(REVEAL, { p: 1, duration: 1.5, ease: 'power1.inOut', onUpdate: applyReveal }, 0);
+    tl.to(scanEl, { opacity: 0, duration: 0.3 }, 1.28);
+    tl.to('.hinner [data-reg]', { opacity: 1, y: 0, duration: 0.7, stagger: 0.09, ease: 'power3.out' }, 0.4);
+    tl.set(coverEl, { display: 'none' }, 1.56);
+  }
+
+  var img = new Image();
+  img.onload = function () {
+    try { CITY = samplePlate(img); } catch (e) { CITY = null; }
+    try { STAR = sampleStar(); } catch (e2) { STAR = null; }
+    window.__SURVEY = { CITY: CITY, STAR: STAR };
+    startHero();
+    window.dispatchEvent(new Event('survey:ready'));
+  };
+  img.onerror = function () { startHero(); };
+  if (window.B64_SKYPLATE) img.src = window.B64_SKYPLATE;
+  else startHero();
+
+  /* the search field hands you to the shelf it names */
+  var hs = document.getElementById('home-search');
+  if (hs) hs.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var mode = hs.querySelector('input[name="mode"]:checked');
+    var q = hs.querySelector('.q').value.trim();
+    location.href = (mode ? mode.value : 'rental/') + (q ? '?q=' + encodeURIComponent(q) : '');
+  });
+
+  /* ================= page systems ================= */
+  if (!motion) return;
+  gsap.registerPlugin(ScrollTrigger);
+
+  if (window.Lenis) {
+    var lenis = new Lenis({ duration: 1.1, easing: function (t) { return Math.min(1, 1.001 - Math.pow(2, -10 * t)); } });
+    lenis.on('scroll', ScrollTrigger.update);
+    gsap.ticker.add(function (t) { lenis.raf(t * 1000); });
+    gsap.ticker.lagSmoothing(0);
+  }
+
+  gsap.to('.progress', { scaleX: 1, ease: 'none', scrollTrigger: { start: 0, end: 'max', scrub: .3 } });
+
+  var nav = document.querySelector('.topbar');
+  if (nav) ScrollTrigger.create({
+    start: 'top -20%',
+    onUpdate: function (self) {
+      var h = heroEl.offsetHeight || innerHeight;
+      if (self.direction === 1 && self.scroll() > h) nav.classList.add('hidden');
+      else nav.classList.remove('hidden');
+    }
+  });
+
+  gsap.utils.toArray('section [data-reg], footer [data-reg]').forEach(function (el) {
+    gsap.to(el, { opacity: 1, y: 0, duration: 0.85, ease: 'power3.out', scrollTrigger: { trigger: el, start: 'top 90%', once: true } });
+  });
+
+  /* the statement: the claim splits into words and scrolling lights them
+     up one by one (scrub) */
+  var claim = document.getElementById('claim-text');
+  if (claim) {
+    var parts = [];
+    claim.childNodes.forEach(function (ch) {
+      if (ch.nodeType === 3) {
+        ch.textContent.split(/\s+/).forEach(function (w) { if (w) parts.push('<span class="w">' + w + '</span>'); });
+      } else if (ch.nodeType === 1) {
+        ch.textContent.split(/\s+/).filter(Boolean).forEach(function (w) { parts.push('<span class="w hl">' + w + '</span>'); });
       }
     });
+    claim.innerHTML = parts.join(' ');
+    gsap.to('#claim-text .w', {
+      opacity: 1, stagger: 0.35, ease: 'none',
+      scrollTrigger: { trigger: '#claim-text', start: 'top 78%', end: 'top 22%', scrub: true }
+    });
+  }
 
-    closeButton?.addEventListener('click', closeNav);
+  window.addEventListener('load', function () { ScrollTrigger.refresh(); });
+})();
+</script>
 
-    mobileNav?.addEventListener('click', (event) => {
-      if (event.target === mobileNav) {
-        closeNav();
+<!-- ==================================================================
+     the instrument you can hold. Rebuilt on what serhant.com actually
+     does (read from its source, felt by real dragging): an object that
+     is always in slow motion, grabs with damping and keeps its momentum
+     when released, puffs outward while held, and twinkles point by
+     point. What stays ours: the body morphs between the star mark, a
+     globe whose flight lines all land on New York, and the measured
+     skyline itself. One body of points; nothing added between forms.
+================================================================== -->
+<script type="importmap">{ "imports": { "three": "/shared/vendor/three.module.min.js", "three/addons/controls/OrbitControls.js": "/shared/vendor/OrbitControls.js" } }</script>
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+const canvas = document.getElementById('orb');
+const pane = document.getElementById('orbpane');
+const reduced = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+const whenSurvey = (cb) => {
+  if (window.__SURVEY) cb(window.__SURVEY);
+  else window.addEventListener('survey:ready', () => cb(window.__SURVEY), { once: true });
+};
+
+/* ------------------------------------------------------------------
+   the shelf's back wall, built the way Y5 built its hero: the city is
+   a GPU point cloud, and a scan uncovers it left to right. Every point
+   shakes until the scan reaches it and settles once it has, and a
+   bright return rides the scan edge -- the reading being taken, not a
+   picture of one. The plate carries a recession value per point, and
+   the whole drawing is made out of it: the waterfront row is near black
+   ink at full weight, and rank by rank the city lightens, turns to the
+   blue of the air and thins away, exactly as it does in the photograph.
+   The near ink is also the last to settle, so the front row lands after
+   the distance has already come to rest.
+------------------------------------------------------------------ */
+function buildSkyline(CITY) {
+  const cv = document.getElementById('citybg');
+  const host = cv && cv.parentElement;
+  if (!cv || !host) return;
+
+  const VS = `
+    attribute float aVeil; attribute float aSize; attribute float aRand;
+    uniform float uScan, uPix, uW, uFlash;
+    varying vec3 vCol; varying float vA;
+    /* the recession ramp: near ink, then the brand blue, then the pale
+       edge where the city has all but gone over to the air */
+    vec3 recede(float v) {
+      vec3 near = vec3(0.035, 0.047, 0.118);
+      vec3 mid  = vec3(0.161, 0.192, 0.635);
+      vec3 far  = vec3(0.596, 0.627, 0.835);
+      vec3 lo = mix(near, mid, clamp(v / 0.55, 0.0, 1.0));
+      return mix(lo, far, pow(clamp((v - 0.55) / 0.45, 0.0, 1.0), 0.9));
+    }
+    void main() {
+      float sx = position.x / uW;
+      float rv = smoothstep(uScan, uScan - 0.055, sx);
+      vec2 jit = vec2(sin(aRand * 97.13), cos(aRand * 61.7))
+               * 22.0 * (0.55 + 0.85 * (1.0 - aVeil));
+      vec3 pos = position + vec3(jit * (1.0 - rv), 0.0);
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+      float band = smoothstep(0.075, 0.0, abs(sx - uScan)) * uFlash;
+      gl_PointSize = max(2.0, (aSize + band * 1.5) * uPix);
+      vCol = mix(recede(aVeil), vec3(0.243, 0.243, 0.898), band * 0.92);
+      vA = (0.5 + 0.5 * pow(max(1.0 - aVeil, 0.002), 1.1)) * max(rv, band * 0.95);
+    }`;
+  const FS = `
+    precision mediump float;
+    varying vec3 vCol; varying float vA;
+    void main() {
+      /* round dots with a soft rim. Square points on a lattice this fine
+         beat against the pixel grid and throw white seams across the
+         drawing; a falloff leaves the lattice legible and the seams gone */
+      float d = length(gl_PointCoord - vec2(0.5)) * 2.0;
+      float a = vA * (1.0 - smoothstep(0.42, 1.0, d));
+      if (a < 0.02) discard;
+      gl_FragColor = vec4(vCol, a);
+    }`;
+
+  const renderer = new THREE.WebGLRenderer({ canvas: cv, antialias: false, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const scene = new THREE.Scene();
+  let camera = null, pts = null, W = 0, H = 0;
+  const uni = { uScan: { value: -0.1 }, uPix: { value: 1 }, uW: { value: 1 }, uFlash: { value: 1 } };
+  const mat = new THREE.ShaderMaterial({
+    uniforms: uni, vertexShader: VS, fragmentShader: FS,
+    transparent: true, depthWrite: false, blending: THREE.NormalBlending
+  });
+  const render = () => { if (camera) renderer.render(scene, camera); };
+
+  function layout() {
+    W = host.clientWidth;
+    /* true proportions, at the measure S3 gives its strip: about seven
+       tenths of the shelf. The mass of the city then lands around seventy
+       pixels, inside the shelf's own bottom margin, and only the needle
+       goes higher. */
+    let S = W * (W < 860 ? 0.98 : 0.72);
+    const capH = Math.min(258, Math.round(innerHeight * 0.29));
+    const cap = capH / Math.max(CITY.peakNy, 1e-6);
+    if (S > cap) S = cap;
+    H = Math.round(CITY.peakNy * S) + 10;
+    cv.style.height = H + 'px';
+    renderer.setSize(W, H, false);
+    uni.uW.value = W;
+    uni.uPix.value = renderer.getPixelRatio();
+    camera = new THREE.OrthographicCamera(0, W, H, 0, -10, 10);
+    camera.updateProjectionMatrix();
+
+    if (pts) { scene.remove(pts); pts.geometry.dispose(); pts = null; }
+    /* The lattice belongs to the screen, not to the plate: every point
+       stands on a whole pixel, two apart. A lattice derived from the
+       plate instead lands on fractions, beats against the pixel grid and
+       lays a white plaid across the city. Each screen cell reads the
+       block of plate cells beneath it and takes their average, and it is
+       only drawn if enough of that block is city, so the silhouette
+       neither fattens nor drops its thin towers. */
+    const cell = S / CITY.gw, pitch = 2;
+    const x0 = Math.round((W - S) / 2), base = 4;
+    const cols = Math.floor(S / pitch), rows = Math.floor(CITY.gh * cell / pitch);
+    const px = [], py = [], pv = [];
+    for (let j = 0; j <= rows; j++) {
+      const r1 = CITY.gh - Math.round(j * pitch / cell);
+      const r0 = Math.max(0, CITY.gh - Math.round((j + 1) * pitch / cell));
+      if (r1 <= 0) break;
+      for (let i = 0; i <= cols; i++) {
+        const c0 = Math.round(i * pitch / cell);
+        const c1 = Math.min(CITY.gw, Math.round((i + 1) * pitch / cell));
+        if (c0 >= CITY.gw) break;
+        let sum = 0, hit = 0, area = (r1 - r0) * (c1 - c0) || 1;
+        for (let r = r0; r < r1; r++) {
+          const row = r * CITY.gw;
+          for (let c = c0; c < c1; c++) { const v = CITY.v[row + c]; if (v) { sum += v; hit++; } }
+        }
+        if (hit < 1 || hit < area * 0.34) continue;
+        px.push(x0 + i * pitch);
+        py.push(base + j * pitch);
+        pv.push((sum / hit - 1) / 254);
+      }
+    }
+    const n = px.length;
+    const pos = new Float32Array(n * 3), veil = new Float32Array(n);
+    const siz = new Float32Array(n), rnd = new Float32Array(n);
+    for (let j = 0; j < n; j++) {
+      pos[j * 3] = px[j]; pos[j * 3 + 1] = py[j]; pos[j * 3 + 2] = 0;
+      veil[j] = pv[j];
+      /* the far ranks are drawn finer as well as paler */
+      siz[j] = pitch * (1.34 - 0.44 * pv[j]);
+      rnd[j] = ((j * 2654435761) >>> 0) % 1000 / 1000;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('aVeil', new THREE.BufferAttribute(veil, 1));
+    geo.setAttribute('aSize', new THREE.BufferAttribute(siz, 1));
+    geo.setAttribute('aRand', new THREE.BufferAttribute(rnd, 1));
+    pts = new THREE.Points(geo, mat);
+    pts.frustumCulled = false;
+    scene.add(pts);
+    render();
+  }
+
+  layout();
+  let rz = null;
+  window.addEventListener('resize', () => {
+    if (rz !== null) return;
+    rz = requestAnimationFrame(() => { rz = null; const done = uni.uScan.value > 1; layout(); if (done) { uni.uScan.value = 1.2; uni.uFlash.value = 0; render(); } });
+  });
+
+  if (reduced) { uni.uScan.value = 1.2; uni.uFlash.value = 0; render(); return; }
+
+  /* the scan runs once, when the strip itself comes into view. It has to
+     be the strip and not the section: the section is tall enough to be
+     intersecting the moment the page loads, which would spend the reveal
+     off screen before anyone has scrolled to it. */
+  let ran = false;
+  new IntersectionObserver((es) => {
+    if (!es[0].isIntersecting || ran) return;
+    ran = true;
+    let raf = null;
+    const tick = () => { render(); raf = requestAnimationFrame(tick); };
+    raf = requestAnimationFrame(tick);
+    gsap.to(uni.uScan, { value: 1.16, duration: 2.1, ease: 'power1.inOut' });
+    gsap.to(uni.uFlash, { value: 0, duration: 0.5, delay: 1.85,
+      onComplete: () => { cancelAnimationFrame(raf); render(); } });
+  }, { rootMargin: '0px 0px -14% 0px' }).observe(cv);
+}
+
+whenSurvey((SV) => {
+  if (!SV || !SV.CITY) return;
+  try { buildSkyline(SV.CITY); } catch (e) {}
+  if (!SV.STAR || !canvas || !pane) return;
+  const STAR = SV.STAR;
+
+  /* ---- one body of N points, two coordinate books: the mark, and
+     the night it lets go into ---- */
+  const N = Math.min(12000, Math.max(7000, Math.round(innerWidth * 7.2)));
+  const P0 = new Float32Array(N * 3), SKY = new Float32Array(N * 3);
+  const COL = new Float32Array(N * 3);
+  const PH = new Float32Array(N), SPIN = new Float32Array(N), ORB = new Float32Array(N);
+
+  /* a real scramble, not a modulo -- the low bits of i * K are linear
+     in i, and any structure built on them lines its points up in rows */
+  const rnd = (i, s) => {
+    let h = (i * 374761393 + s * 668265263) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 1274126177) >>> 0;
+    return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+  };
+  const LO = [0.40, 0.46, 0.98], MI = [0.74, 0.77, 1.0], HI = [0.97, 0.98, 1.0];
+  const setC = (arr, i, c) => { arr[i * 3] = c[0]; arr[i * 3 + 1] = c[1]; arr[i * 3 + 2] = c[2]; };
+  const mix3 = (a, b, t) => [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t];
+
+  /* the mark, as a volumetric lattice -- every site gets three shells
+     of depth so the sigil is a body, not a decal. Its colour is one
+     unbroken ramp: light at the crown, the brand blue in the tail,
+     and nothing in between steps. */
+  const shells = [-0.06, 0, 0.06];
+  for (let i = 0; i < N; i++) {
+    const si = Math.floor(i * STAR.n / N) % STAR.n;
+    const jx = (rnd(i, 1) - 0.5) * STAR.spacing * 1.7;
+    const jy = (rnd(i, 2) - 0.5) * STAR.spacing * 1.7;
+    P0[i * 3] = (STAR.x[si] + jx) * 1.18;
+    P0[i * 3 + 1] = (STAR.y[si] + jy) * 1.18;
+    P0[i * 3 + 2] = shells[i % 3] + (rnd(i, 3) - 0.5) * 0.05;
+    let top = STAR.y[si] + 0.5 + (rnd(i, 9) - 0.5) * 0.08;
+    if (top < 0) top = 0; if (top > 1) top = 1;
+    setC(COL, i, top < 0.5 ? mix3(LO, MI, top / 0.5) : mix3(MI, HI, (top - 0.5) / 0.5));
+    PH[i] = rnd(i, 4);
+  }
+
+  /* the night: one galaxy, learned from the photographs rather than
+     from a diagram of one. Andromeda's recipe: a blazing core inside
+     a soft bulge; a smooth inner disk; a dark lane; then the bright
+     ring of arms wound so tight they read as a ring; a rim that thins
+     away. The disk lies steeply on the diagonal, a small companion
+     and loose field stars stand in the clear sky around it, and it
+     turns differentially -- same radius same speed, faster at the
+     hub, so the winding never shreds. Coordinates stay in the
+     galaxy's own plane; the shader turns the disk there first and
+     only then flattens and tips it, so the turning never carries a
+     point off the disk. */
+  const GALC = new Float32Array(N * 3), GALA = new Float32Array(N), GALS = new Float32Array(N);
+  /* screen -> galaxy plane, for the points that live off the disk */
+  const cT = 0.91309, sT = -0.40776, FLAT = 0.34;
+  const toPlane = (sx, sy) => [cT * sx + sT * sy, (-sT * sx + cT * sy) / FLAT];
+  for (let i = 0; i < N; i++) {
+    const k = i % 100;
+    let gx, gy, gz, rr, col, ga, gs, onDisk = true;
+    if (k < 26) {
+      /* the bulge: a blazing heart, densest at the very centre */
+      const r = 0.27 * Math.pow(rnd(i, 5), 1.5);
+      const a = rnd(i, 7) * 6.2832;
+      gx = Math.cos(a) * r; gy = Math.sin(a) * r * 0.82;
+      gz = (rnd(i, 8) - 0.5) * 0.18;
+      rr = r / 0.84;
+      const q = 1 - r / 0.27;
+      col = [0.88 + 0.12 * q, 0.87 + 0.12 * q, 0.84 + 0.13 * q];
+      ga = 0.7 + 0.3 * q; gs = 0.95 + 0.35 * q;
+    } else if (k < 58) {
+      /* the inner disk, thinning outward, with the dark lane cut out */
+      let r = -0.26 * Math.log(1 - 0.96 * rnd(i, 5));
+      if (r > 0.84) r = 0.84;
+      if (r > 0.34 && r < 0.46) r -= 0.14;
+      const a = rnd(i, 7) * 6.2832;
+      gx = Math.cos(a) * r; gy = Math.sin(a) * r;
+      gz = (rnd(i, 8) - 0.5) * 0.07;
+      rr = r / 0.84;
+      col = [0.68, 0.71, 0.90];
+      ga = 0.34 + 0.3 * (1 - rr); gs = 0.8;
+    } else if (k < 90) {
+      /* the bright ring: two arms wound so tight they close the circle */
+      const arm = (i >> 1) % 2;
+      const r = 0.44 + 0.38 * Math.pow(rnd(i, 5), 0.8);
+      const th = arm * Math.PI + Math.log(r / 0.44) / 0.09 + (rnd(i, 6) - 0.5) * 0.30;
+      gx = Math.cos(th) * r + (rnd(i, 10) - 0.5) * 0.04;
+      gy = Math.sin(th) * r + (rnd(i, 11) - 0.5) * 0.04;
+      gz = (rnd(i, 8) - 0.5) * 0.05;
+      rr = r / 0.84;
+      const q = (r - 0.44) / 0.38;
+      col = [0.84 - 0.26 * q, 0.87 - 0.22 * q, 1.0];
+      ga = 0.62 - 0.18 * q; gs = 0.9;
+    } else if (k < 98) {
+      /* loose field stars across the whole frame, a few of them warm,
+         the way every one of the photographs is sprinkled */
+      onDisk = false;
+      const p = toPlane((rnd(i, 5) * 2 - 1) * 0.9, (rnd(i, 6) * 2 - 1) * 0.68);
+      gx = p[0]; gy = p[1];
+      gz = (rnd(i, 8) - 0.5) * 0.5;
+      col = rnd(i, 15) < 0.2 ? [1.0, 0.86, 0.70] : [0.85, 0.88, 1.0];
+      ga = 0.35 + 0.5 * rnd(i, 16); gs = 0.7 + 0.6 * rnd(i, 17);
+    } else {
+      /* the small companion, standing in the clear sky off the rim */
+      onDisk = false;
+      const r = 0.07 * Math.pow(rnd(i, 5), 1.4);
+      const a = rnd(i, 7) * 6.2832;
+      const p = toPlane(0.48 + Math.cos(a) * r, 0.34 + Math.sin(a) * r * 0.8);
+      gx = p[0]; gy = p[1];
+      gz = (rnd(i, 8) - 0.5) * 0.06;
+      const q = 1 - r / 0.07;
+      col = [0.86 + 0.1 * q, 0.86 + 0.1 * q, 0.95 + 0.05 * q];
+      ga = 0.5 + 0.4 * q; gs = 0.8;
+    }
+    if (onDisk) {
+      if (gx < -0.87) gx = -0.87; if (gx > 0.87) gx = 0.87;
+      if (gy < -0.87) gy = -0.87; if (gy > 0.87) gy = 0.87;
+      SPIN[i] = 0.8 + 0.9 * (1 - rr) + 0.3 * (rnd(i, 12) - 0.5);
+      ORB[i] = 0.10 + 0.26 * (1 - rr);
+    } else {
+      /* the sky beyond the disk barely moves: it neither swirls out
+         with the arms nor turns with the disk once parked */
+      SPIN[i] = (rnd(i, 12) - 0.5) * 0.25;
+      ORB[i] = 0.012;
+    }
+    SKY[i * 3] = gx; SKY[i * 3 + 1] = gy; SKY[i * 3 + 2] = gz;
+    setC(GALC, i, col);
+    GALA[i] = ga; GALS[i] = gs;
+  }
+
+  /* ---- geometry + shader: scatter, twinkle and puff all on the GPU ---- */
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(P0, 3));
+  geo.setAttribute('aGal', new THREE.BufferAttribute(SKY, 3));
+  geo.setAttribute('aGalCol', new THREE.BufferAttribute(GALC, 3));
+  geo.setAttribute('aGalA', new THREE.BufferAttribute(GALA, 1));
+  geo.setAttribute('aGalS', new THREE.BufferAttribute(GALS, 1));
+  geo.setAttribute('aCol', new THREE.BufferAttribute(COL, 3));
+  geo.setAttribute('aPhase', new THREE.BufferAttribute(PH, 1));
+  geo.setAttribute('aSpin', new THREE.BufferAttribute(SPIN, 1));
+  geo.setAttribute('aOrb', new THREE.BufferAttribute(ORB, 1));
+
+  /* the body is drawn twice: a sharp core and a wide soft copy behind
+     it. Both materials share the same uniform objects, so morph, twinkle
+     and puff stay in lockstep and only size and strength differ -- that
+     second pass is the whole difference between a smudge in the dark and
+     an object standing in light. */
+  const uni = {
+    uScat: { value: 0 },
+    uTime: { value: 0 },
+    uPuff: { value: 0 }
+  };
+  const mkMat = (sizeMul, fade) => new THREE.ShaderMaterial({
+    uniforms: Object.assign({}, uni, { uSize: { value: 6.0 * sizeMul }, uFade: { value: fade } }),
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexShader: `
+      uniform float uTime, uPuff, uScat, uSize;
+      attribute vec3 aGal, aCol, aGalCol;
+      attribute float aPhase, aSpin, aOrb, aGalA, aGalS;
+      varying vec3 vC; varying float vA;
+      void main() {
+        float t = uScat;
+        /* the disk turns in its own plane -- differentially, faster at
+           the hub -- and the road out and back is an arc in that same
+           plane, so letting go reads as a swirl, never an explosion.
+           Only after the turn is the disk flattened and tipped. */
+        float ang = uTime * aOrb * t + sin(t * 3.14159) * aSpin;
+        float ca = cos(ang), sa = sin(ang);
+        vec2 g = vec2(aGal.x * ca - aGal.y * sa, aGal.x * sa + aGal.y * ca);
+        vec2 f = vec2(g.x, g.y * 0.34);
+        vec3 sky = vec3(f.x * 0.91309 + f.y * 0.40776,
+                        -f.x * 0.40776 + f.y * 0.91309, aGal.z);
+        vec3 p = mix(position, sky, t);
+        /* held: the whole body puffs outward and every point stirs */
+        p *= 1.0 + 0.06 * uPuff;
+        p += vec3(sin(uTime * 3.1 + aPhase * 37.0),
+                  sin(uTime * 2.7 + aPhase * 51.0),
+                  sin(uTime * 3.7 + aPhase * 23.0)) * 0.011 * uPuff;
+        float tw = 0.74 + 0.5 * abs(sin(uTime * 0.9 + aPhase * 6.2831));
+        tw += 0.3 * t * sin(uTime * 2.3 + aPhase * 9.42);
+        /* out in the night every point wears the galaxy's own colour:
+           cream at the core, grey-blue disk, the ring going brand blue,
+           a few warm field stars -- and wears the mark's gradient again
+           the moment it lands */
+        vC = mix(aCol, aGalCol, t) * tw;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        float dep = clamp((mv.z + 2.6) / 1.4, 0.0, 1.0);
+        vA = 0.8 * (0.52 + 0.48 * dep) * mix(1.0, aGalA, t);
+        gl_PointSize = mix(1.0, 0.76 * aGalS, t) * uSize / max(0.6, -mv.z);
+        gl_Position = projectionMatrix * mv;
+      }`,
+    fragmentShader: `
+      precision mediump float;
+      uniform float uFade;
+      varying vec3 vC; varying float vA;
+      void main() {
+        vec2 q = gl_PointCoord - 0.5;
+        float d = dot(q, q);
+        if (d > 0.25) discard;
+        float soft = smoothstep(0.25, 0.05, d);
+        gl_FragColor = vec4(vC, vA * soft * uFade);
+      }`
+  });
+  const matCore = mkMat(1.0, 1.0);
+  const matGlow = mkMat(3.4, 0.12);
+  const points = new THREE.Points(geo, matCore);
+  const glow = new THREE.Points(geo, matGlow);
+  points.frustumCulled = false; glow.frustumCulled = false;
+  const body = new THREE.Group();
+  body.add(glow); body.add(points);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: false, alpha: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  const PR = renderer.getPixelRatio();
+  matCore.uniforms.uSize.value = 7.4 * PR;
+  matGlow.uniforms.uSize.value = 7.4 * 3.4 * PR;
+  const scene = new THREE.Scene();
+  scene.add(body);
+  const camera = new THREE.PerspectiveCamera(34, 1, 0.1, 20);
+  camera.position.set(0, 0, 2.6);
+
+  /* the serhant handling, adapted: damped grab, momentum on release,
+     never tipped over the poles. One departure, on purpose -- serhant's
+     Earth can spin forever because a globe has no front, but the star
+     mark and the skyline do. So the body sways about its face instead
+     of orbiting, the drag is clamped to stay short of edge-on, and
+     every homecoming registers the view back to front. */
+  const controls = new OrbitControls(camera, canvas);
+  controls.enableDamping = !reduced;
+  controls.dampingFactor = 0.055;
+  controls.rotateSpeed = 0.85;
+  controls.enablePan = false;
+  controls.enableZoom = false;
+  controls.minPolarAngle = Math.PI / 2 - 0.55;
+  controls.maxPolarAngle = Math.PI / 2 + 0.55;
+  controls.minAzimuthAngle = -0.85;
+  controls.maxAzimuthAngle = 0.85;
+
+  /* re-register the camera to the front, used by every re-form */
+  const camReset = () => {
+    if (!window.gsap || reduced) { camera.position.set(0, 0, 2.6); camera.lookAt(0, 0, 0); return; }
+    const az = { a: Math.atan2(camera.position.x, camera.position.z), p: Math.acos(Math.max(-1, Math.min(1, camera.position.y / 2.6))) };
+    gsap.to(az, {
+      a: 0, p: Math.PI / 2, duration: 1.0, ease: 'power2.inOut', overwrite: 'auto',
+      onUpdate: () => {
+        const sp = Math.sin(az.p);
+        camera.position.set(2.6 * sp * Math.sin(az.a), 2.6 * Math.cos(az.p), 2.6 * sp * Math.cos(az.a));
+        camera.lookAt(0, 0, 0);
       }
     });
+  };
 
-    mobileLinks.forEach((link) => {
-      link.addEventListener('click', () => {
-        closeNav();
-      });
-    });
-  </script>
+  const render = () => renderer.render(scene, camera);
+
+  /* half the frame the camera sees at the body's own plane */
+  const HALF_V = Math.tan((34 * Math.PI / 180) / 2) * 2.6;
+
+  function resize() {
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (!w || !h) return;
+    renderer.setSize(w, h, false);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+    /* the mark and the scattered night both have to stand whole in the
+       frame, halo included: the night runs to about 0.92 across and
+       0.72 up, the mark to 0.70, and the two point passes bloom a
+       little past everything. Fitting to that beats guessing. */
+    const halfH = HALF_V * camera.aspect, bloom = 0.09;
+    const fit = Math.min((HALF_V - bloom) / 0.73, (halfH - bloom) / 0.92);
+    body.scale.setScalar(Math.min(1.25, fit));
+    if (reduced) render();
+  }
+  let rzId = null;
+  window.addEventListener('resize', () => {
+    if (rzId !== null) return;
+    rzId = requestAnimationFrame(() => { rzId = null; resize(); });
+  });
+  resize();
+
+  /* held / released: the puff, straight from their playbook */
+  let down = { t: 0, moved: 0 };
+  const puffTo = (v) => {
+    if (window.gsap && !reduced) gsap.to(uni.uPuff, { value: v, duration: v ? 0.5 : 0.22, ease: 'power2.out' });
+  };
+  canvas.addEventListener('pointerdown', (e) => {
+    down = { t: performance.now(), moved: 0, x: e.clientX, y: e.clientY };
+    puffTo(1);
+  });
+  canvas.addEventListener('pointermove', (e) => {
+    if (e.buttons) down.moved += Math.abs(e.movementX) + Math.abs(e.movementY);
+  });
+  const release = () => puffTo(0);
+  canvas.addEventListener('pointercancel', release);
+
+  /* a press that never travelled is a click: the mark lets go of its
+     points. They swirl out into a turning night, hold there a beat,
+     then find their own way home -- and the view registers back to
+     front while they land. */
+  let busy = false;
+  canvas.addEventListener('pointerup', () => {
+    release();
+    if (down.moved < 8 && performance.now() - down.t < 420) {
+      if (busy || reduced || !window.gsap) return;
+      busy = true;
+      gsap.timeline({ onComplete: () => { busy = false; } })
+        .to(uni.uScat, { value: 1, duration: 1.15, ease: 'power2.inOut' })
+        .add(camReset, '+=1.4')
+        .to(uni.uScat, { value: 0, duration: 1.5, ease: 'power3.inOut' }, '<');
+    }
+  });
+
+  /* run only while visible and the tab is front, serhant's lifecycle */
+  let rafId = null, running = false, visible = false;
+  const loop = () => {
+    if (!running) return;
+    uni.uTime.value += 0.016;
+    /* the ambient life: a slow sway about the face, never a full turn */
+    body.rotation.y = Math.sin(uni.uTime.value * 0.21) * 0.34;
+    body.rotation.x = Math.sin(uni.uTime.value * 0.157) * 0.05;
+    controls.update();
+    render();
+    rafId = requestAnimationFrame(loop);
+  };
+  const start = () => { if (running) return; running = true; rafId = requestAnimationFrame(loop); };
+  const stop = () => { running = false; if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; } };
+  new IntersectionObserver((es) => {
+    visible = es[0].isIntersecting;
+    if (visible && !document.hidden) { if (reduced) render(); else start(); }
+    else stop();
+  }, { rootMargin: '80px' }).observe(pane);
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden || !visible) stop();
+    else if (!reduced) start();
+  });
+  if (reduced) { controls.addEventListener('change', render); render(); }
+});
+</script>
 </body>
 </html>

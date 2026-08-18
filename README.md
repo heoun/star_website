@@ -21,7 +21,7 @@ npm run build
 npm run deploy
 ```
 
-`npm run dev` serves the source files from the repository root and renders shared HTML partials in memory; it does not run the Worker, so `/api/contact` is unavailable there. To preview the full site including the Worker, run `npm run build` followed by `npx wrangler dev`.
+`npm run dev` serves the source files under `site/` and renders shared HTML partials in memory; it does not run the Worker, so `/api/contact` is unavailable there. To preview the full site including the Worker, run `npm run build` followed by `npx wrangler dev`.
 
 ## How the project is organized
 
@@ -44,8 +44,9 @@ into `dist/`, so deployed URLs never contain the `site/` prefix.
 │   ├── our-team/                  Team page
 │   ├── admin/                     Listings admin page (behind Cloudflare Access)
 │   ├── partials/                  Shared HTML fragments (not deployed)
-│   ├── shared/                    Shared listing-page CSS and JavaScript
-│   ├── jpg/ and png/              Website image assets
+│   ├── shared/                    Design system, page runtime, listing and property scripts, vendored browser libraries
+│   ├── video/                     Background films and their poster frames
+│   ├── png/                       Brand marks (masters; pages draw the logo as inline SVG)
 │   └── data/                      Offline fallback listings JSON
 ├── worker/                        Cloudflare Worker (listings feed, admin API, applications, contact form)
 ├── supabase/                      Database schema and one-off import scripts
@@ -126,6 +127,74 @@ it through the pipeline: new → contacted → fee pending → screening → in 
 reports, application-fee payment, and DocuSign signing happen in outside
 systems for now; record their outcomes with the status dropdown and notes.
 
+## How the site is designed
+
+The look is defined once in `site/shared/site.css` and used by every page: change a
+token there and the whole site follows. `site/index.html` carries additional styles
+inline because the home page is the only page with the full-bleed films and the
+particle instrument.
+
+### Palette and type
+
+| Token | Value | Used for |
+| --- | --- | --- |
+| `--paper` / `--paper2` | `#f6f4ef` / `#efece3` | page ground and inset panels |
+| `--ink` | `#141834` | headlines and body text |
+| `--soft` | `#666d8a` | secondary text and labels |
+| `--line` / `--line2` | `#dcd8cd` / `#c9c4b6` | rules and card borders |
+| `--blue` | `#3E3EE5` | the accent, reserved for the active thing: status chips, primary buttons, the logo, hover states |
+| `--navy` | `#101538` | footer and dark panels |
+
+Three families, loaded from Google Fonts: Inter Tight for display headlines,
+Inter for body copy, IBM Plex Mono for kickers, labels, and figures set in
+uppercase with wide letter spacing. Prices and counts carry the `.num` class so
+digits are tabular and columns align.
+
+Layout constants: content sits inside `.wrap` (max 1440px with fluid gutters), the
+fixed header is 62px tall, and the lower sections of a page share one measure,
+`--sect: clamp(620px, 92svh, 1020px)`, so they stand the same height.
+
+### Page structure
+
+Pages follow the same order: fixed header, page head (a mono kicker above the
+`h1`), content sections each introduced by a rule and a heading, a call-to-action
+band, and the dark footer carrying the crest and navigation. Cards, forms, fact
+lists, and the property sheet share one grammar of hairline rules and mono labels,
+so a new page needs only the existing classes.
+
+Listing cards are styled in `site.css` but produced by `shared/listings-page.js`
+from the live feed, so the same markup serves the home page, rental, buy, and
+commercial views.
+
+The three listing pages close with a skyline strip. `shared/b64-skyline-plate.js`
+carries a small greyscale plate in which each pixel value is how deep into the
+distance that part of the city sits; `shared/site.js` paints it as dots on
+`canvas.cityfoot`, turning that depth into colour, dot size, and opacity, so the
+city recedes rather than reading as a flat silhouette.
+
+### The home page
+
+The home page runs in this order: a full-bleed film behind the headline and search
+bar, featured listings from the live feed, a statement that lights word by word as
+it scrolls, About Star over a second film, and a spread where New Development holds
+the left half of the screen while Submit Your Request scrolls past on the right.
+
+The instrument on `#orb` is a WebGL point cloud (three.js) that holds the Star mark
+and scatters into a galaxy when dragged or clicked, then re-forms.
+
+### Motion and its off switch
+
+Scroll animation uses GSAP with ScrollTrigger, and Lenis for smooth scrolling.
+`shared/site.js` handles everything else without libraries: the mobile navigation
+sheet, reveal-on-scroll, and the skyline strip. Browser libraries are vendored in
+`site/shared/vendor/` and served from the site, so no page depends on a third-party
+CDN to render. The only outside requests a visitor's browser makes are the web
+fonts and, on the application form, the optional Cloudflare Turnstile widget.
+
+When the browser reports `prefers-reduced-motion: reduce`, `site.js` puts
+`.reduced` on the document, which turns off reveals and animation and stops the
+background films from autoplaying.
+
 ## What is `dist/`?
 
 `dist/` is generated output produced from the source files by `npm run build`. It is not tracked in Git: the deploy workflow regenerates it in CI on every push to `main`, and local builds exist only for preview or a manual `npm run deploy`.
@@ -145,7 +214,7 @@ index.html
 buy/            rental/          commercial/
 listings/       new-development/ property/
 apply/          contact-us/      our-team/
-admin/          jpg/             png/
+admin/          png/             video/
 data/           shared/
 favicon.ico     favicon.svg      apple-touch-icon.png
 ```
@@ -192,8 +261,9 @@ Until step 3 is complete the admin routes reject every request, and the listings
 
 Commit these files when they change:
 
-- Everything under `site/` — pages, `admin/`, `partials/`, `shared/`, optimized
-  assets in `jpg/` and `png/`, and the `data/listings.json` offline fallback
+- Everything under `site/` — pages, `admin/`, `partials/`, `shared/`, the brand
+  marks in `png/`, the films and posters in `video/`, and the `data/listings.json`
+  offline fallback
 - `worker/`, `supabase/`, `scripts/`, and `wrangler.jsonc`
 - `.github/workflows/`
 - Project documentation and package metadata
@@ -207,13 +277,16 @@ Do not commit:
 - `node_modules/`, `.wrangler/`, editor files, or operating-system metadata
 - Temporary exports or unoptimized working assets that are not used by the site
 
-The original logo source documents (`.ai`/`.pdf`) are intentionally not tracked: the website only uses the optimized image in `jpg/`. Archive the brand source files in shared storage (e.g. Google Drive), not in this repository.
+The pages draw the logo as inline SVG — in the header, the footer crest, and the favicons — so no logo image is downloaded to render a page. `site/png/` keeps the brand masters for uses outside the page chrome, such as social preview images. The original logo source documents (`.ai`/`.pdf`) are intentionally not tracked; archive them in shared storage (e.g. Google Drive), not in this repository.
 
 ## Common workflows
 
 ### Change page content or styling
 
-1. Edit the source page, shared CSS/JavaScript, or partial.
+1. Edit the source page for its content. For anything that should look the same
+   everywhere — colours, type, spacing, cards, forms, header, footer — edit
+   `site/shared/site.css` rather than the page, and `site/shared/site.js` for
+   shared behavior.
 2. Preview with `npm run dev`.
 3. Commit and push; merging to `main` deploys automatically.
 
@@ -285,7 +358,7 @@ npm run build
 node --check server.js
 node --check scripts/build.js
 node --check scripts/render-html.js
-for file in worker/*.js admin/admin.js; do node --check "$file"; done
+for file in worker/*.js site/shared/*.js site/admin/admin.js site/apply/apply.js; do node --check "$file"; done
 ```
 
 Also verify that:
