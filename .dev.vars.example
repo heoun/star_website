@@ -1,0 +1,45 @@
+# Copy to .dev.vars and fill in. .dev.vars is gitignored, is never uploaded by
+# `wrangler deploy`, and does not exist in GitHub Actions — nothing here can
+# reach production.
+#
+#     cp .dev.vars.example .dev.vars
+#
+# Keys are left present and empty rather than commented out: a value typed
+# after a "#" looks filled in but is not. `npm run dev` says which of the two
+# it is finding.
+
+# Lets you into /admin locally. Cloudflare Access does not exist on your
+# machine, so without this every admin route answers 403. It is only honoured
+# on a loopback hostname, so setting it can never open production.
+# Use your own address: it is what the audit trail records for local changes.
+DEV_ADMIN_EMAIL=
+
+# The DEVELOPMENT Supabase project — not production. Create a second free
+# project and run supabase/schema.sql on it, then paste its details here.
+# The admin page prints the project name it is connected to, so if this ever
+# says production you will see it before you delete anything.
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# What to call this project in the admin banner. Supabase keeps the display
+# name in its dashboard only — neither the URL nor the key carries it — so
+# write it down here. The project ref is shown beside it either way.
+DEV_SUPABASE_LABEL=
+
+# Encrypts applicant SSNs. A throwaway value is right here — it must NOT be the
+# production key, or a local database dump would decrypt real applications.
+#     openssl rand -base64 32
+APP_ENCRYPTION_KEY=
+
+# Optional. Listing photos live in R2, and your local bucket is empty, so every
+# image 404s and the site looks broken. With this set, a local miss is read from
+# the live site instead. Reading only — uploads and deletes stay local.
+DEV_MEDIA_ORIGIN=https://starreusa.com
+
+# Deliberately absent: RESEND_API_KEY. On a loopback request the Worker prints
+# notification emails to this terminal instead of sending them, so local form
+# submissions never reach a real inbox.
+#
+# Also absent: TURNSTILE_SECRET_KEY. Human verification is skipped when it is
+# unset, which is what you want locally. CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD
+# are production-only.

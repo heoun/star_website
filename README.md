@@ -11,7 +11,10 @@ Requirements:
 No npm dependencies need to be installed. The development server and build use Node.js built-in modules; Cloudflare's wrangler CLI is fetched on demand through npx.
 
 ```bash
-# Preview the source site at http://127.0.0.1:8000
+# Copy the development configuration and fill it in (see below)
+cp .dev.vars.example .dev.vars
+
+# The real Worker, on your machine, at http://127.0.0.1:8787
 npm run dev
 
 # Rebuild the dist/ output
@@ -21,7 +24,74 @@ npm run build
 npm run deploy
 ```
 
-`npm run dev` serves the source files under `site/` and renders shared HTML partials in memory; it does not run the Worker, so `/api/contact` is unavailable there. To preview the full site including the Worker, run `npm run build` followed by `npx wrangler dev`.
+## Development
+
+`npm run dev` runs `worker/index.js` under `wrangler dev`, exactly as Cloudflare
+runs it, and watches `site/` so a saved edit appears on the next reload without
+a restart. Everything works locally: the listings feed, the apply and contact
+forms, `/admin/`, and lease generation with its live document preview.
+
+`npm run preview` is the older static server (`server.js`) on port 8000. It
+starts instantly and needs no configuration, but it has no Worker in it — no
+`/api`, no `/admin`, no Supabase — so it is only useful for a quick look at page
+markup and styling.
+
+### Telling development apart from production
+
+Three environment-specific behaviours, all decided in `worker/env.js`:
+
+**`/admin` without Cloudflare Access.** Access does not exist on your machine
+and the Worker fails closed, so admin routes would answer 403. A local
+administrator identity opens them, behind two independent locks that must both
+hold: `DEV_ADMIN_EMAIL` has a value, and the request arrived on a loopback
+hostname. `DEV_ADMIN_EMAIL` can only come from `.dev.vars`, which is gitignored,
+is never uploaded by `wrangler deploy`, and does not exist in GitHub Actions;
+production traffic never arrives as `localhost`. Either lock alone keeps this
+shut in production.
+
+**Email.** On a loopback request, notification email is printed to the dev
+server's terminal instead of being sent, so a local form submission cannot reach
+a real inbox — and you get to read the whole message while you are working on
+its wording.
+
+**Media.** Your local R2 bucket is empty, so every listing photo would 404. Set
+`DEV_MEDIA_ORIGIN` and a local miss is read from the live site instead. Reading
+only: uploads and deletes stay in the local bucket.
+
+The admin page shows an amber **Development** banner naming the Supabase project
+it is connected to. Running locally is obvious; being pointed at the production
+database while doing so is not, and that is the mistake worth catching.
+
+Supabase keeps a project's display name in its dashboard only — neither the URL
+nor the service role key carries it, both identify a project by its ref — so set
+`DEV_SUPABASE_LABEL` to whatever you call yours and the banner shows it beside
+the ref. The label is typed by hand and can go stale; the ref is read from the
+URL actually in use and cannot, which is why both are shown.
+
+Wrangler reloads the Worker when `.dev.vars` changes, but it reads the file once
+for its bindings: adding a name that was not there before needs a restart.
+
+### The development database
+
+Development uses its own Supabase project, so a mis-click locally cannot delete
+a real listing and local lease settings cannot land in production tables.
+
+1. Create a second (free) Supabase project.
+2. Run `supabase/schema.sql` on it.
+3. Put its URL and service role key in `.dev.vars`.
+4. Optionally seed it with a copy of the live listings:
+
+   ```bash
+   SOURCE_SUPABASE_URL=https://<production>.supabase.co \
+   SOURCE_SUPABASE_SERVICE_ROLE_KEY=<production service role key> \
+   npm run seed:dev
+   ```
+
+   Rows keep their ids, so `DEV_MEDIA_ORIGIN` finds the photos at the same
+   `/media/` URLs and the local site looks like the real one without copying a
+   byte out of R2. The script refuses to run if `.dev.vars` turns out to point
+   at the same project as the source. Applications are never copied: they hold
+   real names, addresses and encrypted SSNs.
 
 ## How the project is organized
 
@@ -50,12 +120,13 @@ into `dist/`, so deployed URLs never contain the `site/` prefix.
 │   └── data/                      Offline fallback listings JSON
 ├── worker/                        Cloudflare Worker (listings feed, admin API, applications, contact form)
 ├── supabase/                      Database schema and one-off import scripts
-├── scripts/                       Static build and HTML rendering scripts
+├── scripts/                       Build, HTML rendering, dev server, and dev seeding
 ├── .github/workflows/             CI build and deploy workflow
 ├── notes/                         Working files — design drafts, requirement docs (not tracked in Git)
 ├── wrangler.jsonc                 Cloudflare Workers configuration
 ├── dist/                          Generated build output (not tracked in Git)
-├── server.js                      Local development server
+├── server.js                      Static-only preview server (npm run preview)
+├── .dev.vars.example              Template for local configuration (.dev.vars is gitignored)
 └── package.json                   Local development, build, and deploy commands
 ```
 
@@ -83,7 +154,7 @@ Editors manage listings at `/admin/`: create, edit, publish, delete, multi-photo
 
 ### Admin access
 
-`/admin/` and `/api/admin/*` are protected twice. A Cloudflare Access application gates the routes at the edge, and `worker/access.js` independently verifies the signature, audience, issuer, and expiry of the JSON Web Token that Access attaches. Verification fails closed: if `CF_ACCESS_TEAM_DOMAIN` or `CF_ACCESS_AUD` are unset, every admin request is rejected.
+`/admin/` and `/api/admin/*` are protected twice. A Cloudflare Access application gates the routes at the edge, and `worker/access.js` independently verifies the signature, audience, issuer, and expiry of the JSON Web Token that Access attaches. Verification fails closed: if `CF_ACCESS_TEAM_DOMAIN` or `CF_ACCESS_AUD` are unset, every admin request is rejected. That is also true on a developer's machine, which is why local work needs the two-lock development identity described under [Development](#development).
 
 The browser never talks to Supabase and never holds a database key. All reads and writes go through the Worker using the service role key, and the `listings` table has row-level security enabled with no policies, so the anon key cannot reach it either.
 
@@ -98,6 +169,8 @@ Required Worker secrets and variables:
 | `RESEND_API_KEY` | Contact form and application notification email (secret) |
 | `APP_ENCRYPTION_KEY` | AES-256 key for applicant SSNs, 32 random bytes base64 (secret) |
 | `TURNSTILE_SECRET_KEY` | Optional; enforces human verification on the application form (secret) |
+
+None of these are set locally except Supabase and `APP_ENCRYPTION_KEY`; `.dev.vars.example` says what a development machine needs instead.
 
 ### Rental applications
 
@@ -126,6 +199,40 @@ it through the pipeline: new → contacted → fee pending → screening → in 
 → sent to landlord → approved / declined → lease sent → lease signed. Credit
 reports, application-fee payment, and DocuSign signing happen in outside
 systems for now; record their outcomes with the status dropdown and notes.
+
+### Lease generation
+
+The admin turns an approved application into a ready-to-sign New York
+residential lease — the lease plus its thirteen riders and statutory notices —
+without anyone retyping the tenant's name into fourteen rider preambles.
+
+`lease/template/lease-template.docx` is the lease with every variable value
+replaced by a `{{placeholder}}`, and `lease/schema/fields.json` says where each
+of the 130 values comes from: 19 from the application and the listing, 110 from
+a stored setting, one typed in by the agent. Settings resolve in three layers,
+later winning: company (fees, fine schedule) < building (utilities, sprinkler,
+bedbug history, Good Cause exemption) < unit.
+
+A registry default is never a fallback when a lease is generated. Most of them
+came from one real building, so a field nobody stored counts as unanswered and
+the final lease is refused until it is filled in. An agent can still read a
+draft, which marks the gaps as `[ TO BE COMPLETED ]`.
+
+The Worker fills the template itself: `worker/zip.js` rewrites the .docx with
+the runtime's own compression streams, no library. The preview in the browser
+renders that same generated file with `docx-preview`, vendored under
+`site/admin/vendor/` with its licenses.
+
+Changing lease wording means editing the .docx in Word — no code — then
+`npm run build`. See [lease/README.md](lease/README.md) for the field model, how
+to add a field or a rider, and the two things still needed before leases can be
+sent through DocuSign.
+
+**One thing to know before using this in earnest:** RPL § 231-b has required a
+four-part flood history and risk disclosure in every New York residential lease
+since June 2023, and the landlord's source form does not contain one. Every
+lease generated from it inherits that gap. See the "Known gap" section in
+[lease/README.md](lease/README.md).
 
 ## How the site is designed
 
@@ -265,6 +372,9 @@ Commit these files when they change:
   marks in `png/`, the films and posters in `video/`, and the `data/listings.json`
   offline fallback
 - `worker/`, `supabase/`, `scripts/`, and `wrangler.jsonc`
+- `lease/` — the lease template, its field registry, and the tools that check
+  them. `*.docx` is otherwise git-ignored; `lease/template/` is the exception,
+  because the template is a source file rather than a working draft
 - `.github/workflows/`
 - Project documentation and package metadata
 
@@ -355,10 +465,9 @@ Before merging to `main`:
 
 ```bash
 npm run build
-node --check server.js
-node --check scripts/build.js
-node --check scripts/render-html.js
-for file in worker/*.js site/shared/*.js site/admin/admin.js site/apply/apply.js; do node --check "$file"; done
+for file in server.js scripts/*.js worker/*.js site/shared/*.js site/admin/*.js site/apply/apply.js; do node --check "$file"; done
+python3 lease/tools/check-fields.py
+node lease/tools/test-lease.mjs
 ```
 
 Also verify that:

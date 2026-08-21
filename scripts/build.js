@@ -20,6 +20,17 @@ for (const target of copyTargets) {
   copyRendered(source, destination);
 }
 
+// The lease template ships as an asset so the Worker can fetch it when filling
+// a lease. It lands under /admin/, which wrangler.jsonc routes through the
+// Worker, so Cloudflare Access gates it like the rest of the admin.
+const leaseTemplate = path.join(root, "lease", "template", "lease-template.docx");
+if (fs.existsSync(leaseTemplate)) {
+  fs.mkdirSync(path.join(dist, "admin"), { recursive: true });
+  fs.copyFileSync(leaseTemplate, path.join(dist, "admin", "lease-template.docx"));
+} else {
+  console.warn("Warning: lease/template/lease-template.docx is missing; lease generation will fail.");
+}
+
 fs.writeFileSync(path.join(dist, ".assetsignore"), "*.php\n");
 
 console.log("Build complete. Deploy files from ./dist");

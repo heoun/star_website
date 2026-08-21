@@ -1,20 +1,39 @@
 import { verifyAccessRequest } from "./access.js";
+import { describeEnvironment, devIdentity } from "./env.js";
 import { purgeListingsCache } from "./listings.js";
 import {
+  applyLeaseSettings,
   deleteApplication,
   deleteListing,
   deleteMediaRow,
+  fetchApplicationForLease,
   fetchApplications,
   fetchApplicationSsn,
+  fetchBuilding,
+  fetchBuildings,
+  fetchLeaseLayers,
+  fetchLeaseSettingsLayer,
   fetchListings,
   fetchMediaRow,
+  insertBuilding,
   insertListing,
   insertMedia,
   toAdminListing,
   updateApplication,
+  updateBuilding,
   updateListing,
   updateMedia
 } from "./supabase.js";
+import {
+  LEASE_REGISTRY,
+  dealValues,
+  describeMissing,
+  fieldProvenance,
+  fillTemplate,
+  isManagerField,
+  leaseFilename,
+  resolveValues
+} from "./lease.js";
 import { decryptSsn, formatSsn } from "./ssn.js";
 import {
   IMAGE_TYPES,
@@ -115,6 +134,15 @@ function normalizeListingInput(body, { partial = false } = {}) {
   if (body.position !== undefined) values.position = optionalNumber(body.position, { integer: true }) ?? 0;
   if (body.published !== undefined) values.published = Boolean(body.published);
 
+  // Which building's lease settings this unit inherits. Empty unlinks it,
+  // which costs the unit its whole building settings layer.
+  if (body.building_id !== undefined) {
+    const buildingId = cleanLine(body.building_id, 40);
+    if (buildingId === "") values.building_id = null;
+    else if (!UUID_PATTERN.test(buildingId)) errors.push("building_id");
+    else values.building_id = buildingId;
+  }
+
   return { values, errors };
 }
 
@@ -153,7 +181,10 @@ async function handleUpload(request, env, listingId) {
 }
 
 export async function handleAdminRequest(request, env, ctx, pathname) {
-  const identity = await verifyAccessRequest(request, env);
+  // Access in production; on a developer's machine, the two-lock local
+  // identity from env.js. Both return the same shape, so nothing below here
+  // needs to know which one answered.
+  const identity = (await verifyAccessRequest(request, env)) || devIdentity(request, env);
   if (!identity) {
     return json({ error: "Not authorized." }, 403);
   }
@@ -163,7 +194,7 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
 
   try {
     if (resource === "me") {
-      return json({ email: identity.email });
+      return json({ email: identity.email, ...describeEnvironment(request, env) });
     }
 
     if (resource === "media" && id) {
@@ -172,6 +203,14 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
 
     if (resource === "applications") {
       return await handleApplications(request, env, id, subresource);
+    }
+
+    if (resource === "buildings") {
+      return await handleBuildings(request, env, id);
+    }
+
+    if (resource === "lease") {
+      return await handleLease(request, env, identity, id, subresource);
     }
 
     if (resource !== "listings") {
@@ -360,11 +399,341 @@ async function handleMediaItem(request, env, ctx, mediaId) {
 }
 
 export async function guardAdminPage(request, env) {
-  const identity = await verifyAccessRequest(request, env);
+  const identity = (await verifyAccessRequest(request, env)) || devIdentity(request, env);
   if (identity) return null;
 
   return new Response("Not authorized.", {
     status: 403,
     headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
   });
+}
+
+// ---- Lease generation ----
+
+const LEASE_SCOPES = ["company", "building", "unit"];
+const BUILDING_FIELDS = ["name", "street", "city", "state", "state_abbr", "zip"];
+
+async function handleBuildings(request, env, id) {
+  if (!id) {
+    if (request.method === "GET") {
+      return json({ buildings: await fetchBuildings(env) });
+    }
+
+    if (request.method === "POST") {
+      const body = await request.json();
+      const values = {};
+      for (const field of BUILDING_FIELDS) {
+        if (body[field] !== undefined) values[field] = cleanLine(body[field], 200) || null;
+      }
+      if (!values.name) return json({ error: "A building needs a name." }, 422);
+      return json({ building: await insertBuilding(env, values) }, 201);
+    }
+
+    return json({ error: "Method not allowed." }, 405);
+  }
+
+  if (!UUID_PATTERN.test(id)) return json({ error: "Building not found." }, 404);
+
+  if (request.method === "PATCH") {
+    const body = await request.json();
+    const values = {};
+    for (const field of BUILDING_FIELDS) {
+      if (body[field] !== undefined) values[field] = cleanLine(body[field], 200) || null;
+    }
+    if (Object.keys(values).length === 0) return json({ error: "Nothing to update." }, 400);
+    if (values.name === null) return json({ error: "A building needs a name." }, 422);
+
+    const row = await updateBuilding(env, id, values);
+    if (!row) return json({ error: "Building not found." }, 404);
+    return json({ building: row });
+  }
+
+  return json({ error: "Method not allowed." }, 405);
+}
+
+// Only manager-owned fields may be stored, and only in the shape the registry
+// describes. A settings layer carrying "rent.monthly" would let a stale number
+// override the application on a signed lease.
+function normalizeSettingsPatch(body) {
+  const patch = {};
+  const errors = [];
+
+  for (const [id, raw] of Object.entries(body || {})) {
+    if (!isManagerField(id)) {
+      errors.push(id);
+      continue;
+    }
+
+    const field = LEASE_REGISTRY.fields.find((candidate) => candidate.id === id);
+
+    if (field.type === "checkbox") {
+      patch[id] = Boolean(raw);
+      continue;
+    }
+
+    const text = cleanLine(raw, 400);
+
+    // Empty means "this layer no longer answers that field", which the
+    // database stores as the key being absent rather than as a blank value.
+    if (text === "") {
+      patch[id] = null;
+      continue;
+    }
+
+    if (field.type === "choice" && !field.options.includes(text)) {
+      errors.push(id);
+      continue;
+    }
+
+    patch[id] = text;
+  }
+
+  return { patch, errors };
+}
+
+async function handleLease(request, env, identity, id, subresource) {
+  if (id === "fields" && request.method === "GET") {
+    return json({ registry: LEASE_REGISTRY });
+  }
+
+  if (id === "settings") {
+    return await handleLeaseSettings(request, env, identity);
+  }
+
+  if (id === "document") {
+    return subresource
+      ? await handleLeaseDocument(request, env, subresource)
+      : await handleLeaseFromScratch(request, env);
+  }
+
+  return json({ error: "Unknown endpoint." }, 404);
+}
+
+async function handleLeaseSettings(request, env, identity) {
+  const url = new URL(request.url);
+
+  if (request.method === "GET") {
+    const listingId = url.searchParams.get("listing_id");
+
+    // A unit view needs all three layers: the screen shows which one answered
+    // each field, because inherited and set-here are different to a person
+    // deciding whether a lease is safe to send.
+    if (listingId) {
+      if (!UUID_PATTERN.test(listingId)) return json({ error: "Listing not found." }, 404);
+      const layers = await fetchLeaseLayers(env, listingId);
+      return json({ layers, provenance: fieldProvenance(layers) });
+    }
+
+    const scope = cleanLine(url.searchParams.get("scope"), 20) || "company";
+    if (!LEASE_SCOPES.includes(scope)) return json({ error: "Unknown settings scope." }, 422);
+
+    const buildingId = url.searchParams.get("building_id");
+    if (scope === "building" && !UUID_PATTERN.test(buildingId || "")) {
+      return json({ error: "A building is required for building settings." }, 422);
+    }
+
+    const row = await fetchLeaseSettingsLayer(env, {
+      scope,
+      buildingId: scope === "building" ? buildingId : null
+    });
+    return json({ scope, field_values: row?.field_values || {}, updated_at: row?.updated_at || null });
+  }
+
+  if (request.method === "PUT") {
+    const body = await request.json();
+    const scope = cleanLine(body.scope, 20);
+    if (!LEASE_SCOPES.includes(scope)) return json({ error: "Unknown settings scope." }, 422);
+
+    const buildingId = scope === "building" ? body.building_id : null;
+    const listingId = scope === "unit" ? body.listing_id : null;
+
+    if (scope === "building" && !UUID_PATTERN.test(buildingId || "")) {
+      return json({ error: "A building is required for building settings." }, 422);
+    }
+    if (scope === "unit" && !UUID_PATTERN.test(listingId || "")) {
+      return json({ error: "A listing is required for unit settings." }, 422);
+    }
+
+    const { patch, errors } = normalizeSettingsPatch(body.field_values);
+    if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
+    if (Object.keys(patch).length === 0) return json({ error: "Nothing to update." }, 400);
+
+    const row = await applyLeaseSettings(env, {
+      scope,
+      buildingId,
+      listingId,
+      patch,
+      actor: identity.email
+    });
+
+    return json({ settings: row });
+  }
+
+  return json({ error: "Method not allowed." }, 405);
+}
+
+// A lease with no application behind it.
+//
+// The credit-reporting chain that produces applications is not finished, so an
+// agent has to be able to start a lease from nothing and type all of it. The
+// stored settings for the apartment still supply what they can; everything else
+// arrives in `overrides`, deal fields included.
+async function handleLeaseFromScratch(request, env) {
+  if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+
+  const body = await request.json().catch(() => ({}));
+  const listingId = body.listing_id || null;
+  if (listingId && !UUID_PATTERN.test(listingId)) return json({ error: "Listing not found." }, 404);
+
+  let listing = null;
+  let layers = EMPTY_LAYERS;
+  let building = null;
+
+  if (listingId) {
+    listing = (await fetchListings(env, { publishedOnly: false })).find((row) => row.id === listingId) || null;
+    if (!listing) return json({ error: "Listing not found." }, 404);
+    if (listing.building_id) building = await fetchBuilding(env, listing.building_id);
+    layers = await fetchLeaseLayers(env, listingId);
+  }
+
+  const { patch: overrides, errors } = normalizeOverrides(body.overrides);
+  if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
+
+  // The apartment answers what it can — its address, its rent — so an agent
+  // starting from nothing is not retyping what the listing already knows.
+  // Everything about the tenancy stays empty until somebody types it.
+  const deal = dealValues({ application: null, listing, building, today: todayParts(body.today) });
+  const { values, missing } = resolveValues({ layers, deal, overrides });
+
+  return respondWithLease(request, env, {
+    mode: cleanLine(body.mode, 10) || "values",
+    values,
+    missing,
+    extras: { deal, provenance: fieldProvenance(layers), building_linked: Boolean(building) },
+    filename: leaseFilename({
+      application: { name: values["tenant.names"] || "" },
+      listing: listing || { title: "Lease" }
+    })
+  });
+}
+
+const EMPTY_LAYERS = { company: {}, building: {}, unit: {} };
+
+// The three modes every lease request answers in, in one place so the rule that
+// a final lease may not carry an unanswered required value cannot drift apart
+// between the two ways of asking for one.
+async function respondWithLease(request, env, { mode, values, missing, extras = {}, filename }) {
+  if (mode === "values") {
+    return json({ values, missing, missing_labels: describeMissing(missing), ...extras });
+  }
+
+  if (mode !== "draft" && mode !== "final") {
+    return json({ error: "Unknown lease mode." }, 422);
+  }
+
+  if (mode === "final" && missing.length > 0) {
+    return json({
+      error: `This lease is missing ${missing.length} required ${missing.length === 1 ? "value" : "values"}.`,
+      missing,
+      missing_labels: describeMissing(missing)
+    }, 422);
+  }
+
+  // A draft marks its own gaps, so nobody reads a blank line as an answer.
+  const marked = mode === "draft"
+    ? { ...values, ...Object.fromEntries(missing.map((id) => [id, "[ TO BE COMPLETED ]"])) }
+    : values;
+
+  const docx = await fillTemplate(env, request, marked);
+
+  return new Response(docx, {
+    headers: {
+      "Content-Type": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      "Content-Disposition": `attachment; filename="${filename}"`,
+      "Cache-Control": "no-store"
+    }
+  });
+}
+
+// Resolves every placeholder for one application and either reports what is
+// still unanswered or hands back the finished .docx.
+async function handleLeaseDocument(request, env, applicationId) {
+  if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+  if (!UUID_PATTERN.test(applicationId)) return json({ error: "Application not found." }, 404);
+
+  const body = await request.json().catch(() => ({}));
+  const application = await fetchApplicationForLease(env, applicationId);
+  if (!application) return json({ error: "Application not found." }, 404);
+
+  const listing = application.listings;
+  if (!listing) return json({ error: "This application's listing has been removed." }, 422);
+
+  const building = listing.building_id ? await fetchBuilding(env, listing.building_id) : null;
+  const layers = await fetchLeaseLayers(env, listing.id);
+
+  const { patch: overrides, errors } = normalizeOverrides(body.overrides);
+  if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
+
+  const today = todayParts(body.today);
+  const deal = dealValues({ application, listing, building, today });
+  const { values, missing } = resolveValues({ layers, deal, overrides });
+
+  return respondWithLease(request, env, {
+    mode: cleanLine(body.mode, 10) || "values",
+    values,
+    missing,
+    extras: {
+      deal,
+      provenance: fieldProvenance(layers),
+      building_linked: Boolean(building)
+    },
+    filename: leaseFilename({ application, listing })
+  });
+}
+
+// What the lease screen changed but did not save. It may correct the deal — a
+// tenant name, a date — and it may also change a manager value for this one
+// lease, which is the case the screen calls "this lease only": the apartment's
+// stored defaults are what the next lease starts from, and a one-off must not
+// disturb them.
+//
+// The cost is that a manager value changed this way is not audited, because
+// only the settings tables are. Storing the produced document together with the
+// exact values behind it is what closes that, and it is not built yet — see
+// lease/README.md. Until it is, a per-lease change to a legal assertion leaves
+// no trace once the .docx is downloaded.
+function normalizeOverrides(body) {
+  const patch = {};
+  const errors = [];
+
+  for (const [id, raw] of Object.entries(body || {})) {
+    const field = LEASE_REGISTRY.fields.find((candidate) => candidate.id === id);
+    if (!field) {
+      errors.push(id);
+      continue;
+    }
+    if (field.type === "checkbox") {
+      patch[id] = Boolean(raw);
+      continue;
+    }
+    const text = cleanLine(raw, 400);
+    if (field.type === "choice" && text !== "" && !field.options.includes(text)) {
+      errors.push(id);
+      continue;
+    }
+    patch[id] = text;
+  }
+
+  return { patch, errors };
+}
+
+function todayParts(value) {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(value || "").trim());
+  const date = match
+    ? { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) }
+    : null;
+  if (date) return date;
+
+  const now = new Date();
+  return { year: now.getUTCFullYear(), month: now.getUTCMonth() + 1, day: now.getUTCDate() };
 }

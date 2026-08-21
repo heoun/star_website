@@ -1,0 +1,1852 @@
+{
+  "version": 1,
+  "template": "lease/template/lease-template.docx",
+  "placeholder_syntax": "{{group.field}}",
+  "sources": {
+    "deal": "Filled from the application and the listing. The agent confirms it.",
+    "manager": "A building or company default, set once in admin settings.",
+    "agent": "The agent types this in for each lease.",
+    "_needs_setup": "Fields marked needs_setup have no default because the source lease left them blank. A manager has to supply a value before the first lease is generated.",
+    "_scope": "manager fields carry a scope: 'company' settings are the same everywhere; 'building' settings differ per building and their defaults came from one specific building, so review them before reusing.",
+    "_source_value": "The value the sample lease carried, kept as provenance. It is not a default: reusing it elsewhere would name the wrong entity or escrow account."
+  },
+  "groups": [
+    {
+      "id": "lease_terms",
+      "label": "Lease terms",
+      "description": "Dates, rent and the security deposit."
+    },
+    {
+      "id": "parties",
+      "label": "Parties",
+      "description": "Who the tenant and the landlord are."
+    },
+    {
+      "id": "property",
+      "label": "Property",
+      "description": "The unit's address, whole and in parts."
+    },
+    {
+      "id": "contacts",
+      "label": "Contacts",
+      "description": "Payment, management, legal notice and emergency contacts."
+    },
+    {
+      "id": "fees",
+      "label": "Fees and thresholds",
+      "description": "Standing charges and limits written into the lease."
+    },
+    {
+      "id": "utilities",
+      "label": "Utilities",
+      "description": "Who pays for each utility or service."
+    },
+    {
+      "id": "keys",
+      "label": "Keys",
+      "description": "Keys issued and their replacement charges."
+    },
+    {
+      "id": "fines",
+      "label": "Fine schedule",
+      "description": "Penalty per occurrence for each house rule violation."
+    },
+    {
+      "id": "building_disclosures",
+      "label": "Building disclosures",
+      "description": "Sprinkler, bedbug, gas and smoking disclosures required by law."
+    },
+    {
+      "id": "good_cause",
+      "label": "Good Cause Eviction notice",
+      "description": "Whether Article 6-A applies to the unit, and why not if it does not."
+    },
+    {
+      "id": "forms",
+      "label": "Statutory forms",
+      "description": "DHCR consent and the window guard notice."
+    }
+  ],
+  "fields": [
+    {
+      "id": "lease.effective_date",
+      "label": "Lease date (the date the lease is sent out)",
+      "group": "lease_terms",
+      "source": "deal",
+      "type": "date",
+      "required": true,
+      "default": null,
+      "from": "generated.today",
+      "note": "Prints on the first page and in the preamble of every rider."
+    },
+    {
+      "id": "lease.commencement_date",
+      "label": "Move-in date",
+      "group": "lease_terms",
+      "source": "deal",
+      "type": "date",
+      "required": true,
+      "default": null,
+      "from": "applications.move_in"
+    },
+    {
+      "id": "lease.end_date",
+      "label": "Lease end date",
+      "group": "lease_terms",
+      "source": "deal",
+      "type": "date",
+      "required": true,
+      "default": null,
+      "from": "computed: move_in + applications.lease_term_months - 1 day"
+    },
+    {
+      "id": "lease.end_time",
+      "label": "Lease ends at",
+      "group": "lease_terms",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "11:59 PM",
+      "scope": "company"
+    },
+    {
+      "id": "lease.vacancy_lease_date",
+      "label": "Date of vacancy lease (bedbug disclosure)",
+      "group": "lease_terms",
+      "source": "agent",
+      "type": "date",
+      "required": false,
+      "default": null,
+      "note": "Deliberately left blank in the template; the agent fills it in before sending."
+    },
+    {
+      "id": "rent.monthly",
+      "label": "Monthly rent",
+      "group": "lease_terms",
+      "source": "deal",
+      "type": "money",
+      "required": true,
+      "default": null,
+      "from": "listings.price_amount"
+    },
+    {
+      "id": "rent.due_day",
+      "label": "Rent due on day",
+      "group": "lease_terms",
+      "source": "manager",
+      "type": "integer",
+      "required": true,
+      "default": "1",
+      "scope": "company"
+    },
+    {
+      "id": "deposit.amount",
+      "label": "Security deposit",
+      "group": "lease_terms",
+      "source": "deal",
+      "type": "money",
+      "required": true,
+      "default": null,
+      "from": "defaults to one month of rent.monthly"
+    },
+    {
+      "id": "deposit.bank_name",
+      "label": "Deposit held at (bank)",
+      "group": "lease_terms",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "scope": "building",
+      "source_value": "J.P. Morgan Chase",
+      "needs_setup": true
+    },
+    {
+      "id": "deposit.bank_address",
+      "label": "Bank address",
+      "group": "lease_terms",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "scope": "building",
+      "source_value": "22 Grace Ave",
+      "needs_setup": true
+    },
+    {
+      "id": "tenant.names",
+      "label": "Tenant name(s)",
+      "group": "parties",
+      "source": "deal",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "from": "applications.name",
+      "note": "One string covering every tenant, e.g. \"A and B\". Also fills the Occupants clause."
+    },
+    {
+      "id": "tenant.email",
+      "label": "Tenant email",
+      "group": "parties",
+      "source": "deal",
+      "type": "email",
+      "required": true,
+      "default": null,
+      "from": "applications.email"
+    },
+    {
+      "id": "tenant.mailing_address",
+      "label": "Tenant mailing address, if not the apartment",
+      "group": "parties",
+      "source": "agent",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "note": "DHCR consent, Section B. Leave blank when it is the apartment itself."
+    },
+    {
+      "id": "landlord.entity_name",
+      "label": "Landlord legal entity",
+      "group": "parties",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "note": "Blank in the source lease; every rider preamble needs it.",
+      "needs_setup": true,
+      "scope": "building"
+    },
+    {
+      "id": "landlord.print_name",
+      "label": "Landlord signer, printed name",
+      "group": "parties",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "note": "Certifies the NYC indoor allergen notice.",
+      "needs_setup": true,
+      "scope": "building"
+    },
+    {
+      "id": "landlord.address",
+      "label": "Landlord address",
+      "group": "parties",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "note": "Printed on the window guard notice.",
+      "needs_setup": true,
+      "scope": "building"
+    },
+    {
+      "id": "property.address_full",
+      "label": "Unit address, one line",
+      "group": "property",
+      "source": "deal",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "from": "listings: building/street + unit + city, state zip"
+    },
+    {
+      "id": "property.street",
+      "label": "Street address",
+      "group": "property",
+      "source": "deal",
+      "type": "text",
+      "required": true,
+      "default": null
+    },
+    {
+      "id": "property.unit",
+      "label": "Unit number",
+      "group": "property",
+      "source": "deal",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "from": "listings.unit"
+    },
+    {
+      "id": "property.city",
+      "label": "City",
+      "group": "property",
+      "source": "deal",
+      "type": "text",
+      "required": true,
+      "default": null
+    },
+    {
+      "id": "property.state",
+      "label": "State, spelled out",
+      "group": "property",
+      "source": "deal",
+      "type": "text",
+      "required": true,
+      "default": "New York"
+    },
+    {
+      "id": "property.state_abbr",
+      "label": "State, abbreviated",
+      "group": "property",
+      "source": "deal",
+      "type": "text",
+      "required": true,
+      "default": "NY"
+    },
+    {
+      "id": "property.zip",
+      "label": "ZIP code",
+      "group": "property",
+      "source": "deal",
+      "type": "text",
+      "required": true,
+      "default": null
+    },
+    {
+      "id": "payee.name",
+      "label": "Rent payable to — name",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "note": "Who rent cheques are made out to; often the same as the landlord entity.",
+      "scope": "building",
+      "source_value": "33rd Street Ventures LLC",
+      "needs_setup": true
+    },
+    {
+      "id": "payee.address",
+      "label": "Rent payable to — address",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "scope": "building",
+      "source_value": "60 Cuttermill Road #405, Great Neck, NY 11021",
+      "needs_setup": true
+    },
+    {
+      "id": "payee.phone",
+      "label": "Rent payable to — phone",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "scope": "building",
+      "source_value": "516-829-9401",
+      "needs_setup": true
+    },
+    {
+      "id": "manager.name",
+      "label": "Property manager — name",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "note": "For repairs, billing and building questions.",
+      "needs_setup": true,
+      "scope": "building"
+    },
+    {
+      "id": "manager.address",
+      "label": "Property manager — address",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "needs_setup": true,
+      "scope": "building"
+    },
+    {
+      "id": "manager.phone",
+      "label": "Property manager — phone",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "needs_setup": true,
+      "scope": "building"
+    },
+    {
+      "id": "legal_notice.name",
+      "label": "Agent for service of process — name",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "note": "Who may legally accept notices for the landlord.",
+      "needs_setup": true,
+      "scope": "building"
+    },
+    {
+      "id": "legal_notice.address",
+      "label": "Agent for service of process — address",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "needs_setup": true,
+      "scope": "building"
+    },
+    {
+      "id": "legal_notice.phone",
+      "label": "Agent for service of process — phone",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "needs_setup": true,
+      "scope": "building"
+    },
+    {
+      "id": "emergency.phone",
+      "label": "Housing emergency phone",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "516-829-9401",
+      "scope": "company"
+    },
+    {
+      "id": "owner_rep.name",
+      "label": "DHCR consent — owner representative name",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "note": "Section A of the DHCR electronic lease consent form.",
+      "needs_setup": true,
+      "scope": "company"
+    },
+    {
+      "id": "owner_rep.email",
+      "label": "DHCR consent — owner email",
+      "group": "contacts",
+      "source": "manager",
+      "type": "email",
+      "required": true,
+      "default": null,
+      "needs_setup": true,
+      "scope": "company"
+    },
+    {
+      "id": "owner_rep.mailing_address",
+      "label": "DHCR consent — owner mailing address",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": null,
+      "needs_setup": true,
+      "scope": "company"
+    },
+    {
+      "id": "fee.returned_payment",
+      "label": "Returned payment fee",
+      "group": "fees",
+      "source": "manager",
+      "type": "money",
+      "required": true,
+      "default": "$25.00",
+      "scope": "company"
+    },
+    {
+      "id": "fee.lock_change_admin",
+      "label": "Lock change administrative fee",
+      "group": "fees",
+      "source": "manager",
+      "type": "money",
+      "required": true,
+      "default": "$75.00",
+      "scope": "company"
+    },
+    {
+      "id": "fee.animal_liability_cap",
+      "label": "Cap on landlord liability for an animal",
+      "group": "fees",
+      "source": "manager",
+      "type": "money",
+      "required": true,
+      "default": "$100.00",
+      "scope": "company"
+    },
+    {
+      "id": "fee.lptli_monthly",
+      "label": "Landlord-placed liability insurance, monthly",
+      "group": "fees",
+      "source": "manager",
+      "type": "money",
+      "required": true,
+      "default": "$25.00",
+      "scope": "company"
+    },
+    {
+      "id": "fee.renters_insurance_waiver_monthly",
+      "label": "Monthly renters insurance waiver",
+      "group": "fees",
+      "source": "manager",
+      "type": "money",
+      "required": true,
+      "default": "$25.00",
+      "scope": "company"
+    },
+    {
+      "id": "fee.lptli_admin_monthly",
+      "label": "Monthly admin fee on landlord-placed insurance",
+      "group": "fees",
+      "source": "manager",
+      "type": "money",
+      "required": false,
+      "default": null,
+      "note": "Blank in the source lease.",
+      "scope": "company"
+    },
+    {
+      "id": "insurance.min_liability",
+      "label": "Required renters liability coverage",
+      "group": "fees",
+      "source": "manager",
+      "type": "money",
+      "required": true,
+      "default": "$100,000.00",
+      "scope": "company"
+    },
+    {
+      "id": "insurance.required_yes",
+      "label": "Renters insurance IS required",
+      "group": "fees",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": true,
+      "scope": "company"
+    },
+    {
+      "id": "insurance.required_no",
+      "label": "Renters insurance IS NOT required",
+      "group": "fees",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "company"
+    },
+    {
+      "id": "guest.consecutive_days",
+      "label": "Guest stay — consecutive days",
+      "group": "fees",
+      "source": "manager",
+      "type": "integer",
+      "required": true,
+      "default": "3",
+      "scope": "company"
+    },
+    {
+      "id": "guest.total_days",
+      "label": "Guest stay — total days",
+      "group": "fees",
+      "source": "manager",
+      "type": "integer",
+      "required": true,
+      "default": "5",
+      "scope": "company"
+    },
+    {
+      "id": "guest.window_days",
+      "label": "Guest stay — window in days",
+      "group": "fees",
+      "source": "manager",
+      "type": "integer",
+      "required": true,
+      "default": "14",
+      "scope": "company"
+    },
+    {
+      "id": "attorney_fees.cap_enabled",
+      "label": "Cap the prevailing party's attorneys' fees",
+      "group": "fees",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "company"
+    },
+    {
+      "id": "attorney_fees.cap_amount",
+      "label": "Attorneys' fees cap",
+      "group": "fees",
+      "source": "manager",
+      "type": "money",
+      "required": false,
+      "default": null,
+      "note": "Only prints meaningfully when attorney_fees.cap_enabled is checked.",
+      "scope": "company"
+    },
+    {
+      "id": "utility.water",
+      "label": "Water — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "Landlord",
+      "scope": "building"
+    },
+    {
+      "id": "utility.sewer",
+      "label": "Sewer — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "Landlord",
+      "scope": "building"
+    },
+    {
+      "id": "utility.stormwater",
+      "label": "Stormwater / drainage — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "Landlord",
+      "scope": "building"
+    },
+    {
+      "id": "utility.gas",
+      "label": "Gas — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "N/A",
+      "scope": "building"
+    },
+    {
+      "id": "utility.heating",
+      "label": "Heating gas or oil — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "N/A",
+      "scope": "building"
+    },
+    {
+      "id": "utility.steam_heat",
+      "label": "Steam heat — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "N/A",
+      "scope": "building"
+    },
+    {
+      "id": "utility.electricity",
+      "label": "Electricity — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "Tenant",
+      "scope": "building"
+    },
+    {
+      "id": "utility.hot_water",
+      "label": "Domestic hot water — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "Tenant",
+      "scope": "building"
+    },
+    {
+      "id": "utility.trash",
+      "label": "Trash — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "Landlord",
+      "scope": "building"
+    },
+    {
+      "id": "utility.pest_control",
+      "label": "Pest control — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "Landlord",
+      "scope": "building"
+    },
+    {
+      "id": "utility.cable",
+      "label": "Cable / satellite TV — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "Tenant",
+      "scope": "building"
+    },
+    {
+      "id": "utility.internet",
+      "label": "Internet access — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "Tenant",
+      "scope": "building"
+    },
+    {
+      "id": "utility.other1",
+      "label": "Other (1) — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "Landlord",
+      "scope": "building"
+    },
+    {
+      "id": "utility.other2",
+      "label": "Other (2) — paid by",
+      "group": "utilities",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Landlord",
+        "Tenant",
+        "N/A"
+      ],
+      "required": true,
+      "default": "Tenant",
+      "scope": "building"
+    },
+    {
+      "id": "utility.other1_label",
+      "label": "Other utility (1) — name",
+      "group": "utilities",
+      "source": "manager",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "utility.other2_label",
+      "label": "Other utility (2) — name",
+      "group": "utilities",
+      "source": "manager",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "key.unit_qty",
+      "label": "Unit key — quantity issued",
+      "group": "keys",
+      "source": "manager",
+      "type": "integer",
+      "required": false,
+      "default": "0",
+      "scope": "building"
+    },
+    {
+      "id": "key.unit_charge",
+      "label": "Unit key — replacement charge",
+      "group": "keys",
+      "source": "manager",
+      "type": "money",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "key.building_qty",
+      "label": "Building key — quantity issued",
+      "group": "keys",
+      "source": "manager",
+      "type": "integer",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "key.building_charge",
+      "label": "Building key — replacement charge",
+      "group": "keys",
+      "source": "manager",
+      "type": "money",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "key.mailbox_qty",
+      "label": "Mailbox key — quantity issued",
+      "group": "keys",
+      "source": "manager",
+      "type": "integer",
+      "required": false,
+      "default": "1",
+      "scope": "building"
+    },
+    {
+      "id": "key.mailbox_charge",
+      "label": "Mailbox key — replacement charge",
+      "group": "keys",
+      "source": "manager",
+      "type": "money",
+      "required": false,
+      "default": "$25.00",
+      "scope": "building"
+    },
+    {
+      "id": "key.fob_qty",
+      "label": "Keyless entry remote / FOB — quantity issued",
+      "group": "keys",
+      "source": "manager",
+      "type": "integer",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "key.fob_charge",
+      "label": "Keyless entry remote / FOB — replacement charge",
+      "group": "keys",
+      "source": "manager",
+      "type": "money",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "key.garage_qty",
+      "label": "Garage door remote — quantity issued",
+      "group": "keys",
+      "source": "manager",
+      "type": "integer",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "key.garage_charge",
+      "label": "Garage door remote — replacement charge",
+      "group": "keys",
+      "source": "manager",
+      "type": "money",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "key.other_qty",
+      "label": "Other — quantity issued",
+      "group": "keys",
+      "source": "manager",
+      "type": "integer",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "key.other_charge",
+      "label": "Other — replacement charge",
+      "group": "keys",
+      "source": "manager",
+      "type": "money",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "key.other_label",
+      "label": "Other key — description",
+      "group": "keys",
+      "source": "manager",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "fine.smoking_indoors",
+      "label": "Smoking indoors",
+      "group": "fines",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "$100",
+      "scope": "company"
+    },
+    {
+      "id": "fine.dog_waste",
+      "label": "Dog waste in common areas",
+      "group": "fines",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "$100",
+      "scope": "company"
+    },
+    {
+      "id": "fine.common_space_cleanliness",
+      "label": "Failure to keep common spaces clean",
+      "group": "fines",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "$100",
+      "scope": "company"
+    },
+    {
+      "id": "fine.hallway_items",
+      "label": "Leaving items in the hallway",
+      "group": "fines",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "$50",
+      "scope": "company"
+    },
+    {
+      "id": "fine.trash_disposal",
+      "label": "Improper disposal of trash or recycling",
+      "group": "fines",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "$50",
+      "scope": "company"
+    },
+    {
+      "id": "fine.furniture_damage",
+      "label": "Damage to building furniture or structures",
+      "group": "fines",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "Responsible for paying for fix or replacement",
+      "scope": "company"
+    },
+    {
+      "id": "fine.parking",
+      "label": "Parking violations",
+      "group": "fines",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "Responsible for charge schedule of towing company",
+      "scope": "company"
+    },
+    {
+      "id": "fine.short_term_rental",
+      "label": "Listing the apartment short-term (under 30 days)",
+      "group": "fines",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "Strictly prohibited. Fines per city guidelines and permitted under NYC law.",
+      "scope": "company"
+    },
+    {
+      "id": "fine.other_violation",
+      "label": "Any other house rule or lease violation",
+      "group": "fines",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "$50",
+      "scope": "company"
+    },
+    {
+      "id": "fine.no_insurance",
+      "label": "Failure to show proof of renter's insurance",
+      "group": "fines",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "$25 per month of noncompliance",
+      "scope": "company"
+    },
+    {
+      "id": "sprinkler.mark_option1",
+      "label": "No sprinkler system in the unit",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "X",
+        "unchecked": ""
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "sprinkler.mark_option2",
+      "label": "Sprinkler system present and maintained",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "X",
+        "unchecked": ""
+      },
+      "required": false,
+      "default": true,
+      "scope": "building"
+    },
+    {
+      "id": "sprinkler.last_inspection",
+      "label": "Sprinkler last inspected on",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "date",
+      "required": false,
+      "default": null,
+      "note": "Required by RPL 231-a whenever sprinkler.mark_option2 is checked.",
+      "scope": "building"
+    },
+    {
+      "id": "bedbug.mark_none",
+      "label": "No bedbug history in the past year",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": true,
+      "scope": "building"
+    },
+    {
+      "id": "bedbug.mark_building_eradicated",
+      "label": "Building had an infestation; eradication carried out",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "bedbug.mark_building_not_eradicated",
+      "label": "Building had an infestation; no eradication",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "bedbug.mark_apartment_eradicated",
+      "label": "Apartment had an infestation; eradication carried out",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "bedbug.mark_apartment_not_eradicated",
+      "label": "Apartment had an infestation; no eradication",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "bedbug.mark_other",
+      "label": "Other",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "gas.provider_name",
+      "label": "Gas provider",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "Con Edison",
+      "scope": "company"
+    },
+    {
+      "id": "gas.provider_phone",
+      "label": "Gas provider emergency number",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "text",
+      "required": true,
+      "default": "1 (800) 752-6633",
+      "scope": "company"
+    },
+    {
+      "id": "smoking.inside_units",
+      "label": "Smoking banned — Inside residential units",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": true,
+      "scope": "building"
+    },
+    {
+      "id": "smoking.outside_unit_areas",
+      "label": "Smoking banned — Balconies, patios and porches",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "smoking.outdoor_common",
+      "label": "Smoking banned — Outdoor common areas",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "smoking.within_15_feet",
+      "label": "Smoking banned — Within 15 feet of entrances and windows",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "smoking.other_areas",
+      "label": "Smoking banned — Other areas / exceptions",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "smoking.other_areas_text",
+      "label": "Other smoking restrictions, described",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "scope": "building"
+    },
+    {
+      "id": "smoking.in_unit_yes",
+      "label": "Smoking IS allowed in the unit",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "smoking.in_unit_no",
+      "label": "Smoking IS NOT allowed in the unit",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": true,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.mark_yes",
+      "label": "Unit IS subject to Good Cause Eviction",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "X",
+        "unchecked": ""
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.mark_no",
+      "label": "Unit is NOT subject to Good Cause Eviction",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "X",
+        "unchecked": ""
+      },
+      "required": false,
+      "default": true,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_not_adopted",
+      "label": "Exempt — Municipality has not adopted Good Cause",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_small_landlord",
+      "label": "Exempt — Small landlord (10 units or fewer)",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_owner_occupied",
+      "label": "Exempt — Owner-occupied, 10 units or fewer",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_rent_regulated",
+      "label": "Exempt — Already rent regulated",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_income_restricted",
+      "label": "Exempt — Income-restricted affordable unit",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_condo_coop",
+      "label": "Exempt — Condominium or co-op",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": true,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_new_construction",
+      "label": "Exempt — Certificate of occupancy within 30 years",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_seasonal",
+      "label": "Exempt — Seasonal use dwelling",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_institutional",
+      "label": "Exempt — Hospital, care or senior community",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_manufactured_home",
+      "label": "Exempt — Manufactured home park",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_hotel_transient",
+      "label": "Exempt — Hotel or transient use",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_dormitory",
+      "label": "Exempt — Dormitory",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_religious",
+      "label": "Exempt — Religious facility",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.exempt_high_rent",
+      "label": "Exempt — Rent above 245% of fair market rent",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_exempt",
+      "label": "Not renewing: unit is exempt (see question 2)",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": true,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_first_or_renewal",
+      "label": "Not renewing: this is a first or renewal lease, so no reason is required",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.increase_below_threshold",
+      "label": "Rent is NOT being increased above the threshold",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.increase_above_threshold",
+      "label": "Rent IS being increased above the threshold",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.increase_justification",
+      "label": "Justification for a rent increase above the threshold",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "multiline",
+      "required": false,
+      "default": null,
+      "scope": "building",
+      "note": "Only needed when the increase is above the threshold."
+    },
+    {
+      "id": "good_cause.nonrenewal_sublet",
+      "label": "Not renewing: sublet, and the sublessor wants the unit back",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_employment",
+      "label": "Not renewing: occupancy went with a job that has ended",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_unpaid_rent",
+      "label": "Not renewing: rent due and owing",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_lease_violation",
+      "label": "Not renewing: substantial obligation of the tenancy violated, uncured",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_nuisance",
+      "label": "Not renewing: nuisance, damage, or interference with others",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_illegal_occupancy",
+      "label": "Not renewing: occupancy violates law and the landlord faces penalties",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_illegal_use",
+      "label": "Not renewing: unit used for an illegal purpose",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_refused_access",
+      "label": "Not renewing: access unreasonably refused",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_owner_use",
+      "label": "Not renewing: landlord or family will live there",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_demolition",
+      "label": "Not renewing: the building is to be demolished",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_withdrawal",
+      "label": "Not renewing: the unit is being withdrawn from the rental market",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "good_cause.nonrenewal_refused_terms",
+      "label": "Not renewing: reasonable renewal terms refused",
+      "group": "good_cause",
+      "source": "manager",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "scope": "building"
+    },
+    {
+      "id": "dhcr.mark_vacancy",
+      "label": "DHCR consent — vacancy lease",
+      "group": "forms",
+      "source": "deal",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": true,
+      "from": "true when the application has no prior lease on this unit"
+    },
+    {
+      "id": "dhcr.mark_renewal",
+      "label": "DHCR consent — renewal lease",
+      "group": "forms",
+      "source": "deal",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false
+    },
+    {
+      "id": "window_guard.mark_has_children",
+      "label": "A child aged 10 or younger lives in the unit",
+      "group": "forms",
+      "source": "deal",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "from": "applications.children_under_11"
+    },
+    {
+      "id": "window_guard.mark_no_children",
+      "label": "No child aged 10 or younger lives in the unit",
+      "group": "forms",
+      "source": "deal",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": true,
+      "from": "NOT applications.children_under_11"
+    },
+    {
+      "id": "window_guard.mark_wants_anyway",
+      "label": "Tenant wants window guards anyway",
+      "group": "forms",
+      "source": "deal",
+      "type": "checkbox",
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      },
+      "required": false,
+      "default": false,
+      "from": "applications.wants_window_guards",
+      "note": "The application form does not ask this yet; the column has to be added."
+    }
+  ]
+}

@@ -1,4 +1,5 @@
 import { readDocxText } from "./docx.js";
+import { initLeaseScreen, openLeaseScreen } from "./lease-screen.js";
 import {
   captionFromFilename,
   classifyFiles,
@@ -11,6 +12,8 @@ const API = "/api/admin";
 const rowsEl = document.getElementById("rows");
 const statusEl = document.getElementById("status");
 const whoEl = document.getElementById("who");
+const environmentEl = document.getElementById("environment");
+const environmentDatabaseEl = document.getElementById("environment-database");
 const editor = document.getElementById("editor");
 const form = document.getElementById("listing-form");
 const editorTitle = document.getElementById("editor-title");
@@ -375,10 +378,16 @@ function coverUrl(listing) {
 }
 
 function render() {
-  dropzone.hidden = filter === "applications";
+  dropzone.hidden = filter === "applications" || filter === "lease";
 
   if (filter === "applications") {
     renderApplications();
+    return;
+  }
+
+  if (filter === "lease") {
+    // The lease screen takes over the window rather than drawing into the list.
+    openLeaseScreen({});
     return;
   }
 
@@ -587,6 +596,7 @@ function renderApplications() {
             ).join("")}
           </select>
           <textarea data-role="app-notes" placeholder="Notes (screening outcome, follow-ups…)">${escapeHtml(app.notes || "")}</textarea>
+          <button type="button" class="small" data-role="app-lease">Lease…</button>
           <button type="button" class="danger small" data-role="app-delete">Delete</button>
         </div>
       </article>
@@ -605,12 +615,28 @@ async function refreshApplications() {
   }
 }
 
+// The banner names the Supabase project, not just the environment. Running
+// locally is obvious; being pointed at the production database while doing so
+// is not, and that is the mistake worth catching before something is deleted.
+//
+// The label is whatever DEV_SUPABASE_LABEL says and is only a convenience; the
+// ref comes from the URL in use, so it is the half to trust when they disagree.
+function showEnvironment(me) {
+  const local = me?.environment === "development";
+  environmentDatabaseEl.textContent = local
+    ? `database: ${me.database_label ? `${me.database_label} · ` : ""}${me.database}`
+    : "";
+  environmentEl.toggleAttribute("data-shown", local);
+  document.title = local ? "DEV — Listings Admin" : "Listings Admin";
+}
+
 async function load() {
   setStatus("Loading listings…");
   try {
     const [{ listings: rows }, me] = await Promise.all([api("/listings"), api("/me").catch(() => null)]);
     listings = rows;
     if (me?.email) whoEl.textContent = me.email;
+    showEnvironment(me);
     setStatus("");
     render();
   } catch (error) {
@@ -924,6 +950,15 @@ for (const button of document.querySelectorAll("button[data-filter]")) {
   });
 }
 
+rowsEl.addEventListener("click", (event) => {
+  const leaseButton = event.target.closest('button[data-role="app-lease"]');
+  if (!leaseButton) return;
+
+  const row = leaseButton.closest(".app-row");
+  const app = applications.find((item) => item.id === row.dataset.appId);
+  if (app) openLeaseScreen({ application: app });
+});
+
 rowsEl.addEventListener("click", async (event) => {
   const revealButton = event.target.closest('button[data-role="ssn-reveal"]');
   if (revealButton) {
@@ -997,5 +1032,7 @@ rowsEl.addEventListener("change", async (event) => {
     setStatus(error.message, "error");
   }
 });
+
+initLeaseScreen({ api, setStatus, escapeHtml, listings: () => listings });
 
 load();

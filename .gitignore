@@ -10,3 +10,10 @@ node_modules/
 # Working files (design drafts, requirement docs) live in notes/, out of git.
 notes/
 *.docx
+# The lease template is a source file, not a working draft, so it stays in git.
+# The filled-in lease it was built from does not: it carries a real tenant name.
+!lease/template/*.docx
+# The tools write a backup beside it before rewriting it. That is a scratch
+# copy of the template, not a second source of truth.
+*.docx.bak
+__pycache__/

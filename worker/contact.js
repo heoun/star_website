@@ -1,6 +1,7 @@
+import { sendEmail } from "./email.js";
+
 const CONTACT_EMAIL = "info@starreusa.com";
 const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
-const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 const ALLOWED_PROPERTY_TYPES = ["Residential", "Commercial"];
 const ALLOWED_TRANSACTION_TYPES = ["Lease", "Purchase"];
@@ -74,30 +75,13 @@ Submitted: ${submittedAt}
 IP Address: ${remoteAddress}
 `;
 
-  let sent = false;
-  try {
-    const response = await fetch(RESEND_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.RESEND_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        from: FROM_ADDRESS,
-        to: [CONTACT_EMAIL],
-        reply_to: email,
-        subject: "Property Inquiry",
-        text: body
-      })
-    });
-
-    sent = response.ok;
-    if (!sent) {
-      console.error("Resend API error", response.status, await response.text());
-    }
-  } catch (error) {
-    console.error("Resend request failed", error);
-  }
+  const sent = await sendEmail(request, env, {
+    from: FROM_ADDRESS,
+    to: [CONTACT_EMAIL],
+    reply_to: email,
+    subject: "Property Inquiry",
+    text: body
+  });
 
   if (!sent) {
     return renderPage(

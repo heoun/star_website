@@ -1,9 +1,9 @@
 import { fetchListing, insertApplication } from "./supabase.js";
 import { encryptionReady, encryptSsn } from "./ssn.js";
+import { sendEmail } from "./email.js";
 
 const CONTACT_EMAIL = "info@starreusa.com";
 const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
-const RESEND_ENDPOINT = "https://api.resend.com/emails";
 const TURNSTILE_ENDPOINT = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -168,30 +168,19 @@ async function verifyTurnstile(env, token, remoteIp) {
 // The notification deliberately carries no applicant details beyond the name:
 // inboxes are the most common place private data leaks from, so the full
 // application stays in the admin console only.
-async function sendNotification(env, listing, name) {
+async function sendNotification(request, env, listing, name) {
   const home = [listing.building_name, listing.unit].filter(Boolean).join(" ");
   const label = home ? `${listing.title} (${home})` : listing.title;
 
-  try {
-    const response = await fetch(RESEND_ENDPOINT, {
-      method: "POST",
-      headers: {
-        "Authorization": `Bearer ${env.RESEND_API_KEY}`,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
-        from: FROM_ADDRESS,
-        to: [CONTACT_EMAIL],
-        subject: `New rental application: ${label}`,
-        text: `${name} submitted an application for ${label}.\n\nReview it in the admin console: https://starreusa.com/admin/\n`
-      })
-    });
+  const sent = await sendEmail(request, env, {
+    from: FROM_ADDRESS,
+    to: [CONTACT_EMAIL],
+    subject: `New rental application: ${label}`,
+    text: `${name} submitted an application for ${label}.\n\nReview it in the admin console: https://starreusa.com/admin/\n`
+  });
 
-    if (!response.ok) {
-      console.error("Application notification failed", response.status, await response.text());
-    }
-  } catch (error) {
-    console.error("Application notification failed", error);
+  if (!sent) {
+    console.error("Application notification failed for", label);
   }
 }
 
@@ -348,6 +337,6 @@ export async function handleApplication(request, env, ctx) {
     return json({ error: "The application could not be saved. Please try again." }, 500);
   }
 
-  ctx.waitUntil(sendNotification(env, listing, fullName));
+  ctx.waitUntil(sendNotification(request, env, listing, fullName));
   return json({ ok: true }, 201);
 }

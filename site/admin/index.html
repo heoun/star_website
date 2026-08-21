@@ -46,6 +46,23 @@
     header .session { display: flex; align-items: center; gap: 14px; }
     header .who { font-size: 13px; opacity: 0.85; }
 
+    /* Only ever shown when the Worker reports it is running locally, so the
+       database being edited is never a guess. */
+    .environment {
+      display: none;
+      align-items: center;
+      gap: 10px;
+      padding: 9px 24px;
+      background: var(--accent);
+      color: #ffffff;
+      font-size: 13px;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+    }
+
+    .environment[data-shown] { display: flex; }
+    .environment .database { font-weight: 500; opacity: 0.9; }
+
     .sign-out {
       display: inline-flex;
       align-items: center;
@@ -334,6 +351,267 @@
       .row .actions { grid-column: 1 / -1; }
       .row .thumb { width: 64px; height: 52px; }
     }
+
+    /* ---- Lease ---- */
+
+    .lease-scope { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+    .lease-target { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .lease-address { width: 100%; margin-top: 10px; }
+
+    .lease-note {
+      margin: 0 0 14px;
+      color: var(--muted, #6b7680);
+      font-size: 13px;
+      max-width: 70ch;
+    }
+
+    .lease-warn {
+      padding: 10px 12px;
+      border-left: 3px solid var(--accent);
+      background: rgba(193, 117, 46, 0.08);
+      color: var(--ink);
+    }
+
+    .lease-group {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+    }
+
+    /* ---- The lease screen: document left, the fields that fill it right ---- */
+
+    /* It is a sibling of <main>, so main's 1180px cap does not apply: an 816px
+       page beside a usable form does not fit inside it. */
+    #lease-screen {
+      position: fixed;
+      inset: 0;
+      top: 0;
+      display: flex;
+      flex-direction: column;
+      background: var(--bg);
+      z-index: 40;
+    }
+
+    /* The `hidden` attribute is only `display: none` from the UA stylesheet, so
+       the id rule above outranks it. Without this the screen stays invisible
+       but covers the page and eats every click on the admin behind it. */
+    #lease-screen[hidden] { display: none; }
+
+    .lease-bar {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      flex-wrap: wrap;
+      padding: 10px 18px;
+      background: var(--primary);
+      color: #ffffff;
+    }
+
+    .lease-bar h2 { margin: 0; font-size: 16px; flex: 1; }
+    .lease-bar button { background: rgba(255, 255, 255, 0.12); color: #ffffff; border-color: rgba(255, 255, 255, 0.35); }
+    .lease-bar .chip.is-on { background: #ffffff; color: var(--primary); }
+    .lease-scope { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+    .lease-scope select { width: auto; min-width: 180px; }
+
+    .lease-alarm {
+      padding: 12px 18px;
+      background: var(--danger);
+      color: #ffffff;
+      font-size: 14px;
+    }
+
+    .lease-panes {
+      flex: 1;
+      display: grid;
+      grid-template-columns: 1fr 6px 1fr;
+      min-height: 0;
+    }
+
+    .lease-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
+    .lease-pane-form { border-left: 1px solid var(--line); background: var(--panel); }
+
+    .lease-pane-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      padding: 8px 14px;
+      border-bottom: 1px solid var(--line);
+      font-size: 13px;
+      font-weight: 700;
+      background: var(--panel);
+    }
+
+    .lease-tools { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+    .lease-tools button { padding: 2px 10px; }
+    .lease-tools label { display: flex; align-items: center; gap: 5px; }
+    .lease-tools input { width: auto; }
+
+    .lease-split { cursor: col-resize; background: var(--line); }
+    .lease-split:hover { background: var(--accent); }
+
+    /* ---- the document ---- */
+
+    /* The window guard notice is set in Calibri, because the New York City
+       form it reproduces is. Calibri ships inside Microsoft Word rather than
+       with macOS or Windows, so no browser on a machine that has Word can use
+       it: every one of those 20 paragraphs fell back to whatever the browser
+       picked, which is wider, and the Spanish notice at the top of the page
+       wrapped onto a second line the .docx does not have.
+
+       Carlito is metric-compatible with Calibri — same advance width for every
+       character — so naming it here makes the page break exactly where Word
+       breaks it. Vendored, latin subset, under the SIL Open Font License; the
+       licence sits beside the files. local() first, so a machine that really
+       does have Calibri installed uses the real thing. */
+    @font-face {
+      font-family: "Calibri";
+      font-style: normal;
+      font-weight: 400;
+      src: local("Calibri"), url("/admin/vendor/carlito-regular.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "Calibri";
+      font-style: italic;
+      font-weight: 400;
+      src: local("Calibri Italic"), url("/admin/vendor/carlito-italic.woff2") format("woff2");
+    }
+    @font-face {
+      font-family: "Calibri";
+      font-style: normal;
+      font-weight: 700;
+      src: local("Calibri Bold"), url("/admin/vendor/carlito-bold.woff2") format("woff2");
+    }
+
+    .lease-doc-scroll { flex: 1; overflow: auto; background: #edece7; padding: 14px; }
+
+    /* About 6,000 characters of this lease name no font anywhere — the Key
+       Rider, the Community Rules headings, the DHCR consent's instructions.
+       Word draws those in its own default, which is Times New Roman; the
+       browser drew them in whatever this page's font is, and they wrapped in
+       different places from the document. Naming it here is inherited only by
+       the runs the .docx leaves open, which is exactly the set Word defaults. */
+    .lease-doc-scroll .docx-wrapper {
+      background: transparent;
+      padding: 0;
+      font-family: "Times New Roman", Times, serif;
+    }
+
+    /* 44 of this template's 55 sections are taller than a Letter page, so they
+       are shown as what they are — sections — never as numbered pages.
+       NOT content-visibility: auto. It implies style containment, which scopes
+       CSS counters to each section, and this lease numbers its clauses with
+       Word list numbering that docx-preview renders as counters — every clause
+       came out as "1." Correct numbering in a document someone signs is worth
+       far more than the 49ms it saves (346ms vs 395ms to first paint). */
+    .lease-doc-scroll .docx-wrapper > section.docx {
+      margin: 0 auto 14px;
+      box-shadow: 0 1px 6px rgba(31, 42, 51, 0.18);
+    }
+
+    /* A filled slot reads as ordinary text; the point of the screen is to see
+       the lease, not a form pretending to be one. */
+    .lease-slot { border-radius: 2px; }
+    .lease-slot.is-missing {
+      color: var(--danger);
+      font-weight: 700;
+      background: rgba(179, 38, 30, 0.10);
+      box-shadow: inset 0 -2px 0 var(--danger);
+    }
+
+    .show-slots .lease-slot { background: rgba(193, 117, 46, 0.16); box-shadow: inset 0 -1px 0 var(--accent); }
+    .show-slots .lease-slot.is-missing { background: rgba(179, 38, 30, 0.14); }
+    .lease-slot.is-empty::after { content: "\00a0\00a0\00a0"; border-bottom: 1px solid var(--line); }
+
+    .lease-slot.is-located {
+      background: var(--accent);
+      color: #ffffff;
+      box-shadow: 0 0 0 3px rgba(193, 117, 46, 0.35);
+    }
+
+    /* ---- the fields ---- */
+
+    #lease-fields { flex: 1; overflow: auto; padding: 14px 16px; }
+
+    .lease-form-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
+    .lease-progress { font-size: 13px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+    .lease-gap-count { color: var(--danger); font-weight: 700; }
+    .lease-ok { color: #2f7d4f; }
+    .lease-pending { color: var(--text); font-style: italic; }
+    .lease-jump button { padding: 4px 10px; font-size: 12px; }
+    .lease-filters { margin: 8px 0 12px; }
+
+    .lease-group { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+    .lease-group h3 {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      margin: 0 0 8px;
+      font-size: 14px;
+    }
+
+    .lease-group-count { font-weight: 400; font-size: 12px; color: var(--text); }
+    .lease-badge { font-size: 13px; }
+    .lease-badge.is-complete { color: #2f7d4f; }
+    .lease-badge.is-partial { color: var(--accent); }
+
+    .lease-field { padding: 8px 10px; border-radius: 10px; margin-bottom: 6px; }
+    .lease-field.is-missing { background: rgba(179, 38, 30, 0.06); }
+    .lease-field.is-dirty { box-shadow: inset 3px 0 0 var(--accent); }
+    /* The control carries `disabled`; this only makes that visible. Dimming
+       alone used to let the keyboard reach it and the value go nowhere. */
+    .lease-field.is-readonly input, .lease-field.is-readonly select, .lease-field.is-readonly textarea {
+      opacity: 0.55;
+      background: rgba(31, 42, 51, 0.04);
+    }
+    .lease-field.is-located { outline: 2px solid var(--accent); }
+
+    .lease-field-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .lease-field-head label { font-weight: 700; font-size: 13px; flex: 1; }
+    .lease-count { font-size: 11px; color: var(--text); }
+    .lease-step { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; }
+    .lease-step button { padding: 0 6px; }
+    .lease-locate { padding: 2px 10px; font-size: 12px; }
+
+    .lease-status { font-size: 12px; min-height: 0; }
+    .lease-status.is-missing { color: var(--danger); font-weight: 700; }
+
+    .lease-note { font-size: 12px; color: var(--text); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 3px; }
+    .lease-target { color: var(--accent); font-weight: 700; }
+    .lease-once { color: var(--primary); font-weight: 700; }
+    .lease-caution { font-style: italic; }
+    .lease-hint button { padding: 1px 8px; font-size: 11px; margin-left: 4px; }
+
+    .lease-check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
+    .lease-check input { width: auto; }
+
+    .lease-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      border-top: 1px solid var(--line);
+      background: var(--panel);
+    }
+
+    .lease-warnings { flex: 1; font-size: 12px; color: var(--danger); font-weight: 700; }
+
+    /* ---- one column ---- */
+
+    .lease-tabs { display: none; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--line); background: var(--panel); }
+
+    @media (max-width: 1100px) {
+      .lease-panes { grid-template-columns: 1fr !important; }
+      .lease-split { display: none; }
+      /* Hidden, not unmounted: re-rendering the document is what this screen
+         exists to avoid. */
+      #lease-screen[data-tab="form"] .lease-pane-doc { display: none; }
+      #lease-screen:not([data-tab="form"]) .lease-pane-form { display: none; }
+      .lease-tabs { display: flex; }
+    }
+
   </style>
 </head>
 <body>
@@ -344,6 +622,10 @@
       <a class="sign-out" href="/cdn-cgi/access/logout">Sign out</a>
     </div>
   </header>
+  <div class="environment" id="environment" role="status">
+    <span>Development</span>
+    <span class="database" id="environment-database"></span>
+  </div>
 
   <main>
     <div class="toolbar">
@@ -353,6 +635,7 @@
         <button type="button" class="chip" data-filter="commercial" aria-pressed="false">Commercial</button>
         <button type="button" class="chip" data-filter="draft" aria-pressed="false">Unpublished</button>
         <button type="button" class="chip" data-filter="applications" aria-pressed="false">Applications</button>
+        <button type="button" class="chip" data-filter="lease" aria-pressed="false">New lease</button>
       </div>
       <div class="toolbar-actions">
         <button type="button" id="import-folder">Import folder…</button>
@@ -511,6 +794,14 @@
     </form>
   </dialog>
 
+  <section id="lease-screen" hidden></section>
+
+  <!-- docx-preview imports jszip by bare name and jszip ships UMD only, so the
+       name is mapped to a shim that loads the UMD file and re-exports its
+       global. Both vendored files stay byte-identical to what npm publishes. -->
+  <script type="importmap">
+    { "imports": { "jszip": "/admin/vendor/jszip.shim.mjs" } }
+  </script>
   <script type="module" src="admin.js"></script>
 </body>
 </html>

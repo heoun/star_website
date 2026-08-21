@@ -20,7 +20,8 @@ const LISTING_COLUMNS = [
   "details_url",
   "kind_label",
   "published",
-  "position"
+  "position",
+  "building_id"
 ].join(",");
 
 const MEDIA_COLUMNS = "id,listing_id,kind,path,caption,position";
@@ -270,4 +271,95 @@ export function toAdminListing(row) {
     .map((item) => ({ ...item, url: mediaUrl(item.path) }));
 
   return { ...row, listing_media: media };
+}
+
+// ---------------------------------------------------------------- leases
+
+const BUILDING_COLUMNS = "id,name,street,city,state,state_abbr,zip,created_at,updated_at";
+
+export async function fetchBuildings(env) {
+  const response = await restRequest(env, `buildings?select=${BUILDING_COLUMNS}&order=name.asc`);
+  return response.json();
+}
+
+export async function fetchBuilding(env, id) {
+  const response = await restRequest(
+    env,
+    `buildings?id=eq.${encodeURIComponent(id)}&select=${BUILDING_COLUMNS}`
+  );
+  const [row] = await response.json();
+  return row || null;
+}
+
+export async function insertBuilding(env, values) {
+  const response = await restRequest(env, "buildings", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(values)
+  });
+  const [row] = await response.json();
+  return row;
+}
+
+export async function updateBuilding(env, id, values) {
+  const response = await restRequest(env, `buildings?id=eq.${encodeURIComponent(id)}`, {
+    method: "PATCH",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(values)
+  });
+  const [row] = await response.json();
+  return row;
+}
+
+// One application with everything a lease needs from its listing: the address
+// line the parts are read from, the rent, the unit, and the building whose
+// settings layer applies.
+export async function fetchApplicationForLease(env, id) {
+  const response = await restRequest(
+    env,
+    `applications?id=eq.${encodeURIComponent(id)}` +
+      "&select=id,listing_id,name,email,phone,move_in,lease_term_months,children_under_11,status," +
+      "listings(id,title,building_name,unit,location,price_amount,building_id)"
+  );
+  const [row] = await response.json();
+  return row || null;
+}
+
+// One settings layer, or null when that layer has never been saved. An absent
+// row and an empty row mean the same thing: this layer answers nothing.
+export async function fetchLeaseSettingsLayer(env, { scope, buildingId = null, listingId = null }) {
+  const filters = [`select=id,scope,building_id,listing_id,field_values,updated_at`, `scope=eq.${scope}`];
+  filters.push(buildingId ? `building_id=eq.${encodeURIComponent(buildingId)}` : "building_id=is.null");
+  filters.push(listingId ? `listing_id=eq.${encodeURIComponent(listingId)}` : "listing_id=is.null");
+
+  const response = await restRequest(env, `lease_settings?${filters.join("&")}`);
+  const [row] = await response.json();
+  return row || null;
+}
+
+async function callRpc(env, name, args) {
+  const response = await restRequest(env, `rpc/${name}`, {
+    method: "POST",
+    body: JSON.stringify(args)
+  });
+  return response.json();
+}
+
+// The three layers that apply to one unit, unmerged. The caller merges them,
+// because it also has to report which layer answered each field.
+export async function fetchLeaseLayers(env, listingId) {
+  return callRpc(env, "lease_settings_for_listing", { p_listing_id: listingId });
+}
+
+// PostgREST can only set a column to a literal, so saving part of a layer
+// without overwriting the rest goes through a function. A null in the patch
+// means "this layer no longer answers that field".
+export async function applyLeaseSettings(env, { scope, buildingId = null, listingId = null, patch, actor }) {
+  return callRpc(env, "lease_settings_apply", {
+    p_scope: scope,
+    p_building_id: buildingId,
+    p_listing_id: listingId,
+    p_patch: patch,
+    p_actor: actor || null
+  });
 }

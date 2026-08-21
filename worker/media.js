@@ -2,6 +2,8 @@
 // "<listing-id>/<uuid>.<ext>" and served at /media/<key>. Keys are random,
 // so responses can be cached forever.
 
+import { isLocalRequest } from "./env.js";
+
 const KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9/_.-]*$/;
 
 export const IMAGE_TYPES = {
@@ -50,7 +52,35 @@ export async function deleteObject(env, key) {
   await requireBucket(env).delete(key);
 }
 
+// A developer's R2 bucket is empty, so every listing photo would 404 and the
+// site would look broken locally. On a miss, and only on a loopback request,
+// read the bytes from a live origin named in .dev.vars. Reading only: uploads
+// and deletes still go to the local bucket, so nothing here can reach what the
+// live site is serving.
+async function devMediaFallback(request, env, pathname) {
+  const origin = (env.DEV_MEDIA_ORIGIN || "").trim().replace(/\/+$/, "");
+  if (!origin || !isLocalRequest(request)) return null;
+
+  const range = request.headers.get("Range");
+  try {
+    const upstream = await fetch(new URL(pathname, origin).toString(), {
+      method: request.method,
+      headers: range ? { Range: range } : undefined
+    });
+    return upstream.ok || upstream.status === 206 ? upstream : null;
+  } catch (error) {
+    console.error("Development media fallback failed", error);
+    return null;
+  }
+}
+
 export async function serveMedia(request, env, pathname) {
+  const response = await serveFromBucket(request, env, pathname);
+  if (response.status !== 404) return response;
+  return (await devMediaFallback(request, env, pathname)) || response;
+}
+
+async function serveFromBucket(request, env, pathname) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method not allowed.", { status: 405 });
   }
