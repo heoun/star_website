@@ -5,6 +5,7 @@
   "scripts": {
     "build": "node scripts/build.js",
     "dev": "node scripts/dev.js",
+    "dev:agent": "node scripts/dev.js --var DEV_ADMIN_ROLE:agent",
     "preview": "node server.js",
     "seed:dev": "node scripts/seed-dev.js",
     "deploy": "npx --yes wrangler@4 deploy"

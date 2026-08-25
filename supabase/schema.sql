@@ -125,10 +125,32 @@ create table if not exists public.applications (
 
   message text,
 
+  -- What the applicant wrote, for any field an agent has since corrected in
+  -- the admin console: {column: submitted_value}, written once per column the
+  -- first time it changes. The lease has the tenant warrant that the
+  -- application is accurate, so the version they warranted has to survive
+  -- being corrected.
+  submitted jsonb,
+
+  -- The Rent Concession Rider, written for this tenancy. It reaches the lease
+  -- as a deal value, so the overview and the lease screen edit the same text.
+  concession_terms text,
+
   status text not null default 'new'
     check (status in ('new', 'contacted', 'fee_pending', 'screening', 'review',
-                      'sent_to_landlord', 'approved', 'declined', 'lease_sent', 'lease_signed')),
+                      'sent_to_landlord', 'needs_info', 'approved', 'declined',
+                      'lease_sent', 'lease_signed')),
   notes text,
+
+  -- The last time somebody moved this application to the status it is on:
+  -- {status, by, at, reason}. Written by the Worker, never by the browser —
+  -- the console says what it is doing, not who is doing it.
+  --
+  -- It is a column rather than a derivation because there is nowhere else for
+  -- it to come from. `updated_at` says when the row last changed, which is not
+  -- the same as when it was decided, and nothing anywhere records who. A
+  -- decision panel that shows "reviewed by" has to have somebody to name.
+  decision jsonb,
 
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -150,10 +172,14 @@ alter table public.applications add column if not exists rental_history jsonb;
 alter table public.applications add column if not exists reference_contacts jsonb;
 alter table public.applications add column if not exists emergency_contacts jsonb;
 alter table public.applications add column if not exists pets jsonb;
+alter table public.applications add column if not exists submitted jsonb;
+alter table public.applications add column if not exists concession_terms text;
+alter table public.applications add column if not exists decision jsonb;
 alter table public.applications drop constraint if exists applications_status_check;
 alter table public.applications add constraint applications_status_check
   check (status in ('new', 'contacted', 'fee_pending', 'screening', 'review',
-                    'sent_to_landlord', 'approved', 'declined', 'lease_sent', 'lease_signed'));
+                    'sent_to_landlord', 'needs_info', 'approved', 'declined',
+                    'lease_sent', 'lease_signed'));
 
 create index if not exists applications_listing_idx
   on public.applications (listing_id, created_at desc);
@@ -461,3 +487,94 @@ revoke all on public.lease_settings_audit from anon, authenticated;
 revoke execute on function public.lease_settings_apply(text, uuid, uuid, jsonb, text) from public, anon, authenticated;
 revoke execute on function public.lease_settings_for_listing(uuid) from public, anon, authenticated;
 revoke execute on function public.lease_settings_shape_ok(jsonb) from public, anon, authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Applicant portal
+-- ---------------------------------------------------------------------------
+
+-- Applicant accounts live in Supabase Auth (the auth schema), not here:
+-- registration, email confirmation, password hashing, and password reset are
+-- all the platform's. The Worker proxies /api/portal/* to the auth API, so
+-- the browser still never talks to Supabase directly. Ownership of what
+-- follows is by the account's verified email address.
+
+-- Documents an applicant uploads to support an application: identity, income,
+-- rental history. The bytes live in the private applicant-docs R2 bucket —
+-- never in listing-media, whose objects are served to anyone at /media/ — and
+-- this table ties each object to its application. Reads only ever go through
+-- the Worker: the applicant's own signed-in session, or Cloudflare Access for
+-- staff.
+create table if not exists public.application_documents (
+  id uuid primary key default gen_random_uuid(),
+  application_id uuid not null references public.applications (id) on delete cascade,
+
+  doc_type text not null check (doc_type in (
+    'government_id_front', 'government_id_back', 'job_offer_letter',
+    'paystub', 'bank_statement', 'tax_return', 'landlord_reference')),
+
+  -- Object key inside the applicant-docs R2 bucket:
+  -- "<application-id>/<doc-type>/<uuid>.<ext>".
+  path text not null,
+
+  -- What the applicant called the file, kept for display only. The object key
+  -- is random, so a filename can say anything without touching storage.
+  file_name text,
+  content_type text,
+  size_bytes bigint,
+
+  uploaded_by text not null default 'applicant'
+    check (uploaded_by in ('applicant', 'staff')),
+
+  created_at timestamptz not null default now()
+);
+
+create index if not exists application_documents_application_idx
+  on public.application_documents (application_id, doc_type, created_at);
+
+alter table public.application_documents enable row level security;
+
+grant select, insert, update, delete on public.application_documents to service_role;
+
+revoke all on public.application_documents from anon, authenticated;
+
+-- Who may use the admin console, and as what.
+--
+-- Cloudflare Access decides whether a request reaches the Worker at all. This
+-- table decides what it may do once it has. The two are deliberately separate:
+-- Access group membership is offboarding — one switch, everything at once —
+-- while a role is business data a manager changes here, in the console, and
+-- wants to be able to read back.
+--
+-- There is no default role. An email absent from this table is refused, not
+-- treated as an agent: anyone mistakenly added to the Access group would
+-- otherwise acquire an agent's permissions simply by arriving.
+--
+-- The email is the primary key because that is what Cloudflare Access proves,
+-- and it is forced to lower case so a lookup cannot miss a row that is there.
+create table if not exists public.staff (
+  -- Lower case and untrimmed-free, because the Worker looks a person up by the
+  -- exact lower-cased address Cloudflare Access gave it: a row with a capital
+  -- or a stray space would sit in the table looking present and never match.
+  email text primary key check (
+    email = lower(email) and email = btrim(email) and email like '%_@_%._%'),
+  role text not null check (role in ('manager', 'agent')),
+  name text,
+
+  -- Deactivating rather than deleting keeps an audit row's actor resolvable to
+  -- a person after they leave. The console offers both; prefer this one.
+  active boolean not null default true,
+
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+drop trigger if exists staff_set_updated_at on public.staff;
+create trigger staff_set_updated_at
+  before update on public.staff
+  for each row execute function public.set_updated_at();
+
+alter table public.staff enable row level security;
+
+grant select, insert, update, delete on public.staff to service_role;
+
+revoke all on public.staff from anon, authenticated;

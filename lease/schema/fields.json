@@ -62,9 +62,242 @@
       "description": "Whether Article 6-A applies to the unit, and why not if it does not."
     },
     {
+      "id": "concession",
+      "label": "Rent concession",
+      "description": "A rider of its own, written for this lease."
+    },
+    {
       "id": "forms",
       "label": "Statutory forms",
       "description": "DHCR consent and the window guard notice."
+    }
+  ],
+  "rule_kinds": {
+    "_": "Rules describe what the template asks for that a field on its own cannot say: a disclosure that must have exactly one box ticked, a date that only means something under one of them. Nothing here blocks generation - a checkbox is answered by definition, and an unticked disclosure prints as an empty box rather than as a gap. That is precisely why they are written down: they are the errors a finished lease carries out of the door quietly.",
+    "one_of": "Exactly one of `fields` must be ticked. The form says so in words - 'check one', 'please select only one'.",
+    "any_of": "At least one of `fields` must be ticked, and more than one may be.",
+    "required_when": "While `when` is ticked, every field in `then` needs a value; the sentence around it reads as a blank otherwise.",
+    "blank_unless": "Unless `when` is ticked, every field in `then` has to be empty - the clause that would carry it is switched off.",
+    "idle_unless": "While `when_filled` is empty, `then` has to sit at `idle`. The template prints these as a row, so a payer with no utility named is a row asserting nothing.",
+    "when": "required_when and blank_unless test `when`: it is the box the rule is about.",
+    "only_when": "one_of and any_of carrying `only_when` are asked only while that box is ticked. The Good Cause form branches, and a branch nobody is standing in has no unanswered questions."
+  },
+  "rules": [
+    {
+      "id": "sprinkler.disclosure",
+      "kind": "one_of",
+      "label": "Sprinkler disclosure",
+      "where": "Sprinkler System Notice",
+      "fields": [
+        "sprinkler.mark_option1",
+        "sprinkler.mark_option2"
+      ],
+      "why": "RPL § 231-a makes the landlord say whether the premises has a sprinkler system. Neither box ticked prints the notice with two empty boxes and discloses nothing."
+    },
+    {
+      "id": "sprinkler.inspected",
+      "kind": "required_when",
+      "label": "Sprinkler last inspected",
+      "where": "Sprinkler System Notice",
+      "when": "sprinkler.mark_option2",
+      "then": [
+        "sprinkler.last_inspection"
+      ],
+      "why": "Option 2 ends 'was maintained and inspected was on ____'. With no date the sentence stops mid-air."
+    },
+    {
+      "id": "bedbug.history",
+      "kind": "any_of",
+      "label": "Bedbug infestation history",
+      "where": "Bedbug Disclosure",
+      "fields": [
+        "bedbug.mark_none",
+        "bedbug.mark_building_eradicated",
+        "bedbug.mark_building_not_eradicated",
+        "bedbug.mark_apartment_eradicated",
+        "bedbug.mark_apartment_not_eradicated",
+        "bedbug.mark_other"
+      ],
+      "why": "The form says only checked boxes apply, so no box checked is a disclosure that says nothing at all."
+    },
+    {
+      "id": "dhcr.lease_kind",
+      "kind": "one_of",
+      "label": "Vacancy or renewal lease",
+      "where": "DHCR consent, Section A",
+      "fields": [
+        "dhcr.mark_vacancy",
+        "dhcr.mark_renewal"
+      ],
+      "why": "'Please select only one.' Nothing computes this today, so it is blank unless the agent ticks it."
+    },
+    {
+      "id": "window_guard.children",
+      "kind": "one_of",
+      "label": "Children in the apartment",
+      "where": "Window Guard Notice",
+      "fields": [
+        "window_guard.mark_has_children",
+        "window_guard.mark_no_children"
+      ],
+      "why": "'Check one.' The application answers it, so an empty pair means the applicant was never asked or the answer did not arrive."
+    },
+    {
+      "id": "insurance.required",
+      "kind": "one_of",
+      "label": "Renters insurance required or not",
+      "where": "Lease, Renters Insurance",
+      "fields": [
+        "insurance.required_yes",
+        "insurance.required_no"
+      ],
+      "why": "The clause reads 'Renters insurance __ IS or __ IS NOT required'. Neither ticked leaves the obligation undefined."
+    },
+    {
+      "id": "smoking.in_unit",
+      "kind": "one_of",
+      "label": "Smoking in the unit",
+      "where": "Lease, Miscellaneous and Disclosures",
+      "fields": [
+        "smoking.in_unit_yes",
+        "smoking.in_unit_no"
+      ],
+      "why": "'Smoking __ IS or __ IS NOT allowed in the Unit.' The lease later calls a breach of it material, so it has to say which."
+    },
+    {
+      "id": "smoking.other_areas",
+      "kind": "required_when",
+      "label": "Other smoking restrictions",
+      "where": "Smoking Policy Rider",
+      "when": "smoking.other_areas",
+      "then": [
+        "smoking.other_areas_text"
+      ],
+      "why": "The box is ticked next to 'Other areas/exceptions:' with nothing written after it."
+    },
+    {
+      "id": "good_cause.applies",
+      "kind": "one_of",
+      "label": "Subject to Good Cause Eviction",
+      "where": "Good Cause Notice",
+      "fields": [
+        "good_cause.mark_yes",
+        "good_cause.mark_no"
+      ],
+      "why": "The notice exists to answer this one question. Unanswered, it informs the tenant of nothing."
+    },
+    {
+      "id": "good_cause.exemption",
+      "kind": "any_of",
+      "only_when": "good_cause.mark_no",
+      "label": "Why the unit is exempt",
+      "where": "Good Cause Notice, question 2",
+      "fields": [
+        "good_cause.exempt_not_adopted",
+        "good_cause.exempt_small_landlord",
+        "good_cause.exempt_owner_occupied",
+        "good_cause.exempt_rent_regulated",
+        "good_cause.exempt_income_restricted",
+        "good_cause.exempt_condo_coop",
+        "good_cause.exempt_new_construction",
+        "good_cause.exempt_seasonal",
+        "good_cause.exempt_institutional",
+        "good_cause.exempt_manufactured_home",
+        "good_cause.exempt_hotel_transient",
+        "good_cause.exempt_dormitory",
+        "good_cause.exempt_religious",
+        "good_cause.exempt_high_rent"
+      ],
+      "why": "Saying the unit is not covered without saying why is the half of the answer a tenant can challenge."
+    },
+    {
+      "id": "good_cause.increase",
+      "kind": "one_of",
+      "only_when": "good_cause.mark_yes",
+      "label": "Rent increase against the threshold",
+      "where": "Good Cause Notice, section B",
+      "fields": [
+        "good_cause.increase_below_threshold",
+        "good_cause.increase_above_threshold"
+      ],
+      "why": "A covered unit has to state whether the rent crosses the presumptively unreasonable threshold."
+    },
+    {
+      "id": "good_cause.increase_reason",
+      "kind": "required_when",
+      "label": "Justification for the increase",
+      "where": "Good Cause Notice, B-1",
+      "when": "good_cause.increase_above_threshold",
+      "then": [
+        "good_cause.increase_justification"
+      ],
+      "why": "Above the threshold the landlord must give a justification; the line is otherwise blank."
+    },
+    {
+      "id": "good_cause.nonrenewal",
+      "kind": "any_of",
+      "only_when": "good_cause.mark_yes",
+      "label": "Reason a lease is not being renewed",
+      "where": "Good Cause Notice, section C",
+      "fields": [
+        "good_cause.nonrenewal_exempt",
+        "good_cause.nonrenewal_first_or_renewal",
+        "good_cause.nonrenewal_sublet",
+        "good_cause.nonrenewal_employment",
+        "good_cause.nonrenewal_unpaid_rent",
+        "good_cause.nonrenewal_lease_violation",
+        "good_cause.nonrenewal_nuisance",
+        "good_cause.nonrenewal_illegal_occupancy",
+        "good_cause.nonrenewal_illegal_use",
+        "good_cause.nonrenewal_refused_access",
+        "good_cause.nonrenewal_owner_use",
+        "good_cause.nonrenewal_demolition",
+        "good_cause.nonrenewal_withdrawal",
+        "good_cause.nonrenewal_refused_terms"
+      ],
+      "why": "For a first lease the right answer is the one saying no reason is needed. Left empty the section reads as an unanswered question."
+    },
+    {
+      "id": "attorney_fees.amount",
+      "kind": "required_when",
+      "label": "Attorneys' fees cap",
+      "where": "Lease, Attorneys' Fees",
+      "when": "attorney_fees.cap_enabled",
+      "then": [
+        "attorney_fees.cap_amount"
+      ],
+      "why": "'shall not exceed ____, excluding costs' with no figure caps nothing while looking as though it does."
+    },
+    {
+      "id": "attorney_fees.unused",
+      "kind": "blank_unless",
+      "label": "Attorneys' fees cap left over",
+      "where": "Lease, Attorneys' Fees",
+      "when": "attorney_fees.cap_enabled",
+      "then": [
+        "attorney_fees.cap_amount"
+      ],
+      "why": "A figure prints into a sentence that begins 'If checkbox is selected' while the checkbox is not."
+    },
+    {
+      "id": "utility.other1",
+      "kind": "idle_unless",
+      "label": "Other utility (1)",
+      "where": "Utility Addendum",
+      "when_filled": "utility.other1_label",
+      "then": "utility.other1",
+      "idle": "N/A",
+      "why": "The addendum prints a row per utility. A payer with no utility named puts somebody on the hook for a blank."
+    },
+    {
+      "id": "utility.other2",
+      "kind": "idle_unless",
+      "label": "Other utility (2)",
+      "where": "Utility Addendum",
+      "when_filled": "utility.other2_label",
+      "then": "utility.other2",
+      "idle": "N/A",
+      "why": "As above, for the second spare row."
     }
   ],
   "fields": [
@@ -193,6 +426,17 @@
       "required": true,
       "default": null,
       "from": "applications.email"
+    },
+    {
+      "id": "concession.terms",
+      "label": "Rent concession — terms",
+      "group": "concession",
+      "source": "deal",
+      "type": "multiline",
+      "required": false,
+      "default": null,
+      "from": "applications.concession_terms",
+      "note": "The whole of the Rent Concession Rider. Left blank, the rider prints with nothing on it."
     },
     {
       "id": "tenant.mailing_address",

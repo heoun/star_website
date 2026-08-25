@@ -26,6 +26,17 @@ ADDRESS = REPO / "site" / "shared" / "lease-address.js"
 PLACEHOLDER = re.compile(r"\{\{([a-z0-9_.]+)\}\}")
 VALID_SOURCES = {"deal", "manager", "agent"}
 
+# Which keys each rule kind reads. A rule naming a field that no longer exists
+# would silently stop checking the disclosure it was written for, and an
+# unchecked disclosure is exactly the failure the rules exist to catch.
+RULE_SHAPES = {
+    "one_of": {"fields"},
+    "any_of": {"fields"},
+    "required_when": {"when", "then"},
+    "blank_unless": {"when", "then"},
+    "idle_unless": {"when_filled", "then", "idle"},
+}
+
 
 def composed_parts():
     """Fields that earn their place by feeding a value the template does print.
@@ -50,6 +61,59 @@ def template_placeholders(path):
     return found
 
 
+def rule_problems(registry, by_id):
+    """The disclosure rules have to name fields that exist, and be about boxes.
+
+    Every rule turns on whether a checkbox is ticked. Pointing one at a text
+    field would make it read that field's contents as a tick and quietly pass.
+    """
+    problems = []
+    seen = set()
+
+    for rule in registry.get("rules", []):
+        name = rule.get("id", "<unnamed rule>")
+        if name in seen:
+            problems.append(f"duplicate rule id: {name}")
+        seen.add(name)
+
+        kind = rule.get("kind")
+        if kind not in RULE_SHAPES:
+            problems.append(f"{name}: unknown rule kind {kind!r}")
+            continue
+        for key in RULE_SHAPES[kind]:
+            if key not in rule:
+                problems.append(f"{name}: a {kind} rule needs {key!r}")
+        for key in ("label", "where", "why"):
+            if not rule.get(key):
+                problems.append(f"{name}: needs {key!r} — the panel prints it")
+
+        boxes = list(rule.get("fields", []))
+        for key in ("when", "only_when"):
+            if rule.get(key):
+                boxes.append(rule[key])
+
+        named = boxes + [rule[k] for k in ("when_filled",) if rule.get(k)]
+        then = rule.get("then")
+        named += then if isinstance(then, list) else ([then] if then else [])
+
+        for field_id in named:
+            if field_id not in by_id:
+                problems.append(f"{name}: names {field_id}, which is not a field")
+
+        for field_id in boxes:
+            field = by_id.get(field_id)
+            if field and field["type"] != "checkbox":
+                problems.append(f"{name}: {field_id} is a {field['type']}, not a checkbox")
+
+        if kind == "idle_unless":
+            partner = by_id.get(rule.get("then"))
+            if partner and rule.get("idle") not in (partner.get("options") or []):
+                problems.append(f"{name}: {rule.get('idle')!r} is not one of "
+                                f"{rule.get('then')}'s options")
+
+    return problems
+
+
 def main():
     if not TEMPLATE.exists():
         sys.exit(f"template not found: {TEMPLATE}")
@@ -62,6 +126,7 @@ def main():
     groups = {g["id"] for g in registry["groups"]}
 
     problems = []
+    problems += rule_problems(registry, {f["id"]: f for f in fields})
 
     duplicates = sorted({i for i in ids if ids.count(i) > 1})
     if duplicates:
@@ -99,6 +164,7 @@ def main():
         return 1
 
     print(f"OK: {len(fields)} fields, all present in the template and registered.")
+    print(f"    {len(registry.get('rules', []))} disclosure rules, all naming real checkboxes.")
     pending = [f["id"] for f in fields if f.get("needs_setup")]
     if pending:
         print(f"\n{len(pending)} setting(s) still need a value before the first "

@@ -1,6 +1,7 @@
 import { fetchListing, insertApplication } from "./supabase.js";
 import { encryptionReady, encryptSsn } from "./ssn.js";
 import { sendEmail } from "./email.js";
+import { readSession } from "./portal.js";
 
 const CONTACT_EMAIL = "info@starreusa.com";
 const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
@@ -146,6 +147,125 @@ const PET_SPEC = {
   weight: line(20)
 };
 
+// ------------------------------------------------ correcting an application
+//
+// An agent can correct a submitted application from the admin console — an
+// applicant mistypes an email, a move-in date slips, a name is spelled the way
+// nobody spells it. The rules are the ones above, applied to whichever fields
+// were sent, so a corrected application cannot end up shaped differently from a
+// submitted one. What may NOT be corrected here is the SSN: it is stored
+// encrypted and never leaves the server in full, so there is nothing to edit
+// against.
+//
+// `name` is derived rather than accepted: it is first and last together on the
+// way in, and it stays that way, because the lease prints `name` and a screen
+// that lets those two disagree prints the wrong tenant.
+
+const SCALAR_EDITS = {
+  name: { clean: (v) => cleanLine(v, 240), required: true, label: "tenant name(s)" },
+  concession_terms: { clean: (v) => cleanMultiline(v, 4000) || null, blank: true, label: "rent concession" },
+  first_name: { clean: (v) => cleanLine(v, 80), required: true, label: "first name" },
+  last_name: { clean: (v) => cleanLine(v, 80), required: true, label: "last name" },
+  email: { clean: (v) => cleanLine(v, 180), check: isValidEmail, label: "email" },
+  phone: { clean: (v) => cleanLine(v, 30), check: isValidPhone, label: "phone" },
+  current_address: { clean: (v) => cleanLine(v, 300), required: true, label: "current address" },
+  move_in: { clean: (v) => cleanLine(v, 10), check: isRealDate, label: "move-in date" },
+  dob: { clean: (v) => cleanLine(v, 10), check: isAdultDob, label: "date of birth" },
+  income_note: { clean: (v) => cleanLine(v, 300), required: true, label: "annual income" },
+  message: { clean: (v) => cleanMultiline(v, 2000) || null, blank: true, label: "message" }
+};
+
+const LIST_EDITS = {
+  employment_history: { spec: EMPLOYMENT_SPEC, required: ["employer"], label: "employment history", least: 0 },
+  rental_history: { spec: RENTAL_SPEC, required: ["address"], label: "rental history", least: 0 },
+  reference_contacts: { spec: PERSON_SPEC, required: ["name"], label: "references", least: 3 },
+  emergency_contacts: { spec: PERSON_SPEC, required: ["name"], label: "emergency contact", least: 1 },
+  pets: { spec: PET_SPEC, required: ["type"], label: "pets", least: 0 }
+};
+
+export function normalizeApplicationEdit(body, current = {}) {
+  const values = {};
+  const errors = [];
+
+  for (const [key, rule] of Object.entries(SCALAR_EDITS)) {
+    if (body[key] === undefined) continue;
+    const cleaned = rule.clean(body[key]);
+    // A rule marked `blank` maps empty to null on purpose: there is no message,
+    // there is no concession. For every other scalar a null came out of a value
+    // that would not clean, which is a correction to reject rather than store.
+    if (cleaned === null && !rule.blank) { errors.push(rule.label); continue; }
+    if (rule.required && !cleaned) errors.push(rule.label);
+    else if (rule.check && !rule.check(cleaned)) errors.push(rule.label);
+    values[key] = cleaned;
+  }
+
+  if (body.lease_term_months !== undefined) {
+    const months = parseIntInRange(body.lease_term_months, 1, 60);
+    if (months === null) errors.push("lease term");
+    else values.lease_term_months = months;
+  }
+
+  if (body.household_size !== undefined) {
+    const size = parseIntInRange(body.household_size, 1, 20);
+    if (size === null) errors.push("household size");
+    else values.household_size = size;
+  }
+
+  if (body.children_under_11 !== undefined) {
+    if (body.children_under_11 !== true && body.children_under_11 !== false) {
+      errors.push("children under 11");
+    } else {
+      values.children_under_11 = body.children_under_11;
+    }
+  }
+
+  if (body.current_employer !== undefined) {
+    const raw = typeof body.current_employer === "object" && body.current_employer !== null
+      ? body.current_employer : {};
+    const employer = {
+      employer: cleanLine(raw.employer, 160),
+      position: cleanLine(raw.position, 120),
+      start: cleanLine(raw.start, 20),
+      supervisor_name: cleanLine(raw.supervisor_name, 120),
+      supervisor_phone: phoneField()(raw.supervisor_phone),
+      supervisor_email: emailField()(raw.supervisor_email)
+    };
+    if (!employer.employer) errors.push("current employer");
+    if (employer.supervisor_phone === null || employer.supervisor_email === null) {
+      errors.push("current employer contact");
+    }
+    values.current_employer = employer;
+  }
+
+  for (const [key, rule] of Object.entries(LIST_EDITS)) {
+    if (body[key] === undefined) continue;
+    const entries = shapeEntries(body[key], rule.spec, rule.required, rule.label, errors);
+    if (entries.length < rule.least) errors.push(`${rule.label} (${rule.least} required)`);
+    if (key === "reference_contacts" && entries.some((ref) => !ref.phone && !ref.email)) {
+      errors.push("references (each needs a phone or email)");
+    }
+    if (key === "emergency_contacts" && entries.some((contact) => !contact.phone)) {
+      errors.push("emergency contact phone");
+    }
+    // The submit path stores an empty optional list as null, not as [].
+    values[key] = entries.length > 0 || rule.least > 0 ? entries : null;
+  }
+
+  // Kept in step with the two halves it is made of, whichever of them moved —
+  // unless the name itself was sent, which is how a lease adds a second tenant
+  // the application was never going to name.
+  if (values.name === undefined
+      && (values.first_name !== undefined || values.last_name !== undefined)) {
+    const first = values.first_name ?? current.first_name ?? "";
+    const last = values.last_name ?? current.last_name ?? "";
+    values.name = `${first} ${last}`.trim();
+    if (!values.name) errors.push("name");
+  }
+
+  return { values, errors: [...new Set(errors)] };
+}
+
+
 async function verifyTurnstile(env, token, remoteIp) {
   if (!token) return false;
 
@@ -184,6 +304,32 @@ async function sendNotification(request, env, listing, name) {
   }
 }
 
+// The applicant's receipt. It names the property and points at the portal
+// where the supporting documents go — deliberately nothing else, because
+// inboxes are where private data leaks from, and the application's contents
+// stay in the admin console.
+async function sendReceipt(request, env, listing, email) {
+  const home = [listing.building_name, listing.unit].filter(Boolean).join(" ");
+  const label = home ? `${listing.title} (${home})` : listing.title;
+  const portal = new URL("/portal/", request.url).toString();
+
+  const sent = await sendEmail(request, env, {
+    from: FROM_ADDRESS,
+    to: [email],
+    subject: `We received your application for ${label}`,
+    text: `Thank you for applying for ${label}.\n\n`
+      + `Next step: upload your supporting documents in your applicant portal:\n\n    ${portal}\n\n`
+      + "We need your government ID (front and back), your job offer letter, your last two "
+      + "paystubs, and your last two months' bank statements. Tax returns for the last two "
+      + "years and a landlord's reference letter are optional but help.\n\n"
+      + "The Star Real Estate team will review your application and follow up shortly.\n"
+  });
+
+  if (!sent) {
+    console.error("Application receipt failed for", label);
+  }
+}
+
 export async function handleApplication(request, env, ctx) {
   let body;
   try {
@@ -204,6 +350,28 @@ export async function handleApplication(request, env, ctx) {
     return json({ error: "Applications are temporarily unavailable. Please try again shortly." }, 503);
   }
 
+  // Applying requires a portal account, and the application's email IS the
+  // account's — taken from the verified session, never from the form. It is
+  // what ties the application to the portal where the documents arrive, so a
+  // typed address (one typo, or someone else's) must not be able to detach
+  // the two.
+  const session = await readSession(request, env);
+  if (!session) {
+    return json({ error: "Please sign in to your applicant account to apply." }, 401);
+  }
+
+  const response = await processApplication(request, env, ctx, body, session.email);
+
+  // Supabase rotates refresh tokens: a session that was refreshed while this
+  // submit was validated has to reach the browser, or the applicant is
+  // quietly signed out a request later.
+  if (session.setCookie) {
+    response.headers.append("Set-Cookie", session.setCookie);
+  }
+  return response;
+}
+
+async function processApplication(request, env, ctx, body, email) {
   const listingId = String(body.listing_id ?? "").trim();
   if (!UUID_PATTERN.test(listingId)) {
     return json({ error: "Unknown property." }, 400);
@@ -213,7 +381,6 @@ export async function handleApplication(request, env, ctx) {
 
   const firstName = cleanLine(body.first_name, 80);
   const lastName = cleanLine(body.last_name, 80);
-  const email = cleanLine(body.email, 180);
   const phone = cleanLine(body.phone, 30);
   const currentAddress = cleanLine(body.current_address, 300);
   const moveIn = cleanLine(body.move_in, 10);
@@ -226,7 +393,6 @@ export async function handleApplication(request, env, ctx) {
 
   if (!firstName) errors.push("first name");
   if (!lastName) errors.push("last name");
-  if (!isValidEmail(email)) errors.push("email");
   if (!phone || !isValidPhone(phone)) errors.push("phone");
   if (!currentAddress) errors.push("current address");
   if (!isRealDate(moveIn)) errors.push("move-in date");
@@ -338,5 +504,6 @@ export async function handleApplication(request, env, ctx) {
   }
 
   ctx.waitUntil(sendNotification(request, env, listing, fullName));
+  ctx.waitUntil(sendReceipt(request, env, listing, email));
   return json({ ok: true }, 201);
 }

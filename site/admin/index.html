@@ -7,342 +7,804 @@
   <link rel="icon" type="image/svg+xml" href="/favicon.svg">
   <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <meta name="robots" content="noindex, nofollow">
-  <title>Listings Admin | Star Real Estate</title>
+  <title>Star Admin</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@600;700&family=Inter:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
   <style>
+    /* The console wears the website's clothes: the same paper ground, the same
+       near-black indigo ink, the same one blue reserved for whatever is being
+       measured right now, and the same square corners — the public site has no
+       rounded corner anywhere, so neither does this. */
     :root {
-      --ink: #1f2a33;
-      --text: #4c5963;
-      --bg: #f7f6f1;
-      --panel: #ffffff;
-      --line: rgba(31, 42, 51, 0.16);
-      --primary: #0d3b52;
-      --accent: #c1752e;
-      --danger: #b3261e;
-      --radius: 14px;
+      --paper: #f6f4ef;
+      --paper2: #efece3;
+      --white: #ffffff;
+      --ink: #141834;
+      --soft: #666d8a;
+      --line: #dcd8cd;
+      --line2: #c9c4b6;
+      --blue: #3E3EE5;
+      --navy: #101538;
+
+      /* Semantic, and deliberately not the accent: "this is fine" must not be
+         sayable in the same colour as "this is the thing you are editing". */
+      --good: #136b46;  --good-bg: #e7f1ec;  --good-line: #b7d5c6;
+      --warn: #8a5510;  --warn-bg: #f7efdd;  --warn-line: #ddc79a;
+      --bad:  #a32218;  --bad-bg:  #f7e9e7;  --bad-line:  #e0b6b1;
+
+      --display: "Inter Tight", ui-sans-serif, system-ui, sans-serif;
+      --body: "Inter", ui-sans-serif, system-ui, -apple-system, sans-serif;
+      --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, monospace;
+
+      --rail: 232px;
+
+      /* Names the older rules in this file still reach for. Kept as aliases so
+         one palette drives everything, rather than two drifting apart. */
+      --bg: var(--paper);
+      --panel: var(--white);
+      --primary: var(--navy);
+      --accent: var(--warn);
+      --text: var(--soft);
+      --muted: var(--soft);
+      --danger: var(--bad);
+      --radius: 0;
     }
 
     * { box-sizing: border-box; }
 
     body {
       margin: 0;
-      background: var(--bg);
+      background: var(--paper);
       color: var(--ink);
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      font-family: var(--body);
+      font-size: 14px;
       line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
     }
 
-    header {
+    a { color: inherit; }
+    ::selection { background: var(--blue); color: #fff; }
+
+    /* Every digit that sits in a column lines up. */
+    .num, .stat b, .statbar b, td, .lease-facts dd, .ws-derived { font-variant-numeric: tabular-nums; }
+
+    /* A label, everywhere: nav sections, field names, chips, table headers. */
+    .k {
+      font-family: var(--mono);
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #4d5470;
+    }
+
+    /* ------------------------------------------------------------------
+       shell: a navy rail, a breadcrumb bar, and the page
+    ------------------------------------------------------------------ */
+
+    .app { min-height: 100vh; display: grid; grid-template-columns: var(--rail) minmax(0, 1fr); }
+
+    .side {
+      position: sticky;
+      top: 0;
+      height: 100vh;
       display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
+      flex-direction: column;
+      gap: 4px;
+      padding: 22px 14px 16px;
+      background: var(--navy);
+      color: rgba(238, 240, 248, 0.72);
+    }
+
+    .brand { display: flex; align-items: center; gap: 10px; padding: 0 10px 20px; text-decoration: none; }
+    .brand svg { width: 22px; height: 22px; display: block; flex: none; }
+    .brand b { font-family: var(--display); font-weight: 700; font-size: 11.5px; letter-spacing: 0.24em; color: #fff; }
+
+    .role {
+      margin: 0 10px 20px;
+      padding: 10px 0 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.14);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.14);
+      display: grid;
+      gap: 3px;
+    }
+
+    .role .k { color: rgba(238, 240, 248, 0.42); }
+    .role b { font-size: 13px; color: #fff; text-transform: capitalize; }
+    .role .who { font-size: 11.5px; color: rgba(238, 240, 248, 0.55); overflow-wrap: anywhere; }
+
+    .nav { display: grid; gap: 1px; }
+    .nav .k { padding: 14px 10px 6px; color: rgba(238, 240, 248, 0.38); }
+
+    .nav a {
+      display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 16px 24px;
-      background: var(--primary);
-      color: #ffffff;
+      gap: 8px;
+      padding: 9px 10px;
+      font-size: 13.5px;
+      font-weight: 500;
+      color: rgba(238, 240, 248, 0.72);
+      text-decoration: none;
+      border-left: 2px solid transparent;
+      transition: color .18s ease, background .18s ease;
     }
 
-    header h1 { margin: 0; font-size: 20px; }
-    header .session { display: flex; align-items: center; gap: 14px; }
-    header .who { font-size: 13px; opacity: 0.85; }
+    .nav a:hover { color: #fff; background: rgba(255, 255, 255, 0.05); }
+
+    .nav a[aria-current="page"] {
+      color: #fff;
+      font-weight: 600;
+      background: rgba(255, 255, 255, 0.07);
+      border-left-color: var(--blue);
+    }
+
+    /* Shown only when the rail collapses to icons; see the 860px query. */
+    .nav a abbr { display: none; }
+
+    .side .sign-out {
+      margin-top: auto;
+      padding: 9px 10px;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.14em;
+      text-transform: uppercase;
+      color: rgba(238, 240, 248, 0.5);
+      text-decoration: none;
+    }
+
+    .side .sign-out:hover { color: #fff; }
+
+    /* Hidden for an agent, who has no configuration to do. The Worker refuses
+       these routes as well — this only keeps a dead link off the screen. */
+    body:not([data-role="manager"]) [data-manager-only] { display: none; }
+
+    .main { min-width: 0; display: flex; flex-direction: column; }
+
+    .top {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      min-height: 58px;
+      padding: 0 clamp(16px, 2.4vw, 32px);
+      background: rgba(246, 244, 239, 0.92);
+      backdrop-filter: blur(10px);
+      box-shadow: inset 0 -1px 0 var(--line);
+    }
+
+    .crumb { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 13px; color: var(--soft); }
+    .crumb a { text-decoration: none; }
+    .crumb a:hover { color: var(--ink); box-shadow: inset 0 -1px 0 var(--blue); }
+    .crumb b { color: var(--ink); font-weight: 600; }
+    .crumb i { font-style: normal; color: var(--line2); }
+
+    .topright { display: flex; align-items: center; gap: 12px; }
+
+    .badge {
+      font-family: var(--mono);
+      font-size: 9.5px;
+      font-weight: 500;
+      letter-spacing: 0.16em;
+      text-transform: uppercase;
+      padding: 4px 8px;
+      border: 1px solid var(--line2);
+      color: var(--soft);
+    }
+
+    .avatar {
+      width: 30px;
+      height: 30px;
+      display: grid;
+      place-items: center;
+      background: var(--ink);
+      color: var(--paper);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.04em;
+    }
 
     /* Only ever shown when the Worker reports it is running locally, so the
        database being edited is never a guess. */
     .environment {
       display: none;
       align-items: center;
-      gap: 10px;
-      padding: 9px 24px;
-      background: var(--accent);
-      color: #ffffff;
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.02em;
+      gap: 12px;
+      padding: 8px clamp(16px, 2.4vw, 32px);
+      background: var(--warn-bg);
+      box-shadow: inset 0 -1px 0 var(--warn-line);
+      color: var(--warn);
+      font-family: var(--mono);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
     }
 
     .environment[data-shown] { display: flex; }
-    .environment .database { font-weight: 500; opacity: 0.9; }
+    .environment .database { letter-spacing: 0.02em; text-transform: none; opacity: 0.85; }
 
-    .sign-out {
+    .content { flex: 1; width: 100%; max-width: 1440px; margin: 0 auto; padding: clamp(20px, 2.6vw, 32px) clamp(16px, 2.4vw, 32px) 64px; }
+
+    /* ------------------------------------------------------------------
+       page head, panels, tabs
+    ------------------------------------------------------------------ */
+
+    .route[hidden] { display: none; }
+
+    .pagehead { display: flex; align-items: flex-start; justify-content: space-between; gap: 20px; flex-wrap: wrap; margin-bottom: 18px; }
+    .pagehead h1 { margin: 5px 0 4px; font-family: var(--display); font-weight: 700; font-size: clamp(21px, 2.4vw, 27px); letter-spacing: -0.015em; text-wrap: balance; }
+    .pagehead p { margin: 0; max-width: 62ch; color: var(--soft); font-size: 13.5px; }
+    .pagehead .actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
+    .statbar {
+      display: grid;
+      grid-template-columns: 1.3fr repeat(3, minmax(0, 1fr));
+      margin-bottom: 18px;
+      background: var(--white);
+      border: 1px solid var(--line);
+    }
+
+    .stat { padding: 12px 16px; min-width: 0; }
+    .stat + .stat { border-left: 1px solid var(--line); }
+    .stat .k { display: block; margin-bottom: 5px; }
+    .stat b { display: block; font-size: 14px; font-weight: 600; overflow-wrap: anywhere; }
+    .stat small { display: block; color: var(--soft); font-size: 12px; }
+    .stat.is-lead { display: flex; align-items: center; gap: 11px; }
+    .stat.is-lead > div { min-width: 0; }
+
+    .dot { width: 9px; height: 9px; flex: none; background: var(--good); box-shadow: 0 0 0 4px var(--good-bg); }
+    .dot.is-warn { background: var(--warn); box-shadow: 0 0 0 4px var(--warn-bg); }
+    .dot.is-bad { background: var(--bad); box-shadow: 0 0 0 4px var(--bad-bg); }
+
+    .tabs { display: flex; gap: 2px; flex-wrap: wrap; margin-bottom: 18px; box-shadow: inset 0 -1px 0 var(--line); }
+
+    .tab {
+      border: 0;
+      background: none;
+      padding: 9px 14px;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--soft);
+      cursor: pointer;
+      box-shadow: inset 0 -1px 0 transparent;
+    }
+
+    .tab:hover { color: var(--ink); }
+    .tab[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 -2px 0 var(--blue); }
+
+    .panel { background: var(--white); border: 1px solid var(--line); }
+    .panel + .panel { margin-top: 14px; }
+
+    .panel > .phead {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+      padding: 13px 16px;
+      box-shadow: inset 0 -1px 0 var(--line);
+    }
+
+    .panel > .phead h2 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 15px; }
+    .panel > .phead p { margin: 3px 0 0; font-size: 12.5px; color: var(--soft); }
+    .panel > .pbody { padding: 14px 16px; }
+
+    .cols { display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 0.8fr); gap: 14px; align-items: start; }
+    .cols > * { min-width: 0; }
+
+    /* label / value rows inside a panel */
+    .lines { display: grid; }
+    .line { display: grid; grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.4fr) auto; gap: 12px; align-items: baseline; padding: 9px 0; }
+    .line + .line { border-top: 1px solid var(--paper2); }
+    .line > .k { padding-top: 2px; }
+    .line b { font-weight: 600; overflow-wrap: anywhere; }
+    .line .empty { color: var(--soft); }
+    .line .empty.is-needed { color: var(--bad); font-weight: 600; }
+    .line.is-needed { background: var(--bad-bg); box-shadow: inset 2px 0 0 var(--bad); padding-left: 10px; margin-left: -10px; }
+
+    /* ------------------------------------------------------------------
+       where a value came from
+    ------------------------------------------------------------------ */
+
+    /* The console's most important sentence, said in one chip per row: who owns
+       this value. An agent may not write a manager's, and the reason is the
+       chip rather than a greyed-out box with no explanation. */
+    .src {
       display: inline-flex;
       align-items: center;
-      padding: 7px 16px;
-      border: 1px solid rgba(255, 255, 255, 0.45);
-      border-radius: 999px;
-      color: #ffffff;
-      text-decoration: none;
+      gap: 5px;
+      flex: none;
+      padding: 3px 7px;
+      border: 1px solid;
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      white-space: nowrap;
+    }
+
+    .src-application { color: var(--good); background: var(--good-bg); border-color: var(--good-line); }
+    .src-listing { color: var(--blue); background: rgba(62, 62, 229, 0.07); border-color: rgba(62, 62, 229, 0.28); }
+    .src-agent { color: var(--paper); background: var(--ink); border-color: var(--ink); }
+    .src-manager { color: var(--soft); background: var(--paper2); border-color: var(--line); }
+    .src-computed { color: var(--warn); background: var(--warn-bg); border-color: var(--warn-line); }
+
+    .legend { display: flex; align-items: center; gap: 7px; flex-wrap: wrap; margin-bottom: 14px; }
+
+    .locked { display: inline-flex; align-items: center; gap: 5px; color: var(--soft); font-size: 12px; }
+
+    /* ------------------------------------------------------------------
+       controls
+    ------------------------------------------------------------------ */
+
+    button {
+      font-family: var(--mono);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      border: 1px solid var(--line2);
+      border-radius: 0;
+      background: var(--white);
+      color: var(--ink);
+      padding: 9px 15px;
+      cursor: pointer;
+      transition: background .2s ease, color .2s ease, border-color .2s ease;
+    }
+
+    button:hover { border-color: var(--ink); background: var(--ink); color: var(--paper); }
+    button.primary { background: var(--blue); border-color: var(--blue); color: #fff; }
+    button.primary:hover { background: var(--ink); border-color: var(--ink); }
+    button.danger { color: var(--bad); border-color: var(--bad-line); background: var(--white); }
+    button.danger:hover { background: var(--bad); border-color: var(--bad); color: #fff; }
+    button.small { padding: 4px 9px; font-size: 9.5px; }
+    button.link { border: 0; background: none; padding: 0; color: var(--blue); letter-spacing: 0.1em; }
+    button.link:hover { background: none; color: var(--ink); box-shadow: inset 0 -1px 0 var(--ink); }
+    button:disabled { opacity: 0.42; cursor: not-allowed; }
+    button:disabled:hover { background: var(--white); color: var(--ink); border-color: var(--line2); }
+
+    .filters { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    button.chip { padding: 6px 12px; font-size: 10px; border-color: var(--line); color: var(--soft); }
+    button.chip:hover { background: var(--white); color: var(--ink); border-color: var(--ink); }
+    button.chip[aria-pressed="true"], button.chip.is-on { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+    :where(input, select, textarea):focus-visible,
+    :where(button, a):focus-visible { outline: 2px solid var(--blue); outline-offset: 2px; }
+
+    input, select, textarea {
+      font-family: var(--body);
+      font-size: 13.5px;
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid var(--line2);
+      border-radius: 0;
+      background: var(--white);
+      color: var(--ink);
+    }
+
+    textarea { min-height: 90px; resize: vertical; }
+    input[type="checkbox"] { width: auto; accent-color: var(--blue); }
+    input[type="file"] { padding: 6px; font-size: 12.5px; }
+    .checkbox { display: flex; align-items: center; gap: 8px; }
+    .checkbox label { margin: 0; }
+
+    label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
+    .hint { font-weight: 400; color: var(--soft); }
+
+    /* The one message line the whole console writes to. */
+    .status {
+      margin: 0 0 16px;
+      padding: 10px 14px;
+      border: 1px solid var(--line);
+      border-left: 2px solid var(--soft);
+      background: var(--white);
       font-size: 13px;
-      font-weight: 700;
     }
 
-    .sign-out:hover { background: rgba(255, 255, 255, 0.14); }
+    .status[data-tone="error"] { border-color: var(--bad-line); border-left-color: var(--bad); background: var(--bad-bg); color: var(--bad); }
+    .status[hidden] { display: none; }
 
-    main { max-width: 1180px; margin: 0 auto; padding: 24px; }
-
-    .toolbar {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 12px;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 18px;
-    }
-
-    .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 16px; }
     .toolbar-actions { display: flex; gap: 8px; }
 
     .dropzone {
       display: flex;
       flex-direction: column;
-      gap: 6px;
+      gap: 5px;
       align-items: center;
       text-align: center;
-      padding: 22px;
-      margin-bottom: 18px;
-      border: 2px dashed var(--line);
-      border-radius: var(--radius);
-      background: var(--panel);
-      color: var(--text);
-      font-size: 13.5px;
+      padding: 20px;
+      margin-bottom: 16px;
+      border: 1px dashed var(--line2);
+      background: var(--white);
+      color: var(--soft);
+      font-size: 13px;
       cursor: pointer;
       transition: border-color .2s, background .2s;
     }
 
-    .dropzone strong { color: var(--primary); font-size: 15px; }
-    .dropzone:hover, .dropzone[data-active="true"] { border-color: var(--primary); background: #f2f7f9; }
+    .dropzone strong { color: var(--ink); font-family: var(--display); font-size: 14.5px; }
+    .dropzone:hover, .dropzone[data-active="true"] { border-color: var(--blue); background: rgba(62, 62, 229, 0.03); }
+    .dropzone[hidden] { display: none; }
 
-    button {
-      font: inherit;
-      font-weight: 600;
-      border-radius: 999px;
-      border: 1px solid var(--line);
-      background: var(--panel);
-      color: var(--ink);
-      padding: 8px 16px;
-      cursor: pointer;
-    }
+    /* ------------------------------------------------------------------
+       list rows
+    ------------------------------------------------------------------ */
 
-    button:hover { border-color: var(--primary); }
-    button.primary { background: var(--primary); border-color: var(--primary); color: #ffffff; }
-    button.danger { color: var(--danger); border-color: rgba(179, 38, 30, 0.4); }
-    button.chip[aria-pressed="true"] { background: var(--primary); border-color: var(--primary); color: #ffffff; }
-    button.small { padding: 3px 10px; font-size: 12px; }
-    button:disabled { opacity: 0.55; cursor: not-allowed; }
-
-    .status {
-      margin-bottom: 16px;
-      padding: 10px 14px;
-      border-radius: var(--radius);
-      border: 1px solid var(--line);
-      background: var(--panel);
-      font-size: 14px;
-    }
-
-    .status[data-tone="error"] { border-color: rgba(179, 38, 30, 0.4); color: var(--danger); }
-    .status[hidden] { display: none; }
-
-    .rows { display: grid; gap: 10px; }
+    .rows { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+    .rows:empty { display: none; }
+    .rows > .status { margin: 0; border: 0; }
 
     .row {
       display: grid;
-      grid-template-columns: 88px minmax(0, 1fr) auto;
+      grid-template-columns: 92px minmax(0, 1fr) auto;
       gap: 14px;
       align-items: center;
-      padding: 12px;
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
+      padding: 12px 14px;
+      background: var(--white);
     }
 
-    .row .thumb {
-      width: 88px;
-      height: 66px;
-      border-radius: 10px;
-      object-fit: cover;
-      background: #e7eaec;
-      display: block;
-    }
+    .row .thumb { width: 92px; height: 66px; object-fit: cover; background: var(--paper2); display: block; }
+    .row h2 { margin: 0 0 2px; font-family: var(--display); font-weight: 600; font-size: 15px; }
+    .row p { margin: 0; font-size: 13px; color: var(--soft); }
 
-    .row h2 { margin: 0 0 2px; font-size: 16px; }
-    .row p { margin: 0; font-size: 13px; color: var(--text); }
-
-    .tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+    .tags { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 
     .tag {
-      font-size: 11px;
-      font-weight: 700;
+      font-family: var(--mono);
+      font-size: 9px;
+      font-weight: 500;
       text-transform: uppercase;
-      letter-spacing: 0.04em;
-      padding: 2px 8px;
-      border-radius: 999px;
-      background: #e8eef1;
-      color: var(--primary);
-    }
-
-    .tag.draft { background: #fbeee0; color: var(--accent); }
-    .actions { display: flex; gap: 8px; }
-
-    .app-row { grid-template-columns: minmax(0, 1fr) 220px; align-items: start; }
-    .app-row .contact a { color: var(--primary); text-decoration: none; font-weight: 600; }
-    .app-row .contact a:hover { text-decoration: underline; }
-    .app-row .app-message { white-space: pre-line; margin-top: 6px; }
-
-    .app-controls { display: grid; gap: 8px; }
-
-    .app-controls select,
-    .app-controls textarea {
-      font: inherit;
-      font-size: 13px;
-      width: 100%;
-      padding: 6px 9px;
+      letter-spacing: 0.12em;
+      padding: 3px 7px;
       border: 1px solid var(--line);
-      border-radius: 8px;
-      background: #ffffff;
-      color: var(--ink);
+      background: var(--paper2);
+      color: var(--soft);
     }
 
-    .app-controls textarea { min-height: 56px; resize: vertical; }
+    .tag.draft { background: var(--warn-bg); border-color: var(--warn-line); color: var(--warn); }
+    .actions { display: flex; gap: 6px; }
 
-    .tag.st-new { background: #fbeee0; color: var(--accent); }
-    .tag.st-fee_pending { background: #fff3e0; color: #b26a00; }
-    .tag.st-screening { background: #e4e9f7; color: #3949ab; }
-    .tag.st-review { background: #ede7f6; color: #5e35b1; }
-    .tag.st-sent_to_landlord { background: #e0f2f1; color: #00695c; }
-    .tag.st-approved { background: #e3f2e6; color: #2e7d32; }
-    .tag.st-declined { background: #fdecea; color: var(--danger); }
-    .tag.st-lease_sent { background: #e1f5fe; color: #0277bd; }
-    .tag.st-lease_signed { background: #e3f2e6; color: #1b5e20; }
+    /* ---- the applications list ---- */
 
-    .app-detail { margin-top: 10px; border: 1px solid var(--line); border-radius: 10px; background: #fbfaf8; }
-    .app-detail summary { padding: 9px 12px; font-weight: 700; font-size: 13px; cursor: pointer; color: var(--primary); }
-    .app-detail[open] summary { border-bottom: 1px solid var(--line); }
-
-    .detail-grid {
+    .app-row {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.3fr) 96px 96px 100px 116px 132px 104px;
       gap: 14px;
-      padding: 12px;
+      align-items: center;
+      padding: 12px 14px;
+      background: var(--white);
+      text-decoration: none;
+      color: inherit;
     }
 
-    .detail-section h3 {
-      margin: 0 0 6px;
-      font-size: 11.5px;
-      font-weight: 800;
+    .app-row.is-head {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: var(--muted, #6b7680);
+      color: #4d5470;
+      background: var(--paper2);
     }
 
-    .detail-dl { margin: 0; display: grid; gap: 4px; }
-    .detail-row { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; font-size: 13px; }
-    .detail-row dt { color: var(--muted, #6b7680); font-weight: 600; }
-    .detail-row dd { margin: 0; overflow-wrap: anywhere; }
+    a.app-row:hover { background: rgba(62, 62, 229, 0.04); }
+    a.app-row:hover .app-cell-go { color: var(--blue); }
+    a.app-row:focus-visible { outline-offset: -2px; }
+    .app-row > span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+    .app-row b { display: block; font-weight: 600; }
+    .app-row small { display: block; color: var(--soft); font-size: 12px; }
+    .app-cell-soft { color: var(--soft); font-size: 12.5px; }
+    .app-cell-go {
+      font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--soft); text-align: right; white-space: nowrap;
+    }
 
-    .detail-list { margin: 0; padding-left: 16px; display: grid; gap: 6px; font-size: 13px; }
-    .detail-list li { overflow-wrap: anywhere; }
-    .detail-muted { color: var(--muted, #6b7680); font-weight: 400; }
+    /* A state, in a word and a colour, at a size somebody can read across a
+       room. Busy is the accent blue and waiting is amber, so "under review"
+       and "needs information" never read as the same thing at a glance. */
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .pill::before { content: ""; width: 7px; height: 7px; flex: none; background: currentColor; }
+    .pill.is-good { color: var(--good); }
+    .pill.is-busy { color: var(--blue); }
+    .pill.is-warn { color: var(--warn); }
+    .pill.is-bad  { color: var(--bad); }
+    .pill.is-off  { color: var(--soft); }
+    .pill.is-large { font-size: 13px; font-weight: 600; padding: 7px 12px; border: 1px solid currentColor; }
+
+    /* ------------------------------------------------------------------
+       one application: six tabs and a decision
+    ------------------------------------------------------------------ */
+
+    .back { margin-bottom: 12px; }
+    .appl-id {
+      font-family: var(--mono); font-size: 11px; font-weight: 500;
+      letter-spacing: 0.1em; text-transform: uppercase; color: #4d5470;
+    }
+
+    .statbar.is-wide { grid-template-columns: 1.5fr repeat(4, minmax(0, 1fr)); }
+    .stat b.is-good { color: var(--good); }
+    .stat b.is-bad { color: var(--bad); }
+
+    .appl-cols { display: grid; grid-template-columns: minmax(0, 1fr) 336px; gap: 18px; align-items: start; }
+    .appl-cols > * { min-width: 0; }
+
+    .phead-tools { display: flex; gap: 6px; flex: none; }
+
+    /* Groups of values. The labels are sentence case at 13px rather than
+       uppercase micro-type: a page with sixty of them is a page somebody has
+       to read, not a dashboard to glance at. */
+    .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(272px, 1fr)); gap: 20px 30px; }
+    .factgroup { min-width: 0; }
+    .factgroup > h3 {
+      margin: 0 0 6px;
+      padding-bottom: 7px;
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 13.5px;
+      box-shadow: inset 0 -1px 0 var(--line);
+    }
+    .factlist { margin: 0; }
+    .fact { display: grid; grid-template-columns: minmax(96px, 0.82fr) minmax(0, 1.18fr); gap: 12px; padding: 8px 0; align-items: baseline; }
+    .fact + .fact { border-top: 1px solid var(--paper2); }
+    .fact.is-edit { align-items: center; }
+    .fact dt { margin: 0; font-size: 13px; color: #4d5470; }
+    .fact dt label { margin: 0; font-size: 13px; font-weight: 500; color: #4d5470; }
+    .fact dd { margin: 0; font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+    .fact dd input, .fact dd select, .fact dd textarea { font-size: 13.5px; font-weight: 400; padding: 6px 9px; }
+    .fact-hint { display: block; margin-top: 3px; font-size: 12px; font-weight: 400; color: var(--soft); }
+    .fact-was { display: block; margin-top: 3px; font-size: 12px; font-weight: 500; color: var(--warn); }
+    .soft { color: var(--soft); font-weight: 400; }
+    .panel-hint { color: var(--soft); font-weight: 400; font-size: 11.5px; }
+
+    .panel.is-start { border-color: rgba(62, 62, 229, 0.3); }
+    .panel.is-start > .phead { background: rgba(62, 62, 229, 0.04); }
+
+    .sub { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+    /* A card that opens with a subsection has nothing above it to rule off. */
+    .pbody > .sub:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+    .sub > h3 { margin: 0 0 10px; font-family: var(--display); font-weight: 600; font-size: 13.5px; }
+
+    /* auto-fill, not auto-fit: one emergency contact is one card, not a card
+       stretched across the width of four. */
+    .cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(272px, 1fr)); gap: 12px; }
+    .card { border: 1px solid var(--line); padding: 12px 14px; background: var(--paper); }
+    .card > b { display: block; margin-bottom: 4px; font-family: var(--display); font-size: 13.5px; }
+
+    .none { margin: 0; color: var(--soft); font-size: 13px; }
+    .note { margin: 12px 0 0; color: var(--soft); font-size: 12.5px; max-width: 66ch; }
+    .longtext { margin: 0; font-size: 13.5px; white-space: pre-line; max-width: 70ch; }
+    .sensitive { margin: 16px 0 0; padding: 10px 12px; background: var(--paper2); color: #5b5548; font-size: 12.5px; max-width: 76ch; }
+    .reveal { margin-left: 8px; font-size: 9.5px; }
+
+    .entries { display: grid; gap: 8px; margin-bottom: 8px; }
+    .entry {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(146px, 1fr));
+      gap: 8px;
+      align-items: end;
+      padding: 10px;
+      border: 1px solid var(--line);
+      background: var(--paper);
+    }
+    .entry label { display: grid; gap: 2px; margin: 0; font-size: 11.5px; font-weight: 400; color: var(--soft); }
+    .entry button { align-self: center; }
+
+    .counts { display: grid; grid-template-columns: repeat(auto-fit, minmax(128px, 1fr)); gap: 10px; margin-bottom: 14px; }
+    .count { border: 1px solid var(--line); padding: 10px 12px; }
+    .count b { display: block; margin-top: 3px; font-family: var(--display); font-size: 19px; font-weight: 600; }
+    .count b.is-good { color: var(--good); }
+    .count b.is-bad { color: var(--bad); }
+
+    /* ---- the document checklist ---- */
+
+    .doclist { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+    .docrow {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) 128px minmax(0, 1fr) auto;
+      gap: 14px;
+      align-items: center;
+      padding: 11px 14px;
+      background: var(--white);
+    }
+    .docrow.is-missing { background: var(--bad-bg); }
+    .docrow > div { min-width: 0; }
+    .docrow b { display: block; font-size: 13.5px; }
+    .docrow small { display: block; color: var(--soft); font-size: 12px; overflow-wrap: anywhere; }
+    .docfiles-count { font-size: 13px; font-weight: 600; }
+    .docactions { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+    .docactions .menu > summary { padding: 4px 10px; font-size: 12px; letter-spacing: 0; }
+    .docactions .menu > summary::after { content: ""; }
+    .menu-link { display: block; padding: 7px 0; font-size: 12.5px; color: var(--blue); }
+
+    /* ---- the decision, kept in view ---- */
+
+    .decide {
+      position: sticky;
+      top: 74px;
+      background: var(--white);
+      border: 1px solid var(--line);
+      border-top: 3px solid var(--ink);
+    }
+    .decide-head { padding: 14px 16px; box-shadow: inset 0 -1px 0 var(--line); }
+    .decide-head h2 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 15px; }
+    .decide-head p { margin: 3px 0 0; font-size: 12.5px; color: var(--soft); }
+    .decide-body { padding: 14px 16px; }
+    .decide-now { margin-bottom: 14px; }
+    .decide-body label { margin: 14px 0 5px; font-size: 12.5px; }
+    .decide-body > label:first-of-type { margin-top: 0; }
+    .decide-body textarea { min-height: 74px; font-size: 13px; }
+
+    .decide-missing { margin-top: 14px; padding: 11px 12px; background: var(--warn-bg); font-size: 12.5px; }
+    .decide-missing b { display: block; margin-bottom: 5px; color: var(--warn); }
+    .decide-missing ul { margin: 0; padding-left: 17px; display: grid; gap: 3px; }
+    .decide-missing p { margin: 5px 0 0; }
+    .decide-clear { margin: 14px 0 0; padding: 11px 12px; background: var(--good-bg); color: var(--good); font-size: 12.5px; }
+
+    .decide-meta { margin: 14px 0 0; padding-top: 8px; border-top: 1px solid var(--line); }
+    .decide-meta .fact { grid-template-columns: minmax(0, 1fr) auto; padding: 6px 0; }
+    .decide-meta .fact dt, .decide-meta .fact dd { font-size: 12.5px; }
+    .decide-meta .fact dd { text-align: right; }
+
+    .decide-reason { margin: 12px 0 0; font-size: 12.5px; }
+    .decide-ask { margin-top: 14px; padding: 12px; border: 1px solid var(--line2); background: var(--paper); }
+    .decide-ask > b { font-size: 12.5px; }
+    .decide-ask ul { margin: 6px 0 0; padding-left: 17px; font-size: 12.5px; display: grid; gap: 3px; }
+    .decide-ask p { margin: 8px 0 0; font-size: 12px; }
+
+    .decide-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 7px; margin-top: 14px; }
+    .decide-buttons button { width: 100%; }
+    .decide-buttons button.is-wide { grid-column: 1 / -1; }
+    .decide-note { margin: 10px 0 0; font-size: 12px; color: var(--soft); }
+    .decide-more { margin-top: 12px; }
+
+    /* ---- the uploaded document, in a window ---- */
+
+    #doc-viewer {
+      width: min(940px, 94vw);
+      max-height: 92vh;
+      padding: 0;
+      border: 1px solid var(--line2);
+      background: var(--white);
+      color: var(--ink);
+      flex-direction: column;
+    }
+    #doc-viewer[open] { display: flex; }
+    #doc-viewer::backdrop { background: rgba(16, 21, 56, 0.55); }
+    .viewer-head { display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 13px 16px; box-shadow: inset 0 -1px 0 var(--line); }
+    .viewer-head h2 { margin: 3px 0 0; font-family: var(--display); font-weight: 600; font-size: 15px; }
+    .viewer-files { padding: 10px 16px 0; }
+    .viewer-files[hidden] { display: none; }
+    .viewer-stage { flex: 1; min-height: 0; padding: 14px 16px; background: var(--paper2); overflow: auto; display: grid; place-items: center; }
+    .viewer-stage iframe { width: 100%; height: min(66vh, 760px); border: 1px solid var(--line); background: var(--white); }
+    .viewer-stage img { max-width: 100%; max-height: min(66vh, 760px); background: var(--white); border: 1px solid var(--line); }
+    .viewer-plain { padding: 44px 20px; text-align: center; font-size: 13.5px; }
+    .viewer-plain a { color: var(--blue); }
+    .viewer-foot { display: flex; align-items: center; justify-content: space-between; gap: 14px; flex-wrap: wrap; padding: 11px 16px; box-shadow: inset 0 1px 0 var(--line); }
+    .viewer-foot p { margin: 0; font-size: 12.5px; color: var(--soft); overflow-wrap: anywhere; }
+    .viewer-foot-actions { display: flex; gap: 16px; }
+    .viewer-foot-actions a {
+      font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--blue); text-decoration: none;
+    }
+    .viewer-foot-actions a:hover { box-shadow: inset 0 -1px 0 var(--blue); }
 
     [data-role="ssn-reveal"] { margin-left: 6px; }
 
-    @media (max-width: 640px) {
-      .app-row { grid-template-columns: minmax(0, 1fr); }
-    }
+    /* ------------------------------------------------------------------
+       listing editor dialog
+    ------------------------------------------------------------------ */
 
     dialog {
-      width: min(760px, 94vw);
+      width: min(780px, 94vw);
       max-height: 92vh;
       overflow-y: auto;
-      border: none;
-      border-radius: 18px;
+      border: 1px solid var(--line2);
+      border-radius: 0;
       padding: 0;
-      background: var(--panel);
+      background: var(--white);
+      color: var(--ink);
     }
 
-    dialog::backdrop { background: rgba(12, 31, 40, 0.5); }
+    dialog::backdrop { background: rgba(20, 24, 52, 0.42); backdrop-filter: blur(2px); }
 
-    form { padding: 22px; }
-    form h2 { margin: 0 0 16px; font-size: 20px; color: var(--primary); }
+    form { padding: 24px; }
+    form h2 { margin: 0 0 18px; font-family: var(--display); font-weight: 700; font-size: 19px; }
     form h3 {
-      margin: 22px 0 10px;
-      font-size: 14px;
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
-      color: var(--primary);
-      border-top: 1px solid var(--line);
+      margin: 24px 0 12px;
       padding-top: 16px;
+      border-top: 1px solid var(--line);
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 0.14em;
+      color: var(--soft);
     }
 
     .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
     .grid .wide { grid-column: 1 / -1; }
 
-    label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 4px; }
-    .hint { font-weight: 400; color: var(--text); }
-
-    input, select, textarea {
-      font: inherit;
-      width: 100%;
-      padding: 8px 10px;
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      background: #ffffff;
-      color: var(--ink);
-    }
-
-    textarea { min-height: 90px; resize: vertical; }
-    input[type="checkbox"] { width: auto; }
-    input[type="file"] { padding: 6px; }
-    .checkbox { display: flex; align-items: center; gap: 8px; }
-    .checkbox label { margin: 0; }
-
-    .media-note { font-size: 13px; color: var(--text); margin: 4px 0 10px; }
+    .media-note { font-size: 12.5px; color: var(--soft); margin: 4px 0 10px; }
 
     .media-lock {
       display: none;
       margin: 0 0 14px;
-      padding: 12px 14px;
-      border-radius: 10px;
-      background: #fbeee0;
-      border: 1px solid rgba(193, 117, 46, 0.35);
-      color: #7a4a15;
-      font-size: 13.5px;
+      padding: 11px 13px;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-line);
+      color: var(--warn);
+      font-size: 13px;
     }
 
     #media-section[data-pending="true"] .media-lock { display: block; }
     #media-section .media-fields label { margin-top: 14px; }
-    .photo-item[data-pending="true"] { border-color: rgba(193, 117, 46, 0.5); }
-    .photo-item .pending-flag { font-size: 11px; font-weight: 700; color: var(--accent); text-transform: uppercase; letter-spacing: .04em; }
+    .photo-item[data-pending="true"] { border-color: var(--warn-line); }
+    .photo-item .pending-flag { font-family: var(--mono); font-size: 9px; font-weight: 500; color: var(--warn); text-transform: uppercase; letter-spacing: 0.12em; }
 
-    .photo-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-      gap: 10px;
-      margin-top: 10px;
-    }
-
-    .photo-item {
-      border: 1px solid var(--line);
-      border-radius: 10px;
-      overflow: hidden;
-      background: #fbfaf7;
-    }
-
+    .photo-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+    .photo-item { border: 1px solid var(--line); overflow: hidden; background: var(--paper); }
     .photo-item img { width: 100%; height: 96px; object-fit: cover; display: block; }
     .photo-item .photo-tools { padding: 6px; display: grid; gap: 6px; }
     .photo-item input { padding: 4px 8px; font-size: 12px; }
     .photo-item .photo-buttons { display: flex; gap: 4px; justify-content: space-between; }
 
-    .plan-preview img { max-width: 260px; max-height: 180px; border-radius: 10px; display: block; margin-top: 8px; }
+    .plan-preview img { max-width: 260px; max-height: 180px; display: block; margin-top: 8px; }
     .video-preview { font-size: 13px; margin-top: 8px; word-break: break-all; }
-    .video-preview video { width: 100%; max-height: 300px; border-radius: 10px; background: #000; display: block; }
-    .video-preview p { margin: 6px 0 0; color: var(--text); }
+    .video-preview video { width: 100%; max-height: 300px; background: #000; display: block; }
+    .video-preview p { margin: 6px 0 0; color: var(--soft); }
 
-    .form-actions {
-      display: flex;
-      justify-content: flex-end;
-      gap: 10px;
-      margin-top: 18px;
-      padding-top: 16px;
-      border-top: 1px solid var(--line);
+    .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
+
+    /* ------------------------------------------------------------------
+       responsive
+    ------------------------------------------------------------------ */
+
+    @media (max-width: 1280px) {
+      .appl-cols { grid-template-columns: minmax(0, 1fr) 300px; }
+      /* Applied and move-in are the two columns a narrower table can lose
+         first: both are on the application's own page, one click away. */
+      .app-row { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.2fr) 100px 116px 132px 104px; }
+      .app-row > span:nth-child(3), .app-row > span:nth-child(4) { display: none; }
+    }
+
+    @media (max-width: 1080px) {
+      .cols { grid-template-columns: minmax(0, 1fr); }
+      .statbar, .statbar.is-wide { grid-template-columns: 1fr 1fr; }
+      .stat:nth-child(-n+2) { box-shadow: inset 0 -1px 0 var(--line); }
+      .stat:nth-child(odd) { border-left: 0; }
+
+      /* The decision goes under what it is a decision about, and stops
+         sticking: a panel pinned to a short viewport would cover the tab it
+         belongs to. */
+      .appl-cols { grid-template-columns: minmax(0, 1fr); }
+      .decide { position: static; }
+      .decide-buttons { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    }
+
+    @media (max-width: 860px) {
+      :root { --rail: 64px; }
+      .side { padding: 18px 8px 12px; align-items: stretch; }
+      .brand { justify-content: center; padding: 0 0 18px; }
+      .brand b, .role, .nav .k, .nav a span, .side .sign-out { display: none; }
+      .nav a { justify-content: center; padding: 11px 0; border-left: 0; border-right: 2px solid transparent; }
+      .nav a[aria-current="page"] { border-right-color: var(--blue); }
+      .nav a abbr { display: block; font-family: var(--mono); font-size: 11px; text-decoration: none; }
     }
 
     @media (max-width: 640px) {
@@ -350,47 +812,37 @@
       .row { grid-template-columns: 64px minmax(0, 1fr); }
       .row .actions { grid-column: 1 / -1; }
       .row .thumb { width: 64px; height: 52px; }
+      .statbar, .statbar.is-wide { grid-template-columns: 1fr; }
+      .stat { border-left: 0 !important; box-shadow: inset 0 -1px 0 var(--line); }
+      .line { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+
+      .app-row { grid-template-columns: minmax(0, 1fr) auto; }
+      .app-row > span:nth-child(n+2) { display: none; }
+      .app-row > span:nth-child(7) { display: block; }
+      .app-row.is-head { display: none; }
+
+      .facts { grid-template-columns: minmax(0, 1fr); }
+      .fact { grid-template-columns: minmax(0, 1fr); gap: 3px; }
+      .decide-meta .fact { grid-template-columns: minmax(0, 1fr) auto; }
+      .docrow { grid-template-columns: minmax(0, 1fr) auto; row-gap: 8px; }
+      .docrow > div:nth-child(3) { display: none; }
+      .tabs { flex-wrap: nowrap; overflow-x: auto; }
     }
 
-    /* ---- Lease ---- */
+    /* ==================================================================
+       The lease screen: the document on the left, the fields that fill it
+       on the right. Reached as a tab of a property's lease setup, and as
+       the document view of a single lease.
+    ================================================================== */
 
-    .lease-scope { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
-    .lease-target { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
-    .lease-address { width: 100%; margin-top: 10px; }
-
-    .lease-note {
-      margin: 0 0 14px;
-      color: var(--muted, #6b7680);
-      font-size: 13px;
-      max-width: 70ch;
-    }
-
-    .lease-warn {
-      padding: 10px 12px;
-      border-left: 3px solid var(--accent);
-      background: rgba(193, 117, 46, 0.08);
-      color: var(--ink);
-    }
-
-    .lease-group {
-      background: var(--panel);
-      border: 1px solid var(--line);
-      border-radius: var(--radius);
-      padding: 14px 16px;
-      margin-bottom: 12px;
-    }
-
-    /* ---- The lease screen: document left, the fields that fill it right ---- */
-
-    /* It is a sibling of <main>, so main's 1180px cap does not apply: an 816px
-       page beside a usable form does not fit inside it. */
+    /* It is a sibling of the shell, so the content column's cap does not
+       apply: an 816px page beside a usable form does not fit inside it. */
     #lease-screen {
       position: fixed;
       inset: 0;
-      top: 0;
       display: flex;
       flex-direction: column;
-      background: var(--bg);
+      background: var(--paper);
       z-index: 40;
     }
 
@@ -399,58 +851,53 @@
        but covers the page and eats every click on the admin behind it. */
     #lease-screen[hidden] { display: none; }
 
+    /* The screen covers the console; the console behind it must not scroll. */
+    body.lease-open { overflow: hidden; }
+
     .lease-bar {
       display: flex;
       align-items: center;
       gap: 14px;
       flex-wrap: wrap;
       padding: 10px 18px;
-      background: var(--primary);
-      color: #ffffff;
+      background: var(--navy);
+      color: #fff;
     }
 
-    .lease-bar h2 { margin: 0; font-size: 16px; flex: 1; }
-    .lease-bar button { background: rgba(255, 255, 255, 0.12); color: #ffffff; border-color: rgba(255, 255, 255, 0.35); }
-    .lease-bar .chip.is-on { background: #ffffff; color: var(--primary); }
-    .lease-scope { display: flex; align-items: center; gap: 6px; font-size: 13px; }
-    .lease-scope select { width: auto; min-width: 180px; }
+    .lease-bar h2 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 15px; flex: 1; }
+    .lease-bar button { background: rgba(255, 255, 255, 0.1); color: #fff; border-color: rgba(255, 255, 255, 0.3); }
+    .lease-bar button:hover { background: #fff; color: var(--navy); border-color: #fff; }
+    .lease-bar .chip.is-on { background: #fff; color: var(--navy); border-color: #fff; }
+    .lease-bar select { width: auto; min-width: 190px; background: rgba(255, 255, 255, 0.1); border-color: rgba(255, 255, 255, 0.3); color: #fff; font-size: 12.5px; }
+    .lease-bar select option { color: var(--ink); }
 
-    .lease-alarm {
-      padding: 12px 18px;
-      background: var(--danger);
-      color: #ffffff;
-      font-size: 14px;
-    }
 
-    .lease-panes {
-      flex: 1;
-      display: grid;
-      grid-template-columns: 1fr 6px 1fr;
-      min-height: 0;
-    }
+    .lease-alarm { padding: 12px 18px; background: var(--bad); color: #fff; font-size: 13.5px; }
 
+    .lease-panes { flex: 1; display: grid; grid-template-columns: 1fr 6px 1fr; min-height: 0; }
     .lease-pane { display: flex; flex-direction: column; min-height: 0; min-width: 0; }
-    .lease-pane-form { border-left: 1px solid var(--line); background: var(--panel); }
+    .lease-pane-form { border-left: 1px solid var(--line); background: var(--white); }
 
     .lease-pane-head {
       display: flex;
       align-items: center;
       justify-content: space-between;
       gap: 12px;
-      padding: 8px 14px;
+      padding: 7px 14px;
       border-bottom: 1px solid var(--line);
-      font-size: 13px;
-      font-weight: 700;
-      background: var(--panel);
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.08em;
+      background: var(--white);
     }
 
-    .lease-tools { display: flex; align-items: center; gap: 8px; font-weight: 400; }
-    .lease-tools button { padding: 2px 10px; }
-    .lease-tools label { display: flex; align-items: center; gap: 5px; }
+    .lease-tools { display: flex; align-items: center; gap: 8px; }
+    .lease-tools button { padding: 2px 9px; }
+    .lease-tools label { display: flex; align-items: center; gap: 5px; margin: 0; font-weight: 400; font-size: 11px; }
     .lease-tools input { width: auto; }
 
     .lease-split { cursor: col-resize; background: var(--line); }
-    .lease-split:hover { background: var(--accent); }
+    .lease-split:hover { background: var(--blue); }
 
     /* ---- the document ---- */
 
@@ -485,7 +932,7 @@
       src: local("Calibri Bold"), url("/admin/vendor/carlito-bold.woff2") format("woff2");
     }
 
-    .lease-doc-scroll { flex: 1; overflow: auto; background: #edece7; padding: 14px; }
+    .lease-doc-scroll { flex: 1; overflow: auto; background: var(--paper2); padding: 14px; }
 
     /* About 6,000 characters of this lease name no font anywhere — the Key
        Rider, the Community Rules headings, the DHCR consent's instructions.
@@ -508,99 +955,36 @@
        far more than the 49ms it saves (346ms vs 395ms to first paint). */
     .lease-doc-scroll .docx-wrapper > section.docx {
       margin: 0 auto 14px;
-      box-shadow: 0 1px 6px rgba(31, 42, 51, 0.18);
+      box-shadow: 0 1px 6px rgba(20, 24, 52, 0.16);
     }
 
     /* A filled slot reads as ordinary text; the point of the screen is to see
        the lease, not a form pretending to be one. */
     .lease-slot { border-radius: 2px; }
     .lease-slot.is-missing {
-      color: var(--danger);
+      color: var(--bad);
       font-weight: 700;
-      background: rgba(179, 38, 30, 0.10);
-      box-shadow: inset 0 -2px 0 var(--danger);
+      background: rgba(163, 34, 24, 0.1);
+      box-shadow: inset 0 -2px 0 var(--bad);
     }
 
-    .show-slots .lease-slot { background: rgba(193, 117, 46, 0.16); box-shadow: inset 0 -1px 0 var(--accent); }
-    .show-slots .lease-slot.is-missing { background: rgba(179, 38, 30, 0.14); }
-    .lease-slot.is-empty::after { content: "\00a0\00a0\00a0"; border-bottom: 1px solid var(--line); }
+    .show-slots .lease-slot { background: rgba(62, 62, 229, 0.12); box-shadow: inset 0 -1px 0 var(--blue); }
+    .show-slots .lease-slot.is-missing { background: rgba(163, 34, 24, 0.14); }
+    .lease-slot.is-empty::after { content: "\00a0\00a0\00a0"; border-bottom: 1px solid var(--line2); }
 
-    .lease-slot.is-located {
-      background: var(--accent);
-      color: #ffffff;
-      box-shadow: 0 0 0 3px rgba(193, 117, 46, 0.35);
-    }
+    .lease-slot.is-located { background: var(--blue); color: #fff; box-shadow: 0 0 0 3px rgba(62, 62, 229, 0.3); }
 
-    /* ---- the fields ---- */
+    /* ---- the information pane ---- */
 
-    #lease-fields { flex: 1; overflow: auto; padding: 14px 16px; }
+    /* The workspace draws into this; its own styles are further down under
+       "The lease workspace". What used to live here — a progress bar, five
+       scope chips, 147 field rows and an occurrence stepper — went with the
+       field browser it belonged to. */
+    #lease-fields { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+    .lease-actions { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--white); }
+    .lease-warnings { flex: 1; font-size: 12px; color: var(--bad); font-weight: 600; }
 
-    .lease-form-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 10px; }
-    .lease-progress { font-size: 13px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
-    .lease-gap-count { color: var(--danger); font-weight: 700; }
-    .lease-ok { color: #2f7d4f; }
-    .lease-pending { color: var(--text); font-style: italic; }
-    .lease-jump button { padding: 4px 10px; font-size: 12px; }
-    .lease-filters { margin: 8px 0 12px; }
-
-    .lease-group { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
-    .lease-group h3 {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      margin: 0 0 8px;
-      font-size: 14px;
-    }
-
-    .lease-group-count { font-weight: 400; font-size: 12px; color: var(--text); }
-    .lease-badge { font-size: 13px; }
-    .lease-badge.is-complete { color: #2f7d4f; }
-    .lease-badge.is-partial { color: var(--accent); }
-
-    .lease-field { padding: 8px 10px; border-radius: 10px; margin-bottom: 6px; }
-    .lease-field.is-missing { background: rgba(179, 38, 30, 0.06); }
-    .lease-field.is-dirty { box-shadow: inset 3px 0 0 var(--accent); }
-    /* The control carries `disabled`; this only makes that visible. Dimming
-       alone used to let the keyboard reach it and the value go nowhere. */
-    .lease-field.is-readonly input, .lease-field.is-readonly select, .lease-field.is-readonly textarea {
-      opacity: 0.55;
-      background: rgba(31, 42, 51, 0.04);
-    }
-    .lease-field.is-located { outline: 2px solid var(--accent); }
-
-    .lease-field-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .lease-field-head label { font-weight: 700; font-size: 13px; flex: 1; }
-    .lease-count { font-size: 11px; color: var(--text); }
-    .lease-step { display: inline-flex; align-items: center; gap: 2px; font-size: 11px; }
-    .lease-step button { padding: 0 6px; }
-    .lease-locate { padding: 2px 10px; font-size: 12px; }
-
-    .lease-status { font-size: 12px; min-height: 0; }
-    .lease-status.is-missing { color: var(--danger); font-weight: 700; }
-
-    .lease-note { font-size: 12px; color: var(--text); display: flex; gap: 8px; flex-wrap: wrap; margin-top: 3px; }
-    .lease-target { color: var(--accent); font-weight: 700; }
-    .lease-once { color: var(--primary); font-weight: 700; }
-    .lease-caution { font-style: italic; }
-    .lease-hint button { padding: 1px 8px; font-size: 11px; margin-left: 4px; }
-
-    .lease-check { display: flex; align-items: center; gap: 8px; font-weight: 400; }
-    .lease-check input { width: auto; }
-
-    .lease-actions {
-      display: flex;
-      align-items: center;
-      gap: 10px;
-      padding: 10px 16px;
-      border-top: 1px solid var(--line);
-      background: var(--panel);
-    }
-
-    .lease-warnings { flex: 1; font-size: 12px; color: var(--danger); font-weight: 700; }
-
-    /* ---- one column ---- */
-
-    .lease-tabs { display: none; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--line); background: var(--panel); }
+    .lease-tabs { display: none; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--line); background: var(--white); }
 
     @media (max-width: 1100px) {
       .lease-panes { grid-template-columns: 1fr !important; }
@@ -612,46 +996,483 @@
       .lease-tabs { display: flex; }
     }
 
+
+    /* ==================================================================
+       The lease workspace: the document on the left, what it will say on
+       the right. Field labels here are ordinary readable text — a lease is
+       read, not scanned, and a column of 11px uppercase is neither.
+    ================================================================== */
+
+    /* A document that is not the one being read. Collapsed, never removed:
+       an element with no box does not increment a CSS counter, and this
+       lease numbers its clauses with counters — hiding the first sixteen
+       sections outright renumbered every clause of the rider left showing. */
+    /* !important is load-bearing, not laziness: docx-preview writes the page
+       box inline — `padding: 44.15pt 21pt 23.85pt; width: 612pt;
+       min-height: 792pt` — and an inline style outranks any selector here. A
+       collapsed section without it keeps its full 792pt and the reader gets a
+       blank pane where the rider should be. */
+    #lease-doc section.docx[data-doc-hidden] {
+      height: 0 !important;
+      min-height: 0 !important;
+      margin-top: 0 !important;
+      margin-bottom: 0 !important;
+      padding-top: 0 !important;
+      padding-bottom: 0 !important;
+      overflow: hidden !important;
+      visibility: hidden;
+      box-shadow: none;
+      border: 0;
+    }
+
+    .lease-head { flex: 1; min-width: 0; }
+    .lease-head h2 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 16px; }
+    .lease-head p { margin: 2px 0 0; font-size: 12.5px; color: rgba(255, 255, 255, 0.62); }
+
+    .lease-facts { display: flex; gap: 22px; margin: 0; }
+    .lease-facts > div { display: grid; gap: 2px; }
+    .lease-facts dt {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: rgba(255, 255, 255, 0.55);
+    }
+    .lease-facts dd { margin: 0; font-size: 13px; font-weight: 600; color: #fff; }
+
+    .lease-status { display: inline-flex; align-items: center; gap: 6px; }
+    .lease-status::before { content: ""; width: 7px; height: 7px; background: currentColor; }
+    .lease-status.is-good { color: #7fd6a8; }
+    .lease-status.is-busy { color: #ffd27a; }
+    .lease-status.is-off { color: rgba(255, 255, 255, 0.66); }
+
+    .lease-doc-name { font-family: var(--body); font-size: 12.5px; font-weight: 600; letter-spacing: 0; color: var(--ink); }
+
+    /* ---- the three tabs ---- */
+
+    .lease-pane-form { display: flex; flex-direction: column; }
+
+    .ws-tabs {
+      display: flex;
+      gap: 2px;
+      flex: none;
+      padding: 0 16px;
+      background: var(--white);
+      box-shadow: inset 0 -1px 0 var(--line);
+    }
+
+    .ws-tab {
+      border: 0;
+      background: none;
+      padding: 12px 14px;
+      font-family: var(--body);
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: 0;
+      text-transform: none;
+      color: var(--soft);
+      cursor: pointer;
+      box-shadow: inset 0 -2px 0 transparent;
+    }
+
+    .ws-tab:hover { color: var(--ink); background: none; }
+    .ws-tab[aria-selected="true"] { color: var(--ink); font-weight: 600; box-shadow: inset 0 -2px 0 var(--blue); }
+
+    .ws-body { flex: 1; overflow: auto; padding: 4px 16px 20px; }
+
+    .ws-section { padding: 18px 0; }
+    .ws-section + .ws-section { border-top: 1px solid var(--line); }
+    .ws-section-head { margin-bottom: 12px; }
+    .ws-section-head h3 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 15px; }
+    .ws-section-head p { margin: 3px 0 0; font-size: 12.5px; color: var(--soft); max-width: 58ch; }
+    .ws-subhead {
+      margin: 16px 0 6px;
+      font-family: var(--mono);
+      font-size: 10.5px;
+      font-weight: 500;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #4d5470;
+    }
+
+    /* Label above value, not beside it: the right pane is narrow and a
+       two-column row wrapped every second label. */
+    .ws-row { padding: 9px 0; border-left: 2px solid transparent; }
+    .ws-row + .ws-row { border-top: 1px solid var(--paper2); }
+    .ws-row.is-missing { background: var(--bad-bg); border-left-color: var(--bad); padding-left: 10px; margin-left: -12px; }
+    .ws-row.is-dirty { border-left-color: var(--blue); padding-left: 10px; margin-left: -12px; }
+
+    .ws-label { display: block; margin-bottom: 5px; font-size: 13px; font-weight: 600; color: var(--ink); }
+    .ws-value { display: grid; gap: 4px; }
+    .ws-value input, .ws-value select, .ws-value textarea { font-size: 13.5px; }
+    .ws-value > b { font-size: 13.5px; font-weight: 600; overflow-wrap: anywhere; }
+
+    .ws-derived {
+      display: block;
+      padding: 8px 10px;
+      background: var(--paper2);
+      border: 1px dashed var(--line2);
+      font-size: 13.5px;
+      font-weight: 600;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .ws-hint { margin: 0; font-size: 12px; color: var(--soft); max-width: 56ch; }
+    .ws-hint.is-warn { color: var(--warn); }
+    .ws-hint.is-locked { color: var(--soft); font-style: italic; }
+    .ws-hint a { color: var(--blue); }
+    .ws-status { margin: 0; font-size: 12px; }
+    .ws-status.is-missing { color: var(--bad); font-weight: 600; }
+    .ws-empty { color: var(--soft); }
+    .ws-row.is-missing .ws-empty { color: var(--bad); font-weight: 600; }
+
+    .ws-check { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 400; margin: 0; }
+    .ws-check input { width: auto; }
+
+    /* Quiet until it is wanted: one of these on every row read as a column of
+       buttons rather than as an aid. */
+    .ws-find {
+      justify-self: start;
+      padding: 2px 0;
+      font-size: 11px;
+      font-family: var(--body);
+      letter-spacing: 0;
+      text-transform: none;
+      border: 0;
+      background: none;
+      color: var(--soft);
+      opacity: 0;
+      transition: opacity .15s ease, color .15s ease;
+    }
+    .ws-row:hover .ws-find,
+    .ws-find:focus-visible { opacity: 1; }
+    .ws-find:hover { background: none; color: var(--blue); box-shadow: inset 0 -1px 0 var(--blue); }
+
+    /* ---- progressive disclosure for the manager's half ---- */
+
+    .ws-fold { border: 1px solid var(--line); background: var(--white); }
+    .ws-fold > summary {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 12px;
+      flex-wrap: wrap;
+      padding: 12px 14px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .ws-fold > summary::-webkit-details-marker { display: none; }
+    .ws-fold-title { font-family: var(--display); font-weight: 600; font-size: 14px; }
+    .ws-fold-title::before { content: "\25b8 "; color: var(--blue); }
+    .ws-fold[open] .ws-fold-title::before { content: "\25be "; }
+    .ws-fold-note { font-size: 12px; color: var(--soft); }
+    .ws-fold-body { padding: 4px 14px 14px; }
+    .ws-fold[open] > summary { box-shadow: inset 0 -1px 0 var(--line); }
+
+    /* ---- the document list ---- */
+
+    .ws-docs { display: grid; gap: 1px; background: var(--line); border: 1px solid var(--line); }
+
+    .ws-doc {
+      display: grid;
+      gap: 2px;
+      justify-items: start;
+      text-align: left;
+      width: 100%;
+      padding: 11px 13px;
+      border: 0;
+      border-left: 2px solid transparent;
+      background: var(--white);
+      font-family: var(--body);
+      letter-spacing: 0;
+      text-transform: none;
+    }
+
+    .ws-doc:hover { background: var(--paper); color: var(--ink); border-left-color: var(--line2); }
+    .ws-doc.is-on { background: rgba(62, 62, 229, 0.05); border-left-color: var(--blue); color: var(--ink); }
+    .ws-doc-name { font-size: 13.5px; font-weight: 600; }
+    .ws-doc.is-on .ws-doc-name { color: var(--blue); }
+    .ws-doc-why { font-size: 12px; font-weight: 400; color: var(--soft); }
+
+    /* ---- who signs ---- */
+
+    .ws-signer {
+      display: grid;
+      grid-template-columns: 26px minmax(0, 1fr) auto;
+      gap: 12px;
+      align-items: center;
+      padding: 11px 0;
+    }
+    .ws-signer + .ws-signer { border-top: 1px solid var(--paper2); }
+    .ws-signer > div { min-width: 0; }
+    .ws-signer b { font-size: 13.5px; }
+    .ws-signer-order {
+      display: grid;
+      place-items: center;
+      width: 26px;
+      height: 26px;
+      background: var(--paper2);
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--soft);
+    }
+    .ws-signer.is-fixed .ws-signer-order { background: var(--ink); color: var(--paper); }
+    .ws-signer-role {
+      font-family: var(--mono);
+      font-size: 9.5px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--soft);
+      border: 1px solid var(--line);
+      padding: 3px 7px;
+    }
+    .ws-signer.is-fixed .ws-signer-role { color: var(--ink); border-color: var(--line2); }
+
+    /* The primary actions stay in view while the information scrolls. */
+    .lease-actions { position: sticky; bottom: 0; flex: none; }
+
+    @media (max-width: 700px) {
+      .lease-facts { gap: 14px; }
+      .ws-body { padding: 4px 12px 20px; }
+    }
+
+
+    /* ---- the leases list ---- */
+
+    .lease-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.2fr) 92px minmax(0, 1.3fr) 150px 96px 108px;
+      gap: 14px;
+      align-items: center;
+      padding: 13px 14px;
+      background: var(--white);
+      text-decoration: none;
+      color: inherit;
+    }
+
+    .lease-row.is-head {
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: #4d5470;
+      background: var(--paper2);
+    }
+
+    a.lease-row:hover { background: rgba(62, 62, 229, 0.04); }
+    a.lease-row:hover .lease-cell-go { color: var(--blue); }
+    .lease-row > span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
+    .lease-cell-strong { font-weight: 600; }
+    .lease-cell-soft { color: var(--soft); font-size: 12.5px; }
+    .lease-cell-go { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--soft); text-align: right; white-space: nowrap; }
+
+    .lease-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      white-space: nowrap;
+    }
+    .lease-pill::before { content: ""; width: 7px; height: 7px; flex: none; background: currentColor; }
+    .lease-pill.is-good { color: var(--good); }
+    .lease-pill.is-busy { color: var(--warn); }
+    .lease-pill.is-off { color: var(--soft); }
+
+    .empty { padding: 48px 24px; text-align: center; background: var(--white); display: grid; gap: 10px; justify-items: center; }
+    .empty h2 { margin: 0; font-family: var(--display); font-weight: 600; font-size: 17px; }
+    .empty p { margin: 0; color: var(--soft); max-width: 46ch; font-size: 13.5px; }
+
+    /* ---- a secondary menu, for the actions that should not be one click ---- */
+
+    .menu { position: relative; }
+    .menu > summary {
+      display: inline-flex;
+      align-items: center;
+      list-style: none;
+      padding: 9px 15px;
+      border: 1px solid var(--line2);
+      background: var(--white);
+      font-family: var(--mono);
+      font-size: 10.5px;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      cursor: pointer;
+    }
+    .menu > summary::-webkit-details-marker { display: none; }
+    .menu > summary::after { content: " \25be"; }
+    .menu[open] > summary, .menu > summary:hover { background: var(--ink); border-color: var(--ink); color: var(--paper); }
+
+    .menu-sheet {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 4px);
+      z-index: 30;
+      min-width: 260px;
+      display: grid;
+      gap: 8px;
+      padding: 12px;
+      background: var(--white);
+      border: 1px solid var(--line2);
+      box-shadow: 0 8px 24px rgba(20, 24, 52, 0.12);
+    }
+    .menu-sheet button { width: 100%; }
+    .menu-note { margin: 0; font-size: 12px; color: var(--soft); }
+
+    @media (max-width: 1080px) {
+      .lease-row { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 90px 130px; }
+      .lease-row > span:nth-child(4), .lease-row > span:nth-child(6) { display: none; }
+      .lease-row.is-head > span:nth-child(4), .lease-row.is-head > span:nth-child(6) { display: none; }
+    }
+    @media (max-width: 640px) {
+      .lease-row { grid-template-columns: minmax(0, 1fr) auto; }
+      .lease-row > span:nth-child(n+3) { display: none; }
+      .lease-row > span:nth-child(5) { display: block; }
+      .lease-row.is-head { display: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      * { transition: none !important; animation: none !important; }
+    }
   </style>
 </head>
 <body>
-  <header>
-    <h1>Listings Admin</h1>
-    <div class="session">
-      <span class="who" id="who"></span>
+  <div class="app">
+    <aside class="side">
+      <a class="brand" href="#/listings">
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="836 284 250 270" aria-hidden="true"><g fill="#fff"><path d="M 892.515625 424.273438 L 924.578125 424.273438 C 924.578125 424.273438 940.9375 427.332031 950.960938 438.488281 L 950.960938 475.820312 C 950.960938 475.820312 937.359375 444.34375 892.515625 424.273438 "/><path d="M 966.78125 324.289062 L 966.78125 374.75 C 966.78125 374.75 977.230469 384.414062 986.386719 386.878906 L 1052.832031 386.878906 C 1052.832031 386.878906 1000.71875 375.835938 966.78125 324.289062 "/><path d="M 917.089844 397.144531 C 940.609375 387.851562 954.144531 377.738281 957.855469 374.757812 C 958.523438 374.21875 958.90625 373.382812 958.90625 372.484375 L 958.90625 287.105469 C 958.90625 283.976562 954.90625 283.152344 953.792969 286.042969 C 922.3125 367.789062 867.457031 398.257812 838.277344 409.058594 C 835.4375 410.109375 836.132812 414.601562 839.140625 414.601562 L 999.628906 414.601562 C 976.109375 423.890625 962.574219 434.007812 958.863281 436.988281 C 958.191406 437.527344 957.8125 438.363281 957.8125 439.261719 L 957.8125 548.777344 C 957.8125 552.074219 962.1875 552.730469 963.015625 549.554688 C 989.003906 450.210938 1049.65625 414.574219 1080.015625 402.660156 C 1082.796875 401.566406 1082.042969 397.144531 1079.082031 397.144531 Z M 917.089844 397.144531 "/></g></svg>
+        <b>STAR</b>
+      </a>
+
+      <div class="role">
+        <span class="k">Signed in as</span>
+        <b id="who-role">—</b>
+        <span class="who" id="who"></span>
+      </div>
+
+      <nav class="nav">
+        <p class="k">Operations</p>
+        <a href="#/listings" data-route="listings"><span>Listings</span><abbr title="Listings">LS</abbr></a>
+        <a href="#/applications" data-route="applications"><span>Applications</span><abbr title="Applications">AP</abbr></a>
+        <a href="#/leases" data-route="leases"><span>Leases</span><abbr title="Leases">LE</abbr></a>
+        <p class="k" data-manager-only>Configuration</p>
+        <a href="#/properties" data-route="properties" data-manager-only><span>Properties</span><abbr title="Properties">PR</abbr></a>
+      </nav>
+
       <a class="sign-out" href="/cdn-cgi/access/logout">Sign out</a>
-    </div>
-  </header>
-  <div class="environment" id="environment" role="status">
-    <span>Development</span>
-    <span class="database" id="environment-database"></span>
+    </aside>
+
+    <main class="main">
+      <header class="top">
+        <nav class="crumb" id="crumb" aria-label="Breadcrumb"></nav>
+        <div class="topright">
+          <span class="badge" id="role-badge" hidden></span>
+          <span class="avatar" id="avatar" aria-hidden="true"></span>
+        </div>
+      </header>
+
+      <div class="environment" id="environment" role="status">
+        <span>Development</span>
+        <span class="database" id="environment-database"></span>
+      </div>
+
+      <div class="content">
+        <p class="status" id="status" hidden></p>
+
+        <!-- Listings ------------------------------------------------->
+        <section class="route" id="route-listings" hidden>
+          <div class="pagehead">
+            <div>
+              <span class="k">Inventory</span>
+              <h1>Listings</h1>
+              <p>Everything the public website shows, and everything an application can be made against.</p>
+            </div>
+            <div class="actions">
+              <button type="button" id="import-folder">Import folder…</button>
+              <button type="button" class="primary" id="new-listing">New listing</button>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <div class="filters">
+              <button type="button" class="chip" data-filter="all" aria-pressed="true">All</button>
+              <button type="button" class="chip" data-filter="residential" aria-pressed="false">Residential</button>
+              <button type="button" class="chip" data-filter="commercial" aria-pressed="false">Commercial</button>
+              <button type="button" class="chip" data-filter="draft" aria-pressed="false">Unpublished</button>
+            </div>
+          </div>
+
+          <div class="dropzone" id="dropzone">
+            <strong>Drop a marketing folder here</strong>
+            <span>The Word document, photos, floor plan, and video are read on this computer and filled in for you to check before saving.</span>
+            <input type="file" id="folder-input" webkitdirectory directory multiple hidden>
+          </div>
+        </section>
+
+        <!-- Applications --------------------------------------------->
+        <section class="route" id="route-applications" hidden>
+          <div class="pagehead">
+            <div>
+              <span class="k">Pipeline</span>
+              <h1>Applications</h1>
+              <p>Who applied, for what, and whether it is ready to be decided. Open one to read it.</p>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <div class="filters" id="app-filters"></div>
+            <div class="toolbar-actions">
+              <select id="app-property" aria-label="Filter by property"></select>
+              <select id="app-docs" aria-label="Filter by document completion"></select>
+              <input type="search" id="app-search" autocomplete="off"
+                     placeholder="Search applicant, email or apartment…">
+            </div>
+          </div>
+        </section>
+
+        <!-- Leases --------------------------------------------------->
+        <section class="route" id="route-leases" hidden>
+          <div class="pagehead">
+            <div>
+              <span class="k">Documents</span>
+              <h1>Leases</h1>
+              <p>An approved application becomes a lease here. Landlord terms come from the property and are read-only on this screen.</p>
+            </div>
+            <div class="actions">
+              <!-- A lease with no application behind it is the exception, not the
+                   workflow, so it is a manager's and it lives in a menu. -->
+              <details class="menu" data-manager-only>
+                <summary aria-label="More lease actions">More</summary>
+                <div class="menu-sheet">
+                  <button type="button" id="lease-blank">Lease without an application</button>
+                  <p class="menu-note">Only when there is no application to start from —
+                     credit reporting has not been wired up yet.</p>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <div class="toolbar">
+            <div class="filters" id="lease-filters"></div>
+            <input type="search" id="lease-search" placeholder="Search tenant or apartment…"
+                   autocomplete="off" style="max-width:280px">
+          </div>
+        </section>
+
+        <!-- The three screens above share one list. -->
+        <div class="rows" id="rows"></div>
+
+        <!-- One application, in full ---------------------------------->
+        <section class="route" id="route-application" hidden></section>
+
+        <!-- Properties ----------------------------------------------->
+        <section class="route" id="route-properties" hidden></section>
+
+        <!-- One lease, in full ---------------------------------------->
+        <section class="route" id="route-lease" hidden></section>
+      </div>
+    </main>
   </div>
-
-  <main>
-    <div class="toolbar">
-      <div class="filters">
-        <button type="button" class="chip" data-filter="all" aria-pressed="true">All</button>
-        <button type="button" class="chip" data-filter="residential" aria-pressed="false">Residential</button>
-        <button type="button" class="chip" data-filter="commercial" aria-pressed="false">Commercial</button>
-        <button type="button" class="chip" data-filter="draft" aria-pressed="false">Unpublished</button>
-        <button type="button" class="chip" data-filter="applications" aria-pressed="false">Applications</button>
-        <button type="button" class="chip" data-filter="lease" aria-pressed="false">New lease</button>
-      </div>
-      <div class="toolbar-actions">
-        <button type="button" id="import-folder">Import folder…</button>
-        <button type="button" class="primary" id="new-listing">New listing</button>
-      </div>
-    </div>
-
-    <div class="dropzone" id="dropzone">
-      <strong>Drop a marketing folder here</strong>
-      <span>The Word document, photos, floor plan, and video are read on this computer and filled in for you to check before saving.</span>
-      <input type="file" id="folder-input" webkitdirectory directory multiple hidden>
-    </div>
-
-    <p class="status" id="status" hidden></p>
-    <div class="rows" id="rows"></div>
-  </main>
 
   <dialog id="editor">
     <form id="listing-form" method="dialog">
@@ -792,6 +1613,27 @@
         <button type="submit" class="primary" id="save">Save listing</button>
       </div>
     </form>
+  </dialog>
+
+  <!-- The uploaded document, shown from the endpoint that already serves it.
+       Filled in by doc-viewer.js; nothing here is a stand-in for a real file. -->
+  <dialog id="doc-viewer" aria-labelledby="viewer-title">
+    <header class="viewer-head">
+      <div>
+        <span class="k" id="viewer-kind"></span>
+        <h2 id="viewer-title"></h2>
+      </div>
+      <button type="button" data-viewer-close aria-label="Close the document">Close</button>
+    </header>
+    <div class="filters viewer-files" id="viewer-files" hidden></div>
+    <div class="viewer-stage" id="viewer-stage"></div>
+    <footer class="viewer-foot">
+      <p id="viewer-meta"></p>
+      <div class="viewer-foot-actions">
+        <a id="viewer-open" target="_blank" rel="noopener">Open in a new tab</a>
+        <a id="viewer-download">Download</a>
+      </div>
+    </footer>
   </dialog>
 
   <section id="lease-screen" hidden></section>

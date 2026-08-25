@@ -120,7 +120,16 @@
     };
   };
 
-  const renderForm = (property) => {
+  // Applying requires an applicant account: the Worker takes the
+  // application's email from the signed-in session, so the form has to have
+  // one. Whoever arrives without it goes to the portal and comes back here.
+  const portalSignIn = () => {
+    window.location.replace(
+      `../portal/?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
+    );
+  };
+
+  const renderForm = (property, accountEmail) => {
     container.innerHTML = "";
     container.appendChild(template.content.cloneNode(true));
 
@@ -132,6 +141,12 @@
     summary.hidden = false;
 
     document.title = `Apply: ${property.title || "Property"} | Star Real Estate`;
+
+    // Shown, not sent: the Worker files the application under the session's
+    // email whatever the form says, so the form says the same thing.
+    const emailInput = document.getElementById("email");
+    emailInput.value = accountEmail;
+    emailInput.readOnly = true;
 
     mountTurnstile();
     wireForm(property);
@@ -185,9 +200,6 @@
 
       const problems = [];
 
-      if (!isValidEmail(field("email").trim())) {
-        problems.push("Please enter a valid email address.");
-      }
       if (!isValidPhone(field("phone"))) {
         problems.push("Please enter a valid phone number, e.g. (718) 555-0123.");
       }
@@ -295,7 +307,6 @@
             dob,
             ssn: ssnDigits,
             phone: field("phone"),
-            email: field("email"),
             current_address: field("current_address"),
             move_in: moveIn,
             lease_term_months: leaseTerm,
@@ -324,6 +335,13 @@
         });
 
         const payload = await response.json().catch(() => null);
+        if (response.status === 401) {
+          // The session expired while the form was open; signing back in
+          // returns here with everything to retype, which is still better
+          // than an application filed under nobody.
+          portalSignIn();
+          return;
+        }
         if (!response.ok) {
           throw new Error(payload?.error || "The application could not be submitted. Please try again.");
         }
@@ -333,6 +351,9 @@
             <h2>Application received</h2>
             <p>Thank you — the Star Real Estate team will review your application for
                ${escapeHtml(property.title || "this property")} and follow up shortly.</p>
+            <p>Next step: upload your supporting documents — government ID, job offer letter,
+               paystubs, and bank statements — in your applicant portal.</p>
+            <p><a href="../portal/">Open the applicant portal</a></p>
             <a href="../property/?id=${encodeURIComponent(id)}">Back to the property</a>
           </div>
         `;
@@ -345,12 +366,27 @@
     });
   };
 
-  fetch(`../data/property.json?id=${encodeURIComponent(id)}`, { cache: "no-store" })
-    .then(async (response) => {
-      const payload = await response.json().catch(() => null);
-      if (!response.ok) throw new Error(payload?.error || "This property could not be loaded.");
-      return payload;
+  Promise.all([
+    fetch(`../data/property.json?id=${encodeURIComponent(id)}`, { cache: "no-store" })
+      .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error || "This property could not be loaded.");
+        return payload;
+      }),
+    fetch("/api/portal/me", { credentials: "same-origin" })
+      .then(async (response) => {
+        if (response.status === 401) return null;
+        const payload = await response.json().catch(() => null);
+        if (!response.ok) throw new Error(payload?.error || "The application form could not be loaded. Please try again.");
+        return payload;
+      })
+  ])
+    .then(([property, me]) => {
+      if (!me) {
+        portalSignIn();
+        return;
+      }
+      renderForm(property, me.email);
     })
-    .then(renderForm)
     .catch((error) => showState(error.message));
 })();

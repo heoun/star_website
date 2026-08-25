@@ -3,6 +3,7 @@ import { handleApplication } from "./apply.js";
 import { handleInquiry, renderPage } from "./contact.js";
 import { serveListingsFeed, servePropertyDetail } from "./listings.js";
 import { serveMedia } from "./media.js";
+import { handlePortalRequest } from "./portal.js";
 
 export default {
   async fetch(request, env, ctx) {
@@ -28,6 +29,12 @@ export default {
 
     if (pathname === "/api/admin" || pathname.startsWith("/api/admin/")) {
       return handleAdminRequest(request, env, ctx, pathname);
+    }
+
+    // The applicant portal: sign-in codes, application status, and document
+    // uploads for people who have already applied.
+    if (pathname === "/api/portal" || pathname.startsWith("/api/portal/")) {
+      return handlePortalRequest(request, env, ctx, pathname);
     }
 
     // Rental applications submitted from the apply page.

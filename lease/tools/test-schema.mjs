@@ -13,8 +13,9 @@
 //
 // What it guards: that an unanswered setting cannot be stored as a blank, that
 // the three layers merge company < building < unit, that saving part of a layer
-// does not wipe the rest, that every change is audited, and that the anon key
-// cannot read any of it.
+// does not wipe the rest, that every change is audited, that the anon key
+// cannot read any of it, and that the staff table cannot hold a row the Worker
+// would then have to guess about.
 
 import { PGlite } from '@electric-sql/pglite';
 import { readFileSync } from 'node:fs';
@@ -122,6 +123,78 @@ t('service_role can read lease_settings', await priv('service_role','public.leas
 t('anon cannot read lease_settings',     !(await priv('anon','public.lease_settings','SELECT')));
 t('anon cannot read buildings',          !(await priv('anon','public.buildings','SELECT')));
 t('audit is not updatable by service_role', !(await priv('service_role','public.lease_settings_audit','UPDATE')));
+
+// 10. the admin's own accounts
+//
+// The Worker looks a person up by the lower-cased address Cloudflare Access
+// gave it. A row stored with a capital in it would be invisible to that lookup
+// while looking present in the table, so the column refuses one.
+const staff = async (sql, params=[]) => {
+  try { await db.query(sql, params); return true; } catch { return false; }
+};
+
+t('a staff row is accepted',
+  await staff(`insert into staff (email, role, name) values ('sam@x.com','agent','Sam')`));
+t('a second row for the same address is refused',
+  !(await staff(`insert into staff (email, role) values ('sam@x.com','manager')`)));
+t('an address with a capital in it is refused, because the lookup lower-cases',
+  !(await staff(`insert into staff (email, role) values ('Sam@X.com','agent')`)));
+t('an address that is not one is refused',
+  !(await staff(`insert into staff (email, role) values ('sam','agent')`)));
+t('an address with a stray space is refused, for the same reason as a capital',
+  !(await staff(`insert into staff (email, role) values (' kim@x.com','agent')`)));
+t('a role the Worker does not know is refused',
+  !(await staff(`insert into staff (email, role) values ('kim@x.com','sysadmin')`)));
+t('a row with no role is refused',
+  !(await staff(`insert into staff (email, name) values ('kim@x.com','Kim')`)));
+t('an account is active unless it says otherwise',
+  (await db.query(`select active from staff where email='sam@x.com'`)).rows[0].active === true);
+
+await db.query(`update staff set role='manager' where email='sam@x.com'`);
+const { rows: [touched] } = await db.query(
+  `select updated_at > created_at as moved from staff where email='sam@x.com'`);
+t('updated_at moves when a role changes', touched.moved === true);
+
+t('service_role can manage staff', await priv('service_role','public.staff','SELECT'));
+t('anon cannot read staff',        !(await priv('anon','public.staff','SELECT')));
+t('authenticated cannot read staff — an applicant is signed in as that role',
+  !(await priv('authenticated','public.staff','SELECT')));
+
+// 9. an application's status, and the record of who set it
+//
+// The Worker's list of statuses and the table's CHECK constraint are two
+// declarations of one thing. A status the console offers and the database
+// refuses is a 500 in front of somebody making a decision, so they are read
+// against each other rather than kept in step by hand.
+const workerSource = readFileSync('/Users/seaxu/Downloads/star_website/worker/admin.js', 'utf8');
+const statuses = /const APPLICATION_STATUSES = \[([\s\S]*?)\];/.exec(workerSource)[1]
+  .match(/"([a-z_]+)"/g).map((s) => s.slice(1, -1));
+
+const insertStatus = async (status) => {
+  try {
+    await db.query(
+      `insert into applications (listing_id, name, email, status) values ($1,'T','t@x.com',$2)`,
+      [l.id, status]);
+    return true;
+  } catch { return false; }
+};
+
+const refused = [];
+for (const status of statuses) if (!(await insertStatus(status))) refused.push(status);
+t('every status the Worker accepts is a status the table accepts', refused.length === 0,
+  refused.length ? `refused: ${refused.join(', ')}` : `${statuses.length} statuses`);
+t('"needs information" is one of them', statuses.includes('needs_info'));
+t('a status neither of them knows is still refused', !(await insertStatus('maybe')));
+
+const { rows: [decided] } = await db.query(
+  `insert into applications (listing_id, name, email, status) values ($1,'T','t@x.com','approved')
+   returning id`, [l.id]);
+await db.query(`update applications set decision = $2::jsonb where id = $1`, [decided.id,
+  JSON.stringify({ status: 'approved', by: 'a@x.com', at: '2026-08-24T00:00:00Z', reason: 'income checks out' })]);
+const { rows: [record] } = await db.query(
+  `select decision->>'by' as who, decision->>'reason' as why from applications where id = $1`, [decided.id]);
+t('the decision record keeps who decided and why',
+  record.who === 'a@x.com' && record.why === 'income checks out');
 
 console.log(`PASS ${ok.length}`);
 for (const o of ok) console.log('  ok   ' + o);

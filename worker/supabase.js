@@ -144,6 +144,97 @@ const APPLICATION_COLUMNS =
   "current_employer,employment_history,rental_history,reference_contacts," +
   "emergency_contacts,pets,message,status,notes,created_at,updated_at";
 
+// Two columns arrived after some databases were created: `submitted`, which is
+// what the applicant wrote before an agent corrected it, and `concession_terms`,
+// which is the rent concession rider. Asking PostgREST for a column that is not
+// there fails the whole request, so the first failure is remembered and every
+// later read leaves them out. A database that has not had supabase/schema.sql
+// run on it still lists its applications; correcting one is refused with a
+// message naming the SQL to run, rather than quietly losing the original.
+const APPLICATION_CORRECTIONS = "submitted,concession_terms";
+let correctionColumns = true;
+
+// Remembered separately: a database can have concession_terms and not yet have
+// submitted, and losing the rider's text over a column the rider does not use
+// would be a strange way to fail.
+let concessionColumn = true;
+
+// Who moved an application to the status it is on, when, and why. It arrived
+// with the decision panel, so it degrades the same way — a database that has
+// not had supabase/schema.sql run on it still lists its applications and still
+// takes a decision; it just cannot say afterwards who made it.
+const APPLICATION_DECISION = "decision";
+let decisionColumn = true;
+
+export function recordsDecisions() {
+  return decisionColumn;
+}
+
+function namesDecision(error) {
+  return /\bdecision\b/i.test(String(error && error.message));
+}
+
+export function keepsSubmitted() {
+  return correctionColumns;
+}
+
+// The documents table arrived with the applicant portal. A database that has
+// not run supabase/schema.sql since still lists its applications — just with
+// no document checklist on them — the same way the correction columns degrade.
+let documentsTable = true;
+
+const APPLICATION_DOCUMENTS_SELECT =
+  "application_documents(id,doc_type,file_name,content_type,size_bytes,uploaded_by,created_at)";
+
+function missingColumn(error) {
+  return /42703|does not exist/i.test(String(error && error.message));
+}
+
+// A write names a missing column differently from a read. A select gets
+// PostgreSQL's own 42703 "column applications.decision does not exist"; an
+// insert or update gets PostgREST's PGRST204, "Could not find the 'decision'
+// column of 'applications' in the schema cache", which says nothing about
+// existing. Reading only the first shape made the write path refuse instead of
+// degrading, which is the whole point of these flags.
+function missingWriteColumn(error) {
+  return missingColumn(error) || /PGRST204|Could not find the '/i.test(String(error && error.message));
+}
+
+// PostgREST answers a select that embeds an unknown table with PGRST200
+// ("could not find a relationship"), not with a column error.
+function missingDocumentsTable(error) {
+  return /PGRST200|relationship|42P01/i.test(String(error && error.message));
+}
+
+async function selectApplications(env, filter) {
+  const parts = [APPLICATION_COLUMNS];
+  if (correctionColumns) parts.push(APPLICATION_CORRECTIONS);
+  if (decisionColumn) parts.push(APPLICATION_DECISION);
+  if (documentsTable) parts.push(APPLICATION_DOCUMENTS_SELECT);
+  const order = documentsTable ? "&application_documents.order=created_at.asc" : "";
+
+  try {
+    return await restRequest(env, `applications?select=${parts.join(",")}${filter}${order}`);
+  } catch (error) {
+    let degraded = false;
+    if (documentsTable && missingDocumentsTable(error)) {
+      documentsTable = false;
+      degraded = true;
+    } else if (decisionColumn && missingColumn(error) && namesDecision(error)) {
+      // Named explicitly rather than lumped in below. A database can have
+      // `submitted` and not `decision`, and turning both off over one missing
+      // column would throw away the record of what the applicant wrote.
+      decisionColumn = false;
+      degraded = true;
+    } else if (correctionColumns && missingColumn(error)) {
+      correctionColumns = false;
+      degraded = true;
+    }
+    if (!degraded) throw error;
+    return selectApplications(env, filter);
+  }
+}
+
 export async function insertApplication(env, values) {
   const response = await restRequest(env, "applications", {
     method: "POST",
@@ -155,21 +246,42 @@ export async function insertApplication(env, values) {
 }
 
 export async function fetchApplications(env) {
-  const response = await restRequest(
-    env,
-    `applications?select=${APPLICATION_COLUMNS},listings(title,building_name,unit)&order=created_at.desc`
-  );
+  // price_amount comes with the row because the leases list states the rent,
+  // and asking for it per row would be one request per lease to show a column.
+  const response = await selectApplications(
+    env, ",listings(id,title,building_name,unit,price_amount)&order=created_at.desc");
   return response.json();
 }
 
-export async function updateApplication(env, id, values) {
-  const response = await restRequest(env, `applications?id=eq.${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify(values)
-  });
+export async function fetchApplication(env, id) {
+  const response = await selectApplications(env, `&id=eq.${encodeURIComponent(id)}`);
   const [row] = await response.json();
-  return row;
+  return row ?? null;
+}
+
+export async function updateApplication(env, id, values) {
+  const send = async (body) => {
+    const response = await restRequest(env, `applications?id=eq.${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(body)
+    });
+    const [row] = await response.json();
+    return row;
+  };
+
+  if (!("decision" in values)) return send(values);
+
+  try {
+    return await send(values);
+  } catch (error) {
+    if (!decisionColumn || !missingWriteColumn(error) || !namesDecision(error)) throw error;
+    // The status change is the point; the note of who made it is not worth
+    // refusing it over on a database that has not been migrated yet.
+    decisionColumn = false;
+    const { decision, ...rest } = values;
+    return send(rest);
+  }
 }
 
 export async function deleteApplication(env, id) {
@@ -183,6 +295,85 @@ export async function fetchApplicationSsn(env, id) {
   );
   const [row] = await response.json();
   return row ?? null;
+}
+
+// ------------------------------------------------------- the applicant portal
+
+// Everything the portal shows, and nothing it must not: no screening notes,
+// no SSN digits, no income detail. The email match is case-insensitive
+// (ilike with the pattern characters escaped), then checked exactly here,
+// because "_" in an address would otherwise be a single-character wildcard
+// to the database.
+const PORTAL_APPLICATION_COLUMNS =
+  "id,name,email,status,created_at,move_in,lease_term_months," +
+  "listings(title,building_name,unit,location)," +
+  "application_documents(id,doc_type,file_name,content_type,size_bytes,created_at)";
+
+function escapeLikePattern(value) {
+  return value.replace(/([\\%_*])/g, "\\$1");
+}
+
+export async function fetchApplicationsByEmail(env, email) {
+  const response = await restRequest(
+    env,
+    `applications?select=${PORTAL_APPLICATION_COLUMNS}` +
+    `&email=ilike.${encodeURIComponent(escapeLikePattern(email))}` +
+    "&order=created_at.desc&application_documents.order=created_at.asc"
+  );
+  const rows = await response.json();
+  return rows.filter((row) => String(row.email || "").trim().toLowerCase() === email);
+}
+
+// One application, with only what the portal's upload path needs: whose it
+// is, and enough of the listing to name it in the completion notice.
+export async function fetchPortalApplication(env, id) {
+  const response = await restRequest(
+    env,
+    `applications?id=eq.${encodeURIComponent(id)}` +
+    "&select=id,name,email,status,listings(title,building_name,unit)"
+  );
+  const [row] = await response.json();
+  return row || null;
+}
+
+const DOCUMENT_COLUMNS =
+  "id,application_id,doc_type,path,file_name,content_type,size_bytes,uploaded_by,created_at";
+
+export async function insertApplicationDocument(env, values) {
+  const response = await restRequest(env, "application_documents", {
+    method: "POST",
+    headers: { Prefer: "return=representation" },
+    body: JSON.stringify(values)
+  });
+  const [row] = await response.json();
+  return row;
+}
+
+export async function fetchDocumentsForApplication(env, applicationId) {
+  const response = await restRequest(
+    env,
+    `application_documents?application_id=eq.${encodeURIComponent(applicationId)}` +
+    `&select=${DOCUMENT_COLUMNS}&order=created_at.asc`
+  );
+  return response.json();
+}
+
+// The owning application's email rides along: it is how the portal decides
+// whether the session asking for a document may have it.
+export async function fetchApplicationDocument(env, id) {
+  const response = await restRequest(
+    env,
+    `application_documents?id=eq.${encodeURIComponent(id)}` +
+    `&select=${DOCUMENT_COLUMNS},applications(email)`
+  );
+  const [row] = await response.json();
+  return row || null;
+}
+
+export async function deleteApplicationDocument(env, id) {
+  await restRequest(env, `application_documents?id=eq.${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
 }
 
 export function mediaUrl(path) {
@@ -315,12 +506,25 @@ export async function updateBuilding(env, id, values) {
 // line the parts are read from, the rent, the unit, and the building whose
 // settings layer applies.
 export async function fetchApplicationForLease(env, id) {
-  const response = await restRequest(
-    env,
-    `applications?id=eq.${encodeURIComponent(id)}` +
-      "&select=id,listing_id,name,email,phone,move_in,lease_term_months,children_under_11,status," +
-      "listings(id,title,building_name,unit,location,price_amount,building_id)"
-  );
+  // The rider's text is a deal value, so it has to arrive with the rest of the
+  // application or the Rent Concession Rider prints blank however carefully it
+  // was written. Named explicitly rather than selected with * because the
+  // encrypted SSN lives on this row and a lease has no business reading it.
+  const base = "id,listing_id,name,email,phone,move_in,lease_term_months," +
+    "children_under_11,status," +
+    "listings(id,title,building_name,unit,location,price_amount,building_id)";
+  const select = (columns) =>
+    restRequest(env, `applications?id=eq.${encodeURIComponent(id)}&select=${columns}`);
+
+  let response;
+  try {
+    response = await select(concessionColumn ? `${base},concession_terms` : base);
+  } catch (error) {
+    if (!concessionColumn || !missingColumn(error)) throw error;
+    concessionColumn = false;
+    response = await select(base);
+  }
+
   const [row] = await response.json();
   return row || null;
 }
@@ -362,4 +566,50 @@ export async function applyLeaseSettings(env, { scope, buildingId = null, listin
     p_patch: patch,
     p_actor: actor || null
   });
+}
+
+// ------------------------------------------------------- the admin's own accounts
+
+// A table that is not there yet is a deploy that ran ahead of its migration —
+// an operational state to report, not a permission to decide. Told apart from
+// a genuine refusal so nobody reads "run the SQL" as "you are not allowed".
+export function isMissingTable(error) {
+  const message = String(error && error.message);
+  // PGRST205 is the missing-table code specifically. "does not exist" on its
+  // own also matches PGRST204's missing-COLUMN message, which would send an
+  // operator to re-run a migration that is already applied.
+  return /PGRST205|Could not find the table|relation .* does not exist/i.test(message);
+}
+
+const STAFF_COLUMNS = "email,role,name,active,created_at,updated_at";
+
+export async function fetchStaffMember(env, email) {
+  const response = await restRequest(
+    env,
+    `staff?select=${STAFF_COLUMNS}&email=eq.${encodeURIComponent(email)}`
+  );
+  const [row] = await response.json();
+  return row ?? null;
+}
+
+export async function fetchStaff(env) {
+  const response = await restRequest(
+    env, `staff?select=${STAFF_COLUMNS}&order=role.asc,email.asc`);
+  return response.json();
+}
+
+// One row per email, so re-adding somebody who left restores them rather than
+// failing on the primary key.
+export async function upsertStaffMember(env, values) {
+  const response = await restRequest(env, "staff?on_conflict=email", {
+    method: "POST",
+    headers: { Prefer: "resolution=merge-duplicates,return=representation" },
+    body: JSON.stringify(values)
+  });
+  const [row] = await response.json();
+  return row ?? null;
+}
+
+export async function deleteStaffMember(env, email) {
+  await restRequest(env, `staff?email=eq.${encodeURIComponent(email)}`, { method: "DELETE" });
 }

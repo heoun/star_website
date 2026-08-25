@@ -110,6 +110,7 @@ into `dist/`, so deployed URLs never contain the `site/` prefix.
 │   ├── new-development/           New development page
 │   ├── property/                  Single-property page
 │   ├── apply/                     Rental application form
+│   ├── portal/                    Applicant portal (sign-in, status, document uploads)
 │   ├── contact-us/                Contact page (form posts to /api/contact)
 │   ├── our-team/                  Team page
 │   ├── admin/                     Listings admin page (behind Cloudflare Access)
@@ -164,17 +165,117 @@ Required Worker secrets and variables:
 | --- | --- |
 | `SUPABASE_URL` | Project URL, e.g. `https://xxxx.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side database key (secret) |
+| `SUPABASE_PUBLISHABLE_KEY` | Auth API key for the applicant portal; kept server-side. The legacy `SUPABASE_ANON_KEY` is accepted under that name until Supabase retires it at the end of 2026 |
 | `CF_ACCESS_TEAM_DOMAIN` | Zero Trust team domain, e.g. `starrealty.cloudflareaccess.com` |
 | `CF_ACCESS_AUD` | Application Audience tag of the Access application |
 | `RESEND_API_KEY` | Contact form and application notification email (secret) |
 | `APP_ENCRYPTION_KEY` | AES-256 key for applicant SSNs, 32 random bytes base64 (secret) |
 | `TURNSTILE_SECRET_KEY` | Optional; enforces human verification on the application form (secret) |
+| `OWNER_EMAIL` | The bootstrap manager. Always a manager, without a `staff` row — see below. Set it with `wrangler secret put OWNER_EMAIL`: a plain variable set in the dashboard is wiped by the next `wrangler deploy`, and this is the account that gets you back in |
 
 None of these are set locally except Supabase and `APP_ENCRYPTION_KEY`; `.dev.vars.example` says what a development machine needs instead.
 
+#### The console
+
+Four screens, each with its own address so one can be linked to and gone back from:
+
+| Address | Screen |
+| --- | --- |
+| `#/listings` | Everything the public site shows. Folder import, media, the listing editor |
+| `#/applications` | The pipeline, as a table, and `#/applications/<id>` for one of them |
+| `#/leases` | Approved applications, and `#/leases/<id>` for one of them |
+| `#/properties` | Landlord settings, per layer. Manager only |
+
+`#/applications/<id>` is the **application page**. The list is a list —
+applicant, apartment, applied, move-in, income, documents, status, one action —
+and everything else lives here, behind six tabs: *Overview*, *Applicant &
+household*, *Employment & income*, *Rental history*, *Documents*, *References &
+contacts*. The list used to expand the whole application inside the row it
+belonged to, which meant a screen of forty applicants was also forty full
+applications and reaching the next name meant scrolling past a stranger's
+employment history.
+
+Overview answers the three questions a decision needs — who is this, is it
+complete, what should happen next — and nothing else. Its **Lease starting
+values** card is marked as starting values, because that is what they are: the
+agent confirms the final terms in the lease workspace. The lease end date is
+not shown here and neither is the rent concession; one follows from a term
+nobody has confirmed yet and the other is never asked of an applicant.
+
+**Documents** is a checklist against the same registry the portal enforces:
+required, partly received, received, optional, with counts. *View* opens the
+file itself — `GET /api/admin/documents/<id>`, the endpoint that already
+streams the object out of R2 — in a window that switches between the files of a
+multi-file entry. Replacing and removing live in a `⋯` menu behind a
+confirmation, because a red Delete beside every filename is one mis-click away
+from asking the applicant for their passport again.
+
+The **decision panel** stays in view down the right on desktop and moves under
+the page on a narrow one. It shows the status, the internal notes, what is
+still outstanding, and who last decided — and its buttons depend on where the
+application has got to: request information, approve or decline while it is
+under review; create the lease once it is approved; open the lease once one
+exists. Approving is the end of the application. There is no second approval
+before a lease.
+
+`#/leases/<id>` is the **lease workspace**: the rendered document on the left, what it will say on the right. The right pane has three tabs.
+
+**Lease information** groups by who owns each value, not by which template placeholder it fills. *Tenant* comes from the approved application and shows only what a lease needs — never date of birth, social security number, income, employment, references or screening notes, which stay on the application record. *Transaction terms* are the tenancy's and the agent's to set. *Landlord defaults* are the manager's, read-only and collapsed. *Filled in for you* is what nobody types.
+
+Two things the agent is deliberately never asked for: the address, which is composed from the apartment they select and written into every place the template asks for it; and the end date, which follows from the start date and the term. `site/shared/lease-dates.js` holds that arithmetic and is imported by the Worker as well, so the screen and the .docx cannot disagree about when the tenancy ends.
+
+**Documents** lists the fifteen documents in the package. Selecting one filters the preview to it. The sections outside it are collapsed to zero height rather than removed — `display: none` generates no box, and a box that does not exist does not increment the CSS counters this lease numbers its clauses with, so hiding the first sixteen sections that way renumbers every clause of the rider left showing.
+
+**E-sign recipients** names every signer before anything is produced: the tenants from the application, then the landlord signer, which comes from the property and cannot be changed from a lease. There is no e-signature integration — the console produces the Word file and says who it is for, and the tab says so rather than implying a delivery that does not happen.
+
+The status in the header is `Draft` until every required value is answered and `Ready to send` once they are; beyond that it reports what the application says, because the application row carries the only record that a lease was sent or signed. There is no `leases` table and no `Partially signed`, since nothing here talks to a signing service.
+
+**One value, one place it is written.** A building default is written on Properties; a single lease's override on the document screen; a tenant correction straight back to the application row. No screen writes a layer that belongs to another screen, which is why the settings form and the generate dialog were merged in the first place — two write paths to the same 147 values is how somebody edits a building's legal disclosures without realising it.
+
+#### Managers and agents
+
+Access answers one question — may this request reach the Worker — and `public.staff` answers the other: is this a **manager** or an **agent**. They are kept apart on purpose. Removing somebody from an Access group ends every session they have at once, which is what offboarding needs; a role is business data a manager reads and changes, and Access's application token carries an email but no group membership anyway.
+
+There is **no default role**. An email absent from `staff` is refused rather than treated as an agent, so anyone added to the Access group by mistake gains nothing. `OWNER_EMAIL` is the exception: it is always a manager, checked before any query, because a fresh database has no rows and somebody has to be able to add the first one.
+
+| | manager | agent |
+| --- | --- | --- |
+| Listings, media, applications, documents | ✅ | ✅ |
+| Correct an application | ✅ | ✅ |
+| Generate and send a lease | ✅ | ✅ |
+| Read the landlord's standing terms | ✅ | ✅ |
+| **Change them** — `PUT /lease/settings` | ✅ | ❌ |
+| **Override one on a single lease** | ✅ | ❌ |
+| See and change who uses the console | ✅ | ❌ |
+
+The second refusal matters more than the first. A settings write lands in `lease_settings_audit`; an override does not, and it prints on the page somebody signs — so `normalizeOverrides` refuses manager fields for an agent on both lease routes, not only on the stored layers. `worker/staff.js` holds the policy, and `lease/tools/test-permissions.mjs` drives the real routes to prove it.
+
+The admin page renders an agent's view read-only rather than hiding it: an agent has to be able to review what the lease will print. That is convenience only — the Worker refuses the write whatever the browser sends.
+
+**Order matters when deploying this the first time.** Run `supabase/schema.sql`, insert the first manager, `wrangler secret put OWNER_EMAIL`, *then* deploy the Worker. Deploy first and everyone is refused until the table exists — the Worker says so in as many words rather than reporting a permissions problem, but nobody can work in the meantime.
+
+Three doors reach a landlord value and all three are closed to an agent: `PUT /lease/settings`, an `overrides` entry on either lease route, and the `building_id` on a listing — re-pointing a unit at another building swaps all 93 per-building values at once, which is the same write by another name.
+
+```sql
+insert into public.staff (email, role, name) values
+  ('someone@starreusa.com', 'manager', 'Name'),
+  ('agent@starreusa.com',   'agent',   'Name');
+```
+
+Locally no `staff` row is needed — the role comes from a variable, and there are two commands rather than a file to edit and remember to change back:
+
+```bash
+npm run dev         # manager, the default
+npm run dev:agent   # the other half of the console, same port
+```
+
+`DEV_ADMIN_ROLE` in `.dev.vars` sets a standing default if you want one. Either way the role is read when the Worker starts, so switching means restarting it.
+
 ### Rental applications
 
-`/apply/?id=<listing>` is the full rental application: applicant identity (name,
+`/apply/?id=<listing>` is the full rental application. It requires a signed-in
+applicant account — see [The applicant portal](#the-applicant-portal) — and the
+form collects: applicant identity (name,
 date of birth, SSN), current residence, desired move-in and lease term,
 employment and income with supervisor contact, previous employment, rental
 history, three required references, emergency contacts, pets, and whether
@@ -190,26 +291,168 @@ The SSN is handled more strictly than everything else:
 - The database stores the ciphertext plus the last four digits. Admin list
   responses only ever include the last four; the full number is decrypted on
   demand through `GET /api/admin/applications/<id>/ssn` (behind Cloudflare
-  Access) when staff click "Reveal SSN".
+  Access) when a manager clicks "Reveal in full" on the application page.
 - Notification email carries the applicant's name only — never form contents.
 
-The admin Applications tab shows each submission with the full detail
-(employment, rental history, references, emergency contacts, pets) and tracks
-it through the pipeline: new → contacted → fee pending → screening → in review
-→ sent to landlord → approved / declined → lease sent → lease signed. Credit
-reports, application-fee payment, and DocuSign signing happen in outside
-systems for now; record their outcomes with the status dropdown and notes.
+The full number is a **manager's**. `GET /api/admin/applications/<id>/ssn`
+refuses an agent: nothing in the lease workflow reads an SSN — it is screening
+material and it is not on the document — so the only reason to want the whole
+number is a credit check. An agent sees the last four, which is what matching a
+report against an applicant takes. There is no audit log of reveals yet; when
+one exists, that endpoint is the single place to write to.
+
+The admin Applications screen tracks each submission through the pipeline:
+new → contacted → fee pending → screening → in review → sent to landlord →
+needs information → approved / declined → lease sent → lease signed. Ten of
+those are the office's own vocabulary and all of them are on rows today, so the
+screens group rather than replace them: **New**, **Under review**, **Needs
+information**, **Approved**, **Declined**, **Lease created** are what the
+filters and the status badges say, with the finer value still settable from the
+dropdown. A status change records who made it, when, and any reason given, in
+`applications.decision`.
+
+Credit reports, application-fee payment, and DocuSign signing happen in outside
+systems for now; record their outcomes with the status control and notes.
+Nothing here emails an applicant — "request information" records the request
+and lists what is missing; the message is still one somebody writes.
+
+### The applicant portal
+
+`/portal/` is where an applicant creates their account, follows their
+application, and uploads the documents tenant screening needs. **Applying
+requires the account**: `/apply/` sends anyone without a session to the
+portal to sign in (or register) and returns them to the form, and
+`/api/apply` enforces the same thing server-side — the application's email is
+taken from the verified session, never from the form, so a typo'd or
+borrowed address can never detach an application from the portal where its
+documents arrive.
+
+Accounts are email and password, hosted by **Supabase Auth**: registration,
+email confirmation, password hashing, sign-in throttling, and password reset
+are the platform's, not this repository's. The Worker proxies `/api/portal/*`
+to the project's auth API, so the browser still never talks to Supabase
+directly and never holds a token JavaScript can read — the session is an
+HttpOnly cookie carrying Supabase's access and refresh tokens, validated
+(and quietly refreshed) by the Worker on every request.
+
+Registration confirms the email with a 6-digit code before the account
+works, because everything the portal shows is claimed by email, and an
+unverified address would let anyone read a stranger's application by typing
+their email into a signup form. "Forgot your password" is the same proof
+again: a code to the inbox, then a new password. Those code emails are sent
+by Supabase Auth itself — not by Resend, and not printed to the local
+terminal the way this Worker's own notification emails are.
+
+Applicants who applied before the portal existed simply register with the
+same email address; the confirmation code proves it is theirs, and their
+applications appear.
+
+Signed in, an applicant sees each of their applications — the property, an
+applicant-facing status, and a document checklist:
+
+- Required: government ID front and back, the job offer letter, the last two
+  paystubs, and the last two months' bank statements.
+- Optional: the last two years' tax returns, and a landlord's reference
+  letter.
+
+Files are PDF or photos (JPEG, PNG, WebP, HEIC), 10 MB each; the Worker
+checks a file's first bytes against its declared type before storing it.
+The bytes land in the **private `applicant-docs` R2 bucket** — never in
+`listing-media`, whose objects anyone can fetch at `/media/` — and only ever
+leave through the Worker: `/api/portal/documents/<id>` for the applicant's
+own session, `/api/admin/documents/<id>` behind Cloudflare Access for staff.
+
+The admin Applications tab shows the same checklist in each application's
+panel (with a `Docs: 3/6` tally on the row) and staff can open or delete any
+file. The office is emailed once, when the last required document arrives —
+not on every upload.
+
+Setup, once (production, and the same in the development project except
+where noted):
+
+1. Create the `applicant-docs` R2 bucket in Cloudflare (its binding is
+   already in `wrangler.jsonc`) — not needed locally, wrangler simulates R2
+   on disk.
+2. Re-run `supabase/schema.sql` — safe to re-run — so the
+   `application_documents` table exists. A database that predates it still
+   lists its applications in the admin; the checklist simply does not appear.
+3. Give the Worker the project's low-privilege key — Settings → API Keys.
+   Copy the publishable key (`sb_publishable_…`) if the project has one and
+   set `SUPABASE_PUBLISHABLE_KEY`; an older project shows the legacy `anon`
+   key instead, which goes in `SUPABASE_ANON_KEY`. Either way
+   `npx wrangler secret put <name>` (locally: `.dev.vars`). It stays
+   server-side; the portal answers 503 without it.
+4. In the Supabase dashboard, Authentication → Emails → Templates: edit
+   **Confirm signup** and **Reset password** so the body shows
+   `{{ .Token }}` — the 6-digit code — instead of (or beside) the
+   confirmation link. The portal verifies codes; it has no page for the
+   link to land on.
+5. Production only — Authentication → Emails → SMTP: configure custom SMTP
+   (Resend works: host `smtp.resend.com`, username `resend`, password the
+   API key). Supabase's built-in sender is limited to a couple of emails an
+   hour and is meant for development.
+6. Development convenience: in the dev project, turning **Confirm email**
+   off (Authentication → Sign In / Providers → Email) skips the code step
+   entirely — registering signs straight in, and no real email is sent.
+
+"Full application" opens a panel that answers the question an agent actually
+has — will the lease this produces be right — and shows its working underneath.
+
+- **The verdict.** Ready, or what is in the way. It resolves all 147 values for
+  this application and this apartment, exactly as generating the lease would.
+- **What this lease will say.** The document's own sentences — landlord,
+  apartment, tenant, term, rent, deposit — followed by the three answers this
+  tenancy alone decides: the window guard notice, the rent concession, and
+  whether the DHCR consent is a vacancy or a renewal. It is meant to be read
+  against what was agreed, not against a list of field names.
+- **What is wrong**, sorted by what an agent does about it:
+  - *will stop generation* — required and unanswered. The safe kind of wrong.
+  - *will print blank or wrong* — generates without complaint. A statutory
+    disclosure with neither box ticked is not missing a value; it prints two
+    empty boxes and discloses nothing. See "Disclosure rules" in
+    [lease/README.md](lease/README.md).
+  - *not confirmed for this building* — a real value that came with the sample
+    lease rather than from anyone who knows this building.
+- **Tenant's and landlord's information in full**, collapsed. Each is split the
+  same way — what does not print on the lease on the left, what does on the
+  right — and this is where corrections are made. Reading 147 values is not how
+  anyone finds out that one of them is wrong; that is what the verdict is for.
+- **Rent concession** — the text of the Rent Concession Rider, if there is one.
+
+`site/shared/lease-review.js` decides the verdict, so it is testable without a
+browser and the lease screen can read the same reasoning later rather than grow
+a second copy of it.
+
+Edit opens the detail and makes the panel editable in place. Tenant values are validated by the same
+rules `worker/apply.js` applies to the public form, so a corrected application
+cannot end up shaped differently from a submitted one, and what the applicant
+originally wrote is kept and shown under anything that changed — the lease has
+the tenant warrant that their application is accurate, so the version they
+warranted has to survive being corrected. Landlord values are saved to the
+layer the registry says they belong to, company-wide or per building.
+
+The five values the lease repeats are edited in **both** places and are the
+same values: correcting a name on the lease screen writes it to the application
+row, and the overview shows it on the way back. `site/shared/lease-application.js`
+reads which values those are off the field registry, so the two screens cannot
+hold different lists.
+
+> Correcting an application needs the `submitted` and `concession_terms`
+> columns, which arrived after some databases were created. Run
+> `supabase/schema.sql` again — it is safe to re-run — or the correction is
+> refused with a message saying so. Listing and reading applications is
+> unaffected either way.
 
 ### Lease generation
 
 The admin turns an approved application into a ready-to-sign New York
-residential lease — the lease plus its thirteen riders and statutory notices —
+residential lease — the lease plus its fourteen riders and statutory notices —
 without anyone retyping the tenant's name into fourteen rider preambles.
 
 `lease/template/lease-template.docx` is the lease with every variable value
 replaced by a `{{placeholder}}`, and `lease/schema/fields.json` says where each
-of the 130 values comes from: 19 from the application and the listing, 110 from
-a stored setting, one typed in by the agent. Settings resolve in three layers,
+of the 147 values comes from: 20 from the application and the listing, 125 from
+a stored setting, two typed in by the agent. Settings resolve in three layers,
 later winning: company (fees, fine schedule) < building (utilities, sprinkler,
 bedbug history, Good Cause exemption) < unit.
 
@@ -320,10 +563,10 @@ The build currently copies these targets from `site/` into `dist/`:
 index.html
 buy/            rental/          commercial/
 listings/       new-development/ property/
-apply/          contact-us/      our-team/
-admin/          png/             video/
-data/           shared/
-favicon.ico     favicon.svg      apple-touch-icon.png
+apply/          portal/          contact-us/
+our-team/       admin/           png/
+video/          data/            shared/
+favicon.ico     favicon.svg     apple-touch-icon.png
 ```
 
 To add another deployable page or asset directory, create it under `site/` and add it to `copyTargets` in `scripts/build.js`.
@@ -343,7 +586,7 @@ The contact form endpoint `/api/contact` is implemented in `worker/index.js` and
 
 1. Create a Supabase project, then run `supabase/schema.sql` in the SQL editor.
 2. Create a Cloudflare Access application (Zero Trust > Access > Applications) for `starreusa.com/admin*` and `starreusa.com/api/admin*`, with a policy allowing the staff email addresses. Copy its Application Audience tag.
-3. Set the Worker configuration (the R2 bucket `listing-media` already exists; its binding is in `wrangler.jsonc`):
+3. Set the Worker configuration (the R2 buckets `listing-media` and `applicant-docs` must exist; their bindings are in `wrangler.jsonc`):
 
    ```bash
    npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
@@ -465,7 +708,7 @@ Before merging to `main`:
 
 ```bash
 npm run build
-for file in server.js scripts/*.js worker/*.js site/shared/*.js site/admin/*.js site/apply/apply.js; do node --check "$file"; done
+for file in server.js scripts/*.js worker/*.js site/shared/*.js site/admin/*.js site/apply/apply.js site/portal/portal.js; do node --check "$file"; done
 python3 lease/tools/check-fields.py
 node lease/tools/test-lease.mjs
 ```

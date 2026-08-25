@@ -3,36 +3,49 @@
 //
 // It replaces both of the things it grew out of — the settings form that had no
 // document, and the generate dialog whose preview was behind a button. Those
-// were two write paths to the same 146 values, which is how someone ends up
+// were two write paths to the same 147 values, which is how someone ends up
 // editing a building's legal disclosures without realising it.
 //
 // The document is rendered once (see lease-doc.js for why that is a hard rule)
 // and patched as you type. Nothing here re-fetches or re-renders it.
 
 import * as doc from "./lease-doc.js";
-import * as form from "./lease-form.js";
+import * as workspace from "./lease-workspace.js";
+import { mapDocuments, verifyDocuments } from "../shared/lease-documents.js";
 import { ADDRESS_FIELD, ADDRESS_PARTS, composeAddress } from "../shared/lease-address.js";
+import { applicationWrite } from "../shared/lease-application.js";
 
 let api;
 let setStatus;
 let escapeHtml;
+let onApplicationChanged = () => {};
+let onClosed = () => {};
 
 let registry = null;
 let buildings = [];
 let listingsOf = () => [];
+let isManager = () => false;
 
 const screen = document.getElementById("lease-screen");
 const mainEl = document.querySelector("main");
 
 let state = null;
+// The package, worked out once from the mounted render. Module-level for the
+// same reason `mounted` is: the document is rendered once for the life of the
+// page and so is everything derived from it.
+let packageDocuments = [];
+let returnTo = "";
 let formHost = null;
 let docHost = null;
 let mounted = false;
 
 export function initLeaseScreen(deps) {
   ({ api, setStatus, escapeHtml } = deps);
+  isManager = deps.isManager || (() => false);
   listingsOf = deps.listings;
-  form.initForm({ escapeHtml });
+  onApplicationChanged = deps.onApplicationChanged || (() => {});
+  onClosed = deps.onClosed || (() => {});
+  workspace.initWorkspace({ escapeHtml });
 }
 
 async function loadRegistry() {
@@ -60,9 +73,26 @@ function blankState() {
     listingId: "",
     buildingId: "",
     scope: "unit",
+    readOnly: false,
     targetLabel: "",
-    editable: () => true
+    editable: canEdit,
+    // The workspace's own state: which of its three tabs is open, the documents
+    // in the package, and which one the preview is filtered to.
+    tab: "information",
+    documents: [],
+    activeDocument: "",
+    listings: [],
+    canPickUnit: true,
+    isManager
   };
+}
+
+// A landlord value is a manager's, and an agent sees it rather than types it.
+// Refusing the change here as well as in the Worker keeps a disabled input from
+// being edited round — applyChange consults this before recording anything, so
+// a field that is not editable cannot even become dirty.
+function canEdit(field) {
+  return field.source !== "manager" || isManager();
 }
 
 // The one rule the browser is allowed to decide for itself. Everything else —
@@ -73,7 +103,10 @@ function recomputeMissing() {
   for (const field of state.fields) {
     if (field.type === "checkbox") continue;
     if (!field.required) continue;
-    if (!state.editable(field) && (state.values[field.id] ?? "") === "") continue;
+    // Every unanswered value counts, including the ones this person may not
+    // fill in. An agent has to see that a lease is 17 values short so they can
+    // ask a manager — hiding them would show a full progress bar over a
+    // document the server will refuse to produce.
     if ((state.values[field.id] ?? "") === "") state.missing.add(field.id);
   }
   state.missingLabels = {};
@@ -139,11 +172,20 @@ export async function openLeaseScreen(options = {}) {
   // still exist in the database and are still inherited, but nothing here
   // writes to them — a value saved from this screen belongs to one address.
   state.scope = "unit";
-  // Every field is fillable in both modes. An agent may correct what the
-  // application said, and may type a whole lease when there is no application
-  // at all — which is the only way to produce one until credit reporting is
-  // wired up.
-  state.editable = () => true;
+  // Opened to be read rather than filled in. The property screen uses this to
+  // show where a building's settings land on the page: everything it writes
+  // goes to the building layer, so a stray edit here — which would land on one
+  // apartment instead — must not be possible at all.
+  state.readOnly = options.readOnly === true;
+  // Where "back" goes. The workspace covers the console, so leaving it is a
+  // route change rather than a hide — otherwise the address bar still names a
+  // lease nobody is looking at.
+  returnTo = options.returnTo || "";
+  // An agent may correct what the application said, and may type a whole lease
+  // when there is no application at all — which is the only way to produce one
+  // until credit reporting is wired up. The landlord's own standing terms are
+  // the exception: those are a manager's, on this screen as everywhere else.
+  state.editable = state.readOnly ? () => false : canEdit;
 
   screen.hidden = false;
   if (mainEl) mainEl.hidden = true;
@@ -163,8 +205,17 @@ export async function openLeaseScreen(options = {}) {
       const summary = await doc.mountDocument(docHost, { onSlotClick: focusField });
       mounted = true;
       verifyTemplate(summary);
-      state.documentOrder = summary.fields;
+      // Which run of sections each document occupies. Worked out once, from the
+      // render that just happened, and kept for the life of the page.
+      packageDocuments = mapDocuments(summary.sectionTexts);
+      verifyPackage(packageDocuments, summary.sections);
     }
+    // Set on every open, not only the first: blankState() wipes it, and the
+    // form used to fall back to registry order from the second open onwards.
+    state.documentOrder = doc.fieldsInDocument();
+    state.documents = packageDocuments;
+    state.listings = listingsOf();
+    state.canPickUnit = !state.readOnly && state.mode !== "lease";
     for (const field of state.fields) state.occurrences[field.id] = doc.occurrenceCount(field.id);
     state.targetLabel = targetLabelFor();
 
@@ -172,7 +223,14 @@ export async function openLeaseScreen(options = {}) {
     syncChecked();
     recomputeMissing();
     doc.patchValues(state.values, state.missingLabels);
-    form.renderForm(formHost, state);
+    // Every document, until somebody chooses one.
+    showDocument("");
+    workspace.renderWorkspace(formHost, state);
+    // Again, now that the values are in: the header states the status, and a
+    // status must never read "Ready to send" over a set of gaps nobody has
+    // counted yet.
+    renderBar();
+    updateActions();
     setStatus("");
   } catch (error) {
     setStatus(error.message, "error");
@@ -218,10 +276,14 @@ function verifyTemplate(summary) {
 }
 
 export function closeLeaseScreen() {
+  // Called on every route change, so it has to be free the rest of the time.
+  if (screen.hidden) return;
   screen.hidden = true;
   if (mainEl) mainEl.hidden = false;
   document.body.classList.remove("lease-open");
   doc.clearHighlight();
+  // Settings may have been saved here, and the overview caches them.
+  onClosed();
 }
 
 // -------------------------------------------------------------------- shell
@@ -230,26 +292,55 @@ let shellRendered = false;
 
 function renderBar() {
   const listing = listingsOf().find((l) => l.id === state.listingId);
-  const title = state.mode === "lease"
-    ? `Lease · ${escapeHtml(state.application.name)}`
-    : "New lease";
+  const tenants = state.values["tenant.names"] || (state.application?.name ?? "");
+  const status = leaseStatus();
 
   screen.querySelector("#lease-bar").innerHTML = `
-    <button type="button" id="lease-back">← Back</button>
-    <h2>${title}</h2>
-    <div class="lease-scope">
-      <span>${state.mode === "lease" ? "Defaults from" : "Apartment"}</span>
-      ${state.mode === "lease"
-        ? `<b>${escapeHtml(unitLabel(listing) || "this unit")}</b>`
-        : `<select id="lease-listing">
-             <option value="">— choose an apartment —</option>
-             ${listingsOf().map((l) => `<option value="${escapeHtml(l.id)}"${l.id === state.listingId ? " selected" : ""}>${escapeHtml(unitLabel(l))}</option>`).join("")}
-           </select>`}
-    </div>`;
+    <button type="button" id="lease-back">← ${state.readOnly ? "Back to the property" : "Back to leases"}</button>
+    <div class="lease-head">
+      <h2>${escapeHtml(state.readOnly
+        ? "The lease, as this apartment's settings fill it"
+        : tenants || "New lease")}</h2>
+      <p>${escapeHtml(unitLabel(listing) || "No apartment chosen yet")}</p>
+    </div>
+    <dl class="lease-facts">
+      <div><dt>Status</dt><dd><span class="lease-status is-${status.tone}">${escapeHtml(status.label)}</span></dd></div>
+      <div><dt>Rent</dt><dd>${escapeHtml(state.values["rent.monthly"] || "—")}</dd></div>
+      <div><dt>Term</dt><dd>${escapeHtml(termLabel())}</dd></div>
+    </dl>`;
 
-  screen.querySelector("#lease-draft").hidden = false;
-  screen.querySelector("#lease-final").hidden = false;
-  screen.querySelector("#lease-save").textContent = "Save these as the unit's defaults";
+  screen.querySelector("#lease-draft").hidden = state.readOnly;
+  screen.querySelector("#lease-final").hidden = state.readOnly;
+  // Saving a value as the apartment's default is a manager's act. Hidden here,
+  // where the bar is built on every open, rather than only in updateActions —
+  // that runs on a change, and a screen nobody has touched yet would show it.
+  const save = screen.querySelector("#lease-save");
+  save.textContent = "Save these as the unit's defaults";
+  save.hidden = state.readOnly || !isManager();
+}
+
+// The lifecycle, as far as this system can honestly know it.
+//
+// There is no leases table: an application carries the only record that a lease
+// happened, through the statuses lease_sent and lease_signed. So a lease is a
+// draft until every required value is answered, ready when they are, and beyond
+// that only what the application says. "Partially signed" is deliberately
+// absent — nothing here talks to a signing service, so nothing could set it.
+function leaseStatus() {
+  const applicationStatus = state.application?.status;
+  if (applicationStatus === "declined") return { label: "Cancelled", tone: "off" };
+  if (applicationStatus === "lease_signed") return { label: "Fully signed", tone: "good" };
+  if (applicationStatus === "lease_sent") return { label: "Sent for signature", tone: "busy" };
+  if (state.missing.size > 0) return { label: "Draft", tone: "off" };
+  return { label: "Ready to send", tone: "good" };
+}
+
+function termLabel() {
+  const months = state.application?.lease_term_months;
+  const start = state.values["lease.commencement_date"];
+  const end = state.values["lease.end_date"];
+  if (start && end) return `${start} – ${end}`;
+  return months ? `${months} months` : "—";
 }
 
 // Built once. The rendered document lives in here and must survive every
@@ -263,10 +354,11 @@ function renderShell() {
       <div class="lease-pane lease-pane-doc">
         <div class="lease-pane-head">
           <span id="lease-position">—</span>
+          <span id="lease-doc-name" class="lease-doc-name"></span>
           <span class="lease-tools">
-            <button type="button" data-lease-zoom="-1">−</button>
+            <button type="button" data-lease-zoom="-1" aria-label="Zoom out">−</button>
             <span id="lease-zoom-label">100%</span>
-            <button type="button" data-lease-zoom="1">+</button>
+            <button type="button" data-lease-zoom="1" aria-label="Zoom in">+</button>
             <label><input type="checkbox" id="lease-show-slots"> Show fields</label>
           </span>
         </div>
@@ -278,19 +370,78 @@ function renderShell() {
         <div class="lease-actions" id="lease-actions">
           <div class="lease-warnings" id="lease-warnings"></div>
           <button type="button" id="lease-save" disabled>Save settings</button>
-          <button type="button" id="lease-draft" hidden>Download draft</button>
-          <button type="button" class="primary" id="lease-final" hidden disabled>Produce lease</button>
+          <button type="button" id="lease-draft" hidden>Preview package</button>
+          <button type="button" class="primary" id="lease-final" hidden disabled>Generate lease package</button>
         </div>
       </div>
     </div>
     <div class="lease-tabs">
       <button type="button" class="chip is-on" data-lease-tab="doc">Document</button>
-      <button type="button" class="chip" data-lease-tab="form">Fields</button>
+      <button type="button" class="chip" data-lease-tab="form">Lease information</button>
     </div>`;
 
   const saved = Number(localStorage.getItem("lease-split") || 0);
   if (saved > 20 && saved < 80) {
     screen.querySelector("#lease-panes").style.gridTemplateColumns = `${saved}fr 6px ${100 - saved}fr`;
+  }
+}
+
+// ----------------------------------------------------------- the document list
+
+// A run of sections that the template has but no document claims would print
+// in the .docx while being invisible here. Said out loud, like every other
+// disagreement between this screen and the template.
+function verifyPackage(mapped, sectionCount) {
+  const problems = verifyDocuments(mapped, sectionCount);
+  if (problems.length === 0) return;
+
+  const warning = screen.querySelector("#lease-alarm");
+  warning.hidden = false;
+  warning.innerHTML = `<b>The document list does not match the template.</b>
+    ${problems.map(escapeHtml).join(" ")}
+    Every document listed still prints; one that is not listed cannot be read here.`;
+}
+
+// Filters the preview to one document, or to the whole package when `id` is
+// empty. The sections outside it are collapsed, never unmounted — see
+// lease-doc.js, which may not render twice.
+function showDocument(id) {
+  state.activeDocument = id || "";
+  const found = state.documents.find((row) => row.id === state.activeDocument);
+  if (found) doc.showSections(found.from, found.to);
+  else doc.showSections(null);
+
+  const label = screen.querySelector("#lease-doc-name");
+  if (label) label.textContent = found ? found.name : "The whole package";
+
+  const scroller = screen.querySelector("#lease-doc-scroll");
+  if (scroller) scroller.scrollTop = 0;
+  updatePosition();
+}
+
+// A value can print in a document the preview is not showing. Opening the one
+// it is in first is the difference between "Show on the document" working and
+// appearing to do nothing.
+function showFieldInDocument(fieldId) {
+  const section = doc.sectionOfField(fieldId);
+  if (section !== null && state.activeDocument) {
+    const current = state.documents.find((row) => row.id === state.activeDocument);
+    if (current && (section < current.from || section > current.to)) {
+      const owner = state.documents.find((row) => section >= row.from && section <= row.to);
+      showDocument(owner ? owner.id : "");
+    }
+  }
+  doc.scrollToOccurrence(fieldId, 0);
+}
+
+function updatePosition() {
+  const scroller = screen.querySelector("#lease-doc-scroll");
+  if (!scroller) return;
+  const position = doc.describePosition(scroller);
+  const readout = screen.querySelector("#lease-position");
+  if (readout) {
+    readout.textContent =
+      `Section ${position.section}/${position.total}${position.heading ? ` · ${position.heading}` : ""}`;
   }
 }
 
@@ -302,11 +453,15 @@ let zoom = 1;
 function focusField(fieldId) {
   const input = formHost.querySelector(`[data-lease-input="${CSS.escape(fieldId)}"]`);
   if (!input) return;
-  const row = input.closest("[data-lease-row]");
-  if (row?.hidden) {
-    // The field is filtered out; showing everything is better than doing nothing.
-    screen.querySelector('[data-lease-filter="all"]')?.click();
+  // The value may be on a tab that is not open; the information tab is the one
+  // that holds every editable value.
+  if (!input.offsetParent && state.tab !== "information") {
+    state.tab = "information";
+    workspace.renderTab(formHost, state);
+    return focusField(fieldId);
   }
+  // …or inside a section somebody has left shut.
+  input.closest("details")?.setAttribute("open", "");
   input.scrollIntoView({ block: "center", behavior: "smooth" });
   input.focus();
   input.closest("[data-lease-row]")?.classList.add("is-located");
@@ -347,7 +502,81 @@ function onInput(fieldId, rawValue, isCheckbox) {
     if (input && document.activeElement !== input) input.value = state.values[ADDRESS_FIELD];
   }
 
-  form.annotate(formHost, state);
+  workspace.annotateWorkspace(formHost, state);
+  updateActions();
+}
+
+// -------------------------------------------------- back to the application
+//
+// The overview and this screen edit the same tenant values. They are never on
+// screen together — this one covers the list — so "in step" means each shows
+// what the other left, which is what writing straight through to the
+// application row gives. site/shared/lease-application.js says which values
+// those are, read off the registry so neither side can hold a different list.
+
+async function writeBack(fieldId) {
+  if (state.mode !== "lease" || !state.application) return;
+  if (!state.dirty.has(fieldId)) return;
+
+  const field = state.byId.get(fieldId);
+  const raw = field.type === "checkbox" ? state.checked.has(fieldId) : state.values[fieldId];
+  const write = applicationWrite(state.fields, fieldId, raw);
+  if (!write) return;
+  const { column, value } = write;
+  if (state.application[column] === value) return;
+
+  try {
+    const { application } = await api(`/applications/${encodeURIComponent(state.application.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ [column]: value })
+    });
+    state.application = application;
+    onApplicationChanged(application);
+    setStatus(`Saved ${field.label.toLowerCase()} to the application.`);
+  } catch (error) {
+    // Loud, because the alternative is a lease screen and an application that
+    // quietly say different things about the same tenant.
+    setStatus(`${field.label} was not saved to the application: ${error.message}`, "error");
+  }
+}
+
+
+// The two values on this screen that belong to the application row rather than
+// to the template: the tenant's phone, and how many months the term runs. Both
+// are written straight through, the same way a corrected tenant name is.
+async function writeApplicationValue(column, raw) {
+  if (!state.application) return;
+  const value = column === "lease_term_months" ? (Number(raw) || null) : String(raw).trim();
+  if (state.application[column] === value) return;
+
+  try {
+    const { application } = await api(`/applications/${encodeURIComponent(state.application.id)}`, {
+      method: "PATCH",
+      body: JSON.stringify({ [column]: value })
+    });
+    state.application = application;
+    onApplicationChanged(application);
+    applyEndDate();
+    setStatus("Saved to the application.");
+  } catch (error) {
+    setStatus(`That was not saved to the application: ${error.message}`, "error");
+  }
+}
+
+// The end date is computed, never typed, so it has to move the moment either
+// half of the sum changes — and it has to move in the document too, or the
+// preview and the .docx disagree about when the tenancy ends.
+function applyEndDate() {
+  const next = workspace.recomputeEndDate(state);
+  if (next === state.values["lease.end_date"]) return;
+
+  state.values["lease.end_date"] = next;
+  state.dirty.add("lease.end_date");
+  recomputeMissing();
+  doc.patchField("lease.end_date", next,
+    state.missing.has("lease.end_date") ? state.byId.get("lease.end_date").label : null);
+  workspace.annotateWorkspace(formHost, state);
+  renderBar();
   updateActions();
 }
 
@@ -368,7 +597,10 @@ function updateActions() {
   const final = screen.querySelector("#lease-final");
   if (final) final.disabled = state.missing.size > 0;
   const save = screen.querySelector("#lease-save");
-  if (save) save.disabled = dirtyManager.length === 0 || !state.listingId;
+  if (save) {
+    save.hidden = state.readOnly || !isManager();
+    save.disabled = dirtyManager.length === 0 || !state.listingId;
+  }
 }
 
 async function saveSettings() {
@@ -402,7 +634,7 @@ async function saveSettings() {
     syncChecked();
     recomputeMissing();
     doc.patchValues(state.values, state.missingLabels);
-    form.annotate(formHost, state);
+    workspace.annotateWorkspace(formHost, state);
     updateActions();
     setStatus("Saved.", "ok");
   } catch (error) {
@@ -446,8 +678,6 @@ async function produce(mode) {
   }
 }
 
-const stepIndex = new Map();
-
 function bindOnce() {
   if (bound) return;
   bound = true;
@@ -456,9 +686,14 @@ function bindOnce() {
     const target = event.target.closest("[data-lease-input]");
     if (target) onInput(target.dataset.leaseInput, target.type === "checkbox" ? target.checked : target.value, target.type === "checkbox");
 
-    if (event.target.id === "lease-search") {
-      form.applyFilter(formHost, { filter: currentFilter, search: event.target.value, state });
+    // Typing a term should move the end date on the screen and in the document
+    // at once, the same way typing a start date does.
+    const appInput = event.target.closest("[data-ws-app]");
+    if (appInput && appInput.dataset.wsApp === "lease_term_months") {
+      if (state.application) state.application.lease_term_months = Number(appInput.value) || null;
+      applyEndDate();
     }
+
   });
 
   screen.addEventListener("change", (event) => {
@@ -466,33 +701,36 @@ function bindOnce() {
       state.listingId = event.target.value;
       reloadLayer();
     }
+
+    const appInput = event.target.closest("[data-ws-app]");
+    if (appInput) writeApplicationValue(appInput.dataset.wsApp, appInput.value);
     if (event.target.id === "lease-show-slots") doc.setShowSlots(event.target.checked);
+
+    // A value the application owns is corrected here as often as it is
+    // corrected on the overview, and an agent who fixes a misspelled name
+    // while reading the lease should not have to fix it again afterwards.
+    // On the field being left, not on every keystroke.
+    const input = event.target.closest("[data-lease-input]");
+    if (input) writeBack(input.dataset.leaseInput);
   });
 
   screen.addEventListener("click", async (event) => {
     const button = event.target.closest("button");
     if (!button) return;
 
-    if (button.id === "lease-back") return closeLeaseScreen();
+    if (button.id === "lease-back") {
+      if (returnTo) location.hash = returnTo;
+      else closeLeaseScreen();
+      return;
+    }
     if (button.id === "lease-save") return saveSettings();
     if (button.id === "lease-draft") return produce("draft");
     if (button.id === "lease-final") return produce("final");
 
     if (button.dataset.leaseLocate) {
-      const id = button.dataset.leaseLocate;
-      const found = doc.scrollToOccurrence(id, stepIndex.get(id) || 0);
-      if (found) form.setStepLabel(formHost, id, found.occurrence, found.total);
-      return;
-    }
-
-    if (button.dataset.leaseStepDelta) {
-      const wrap = button.closest("[data-lease-step]");
-      const id = wrap.dataset.leaseStep;
-      const total = state.occurrences[id] || 1;
-      const next = ((stepIndex.get(id) || 0) + Number(button.dataset.leaseStepDelta) + total) % total;
-      stepIndex.set(id, next);
-      const found = doc.scrollToOccurrence(id, next);
-      if (found) form.setStepLabel(formHost, id, found.occurrence, found.total);
+      // The value may print inside a document that is filtered out of view.
+      // Showing it means showing the document it is in.
+      showFieldInDocument(button.dataset.leaseLocate);
       return;
     }
 
@@ -513,12 +751,15 @@ function bindOnce() {
       return;
     }
 
-    if (button.dataset.leaseFilter) {
-      currentFilter = button.dataset.leaseFilter;
-      for (const chip of screen.querySelectorAll("[data-lease-filter]")) {
-        chip.classList.toggle("is-on", chip === button);
-      }
-      form.applyFilter(formHost, { filter: currentFilter, search: screen.querySelector("#lease-search").value, state });
+    if (button.dataset.wsTab) {
+      state.tab = button.dataset.wsTab;
+      workspace.renderTab(formHost, state);
+      return;
+    }
+
+    if (button.dataset.wsDoc !== undefined) {
+      showDocument(button.dataset.wsDoc);
+      workspace.renderTab(formHost, state);
       return;
     }
 
@@ -546,9 +787,7 @@ function bindOnce() {
     if (ticking) return;
     ticking = true;
     requestAnimationFrame(() => {
-      const position = doc.describePosition(scroller);
-      screen.querySelector("#lease-position").textContent =
-        `Section ${position.section}/${position.total}${position.heading ? ` · ${position.heading}` : ""}`;
+      updatePosition();
       ticking = false;
     });
   });
@@ -556,7 +795,6 @@ function bindOnce() {
   bindSplitter();
 }
 
-let currentFilter = "all";
 let gapIndex = -1;
 
 async function reloadLayer() {
@@ -568,7 +806,7 @@ async function reloadLayer() {
     syncChecked();
     recomputeMissing();
     doc.patchValues(state.values, state.missingLabels);
-    form.renderForm(formHost, state);
+    workspace.renderWorkspace(formHost, state);
     updateActions();
     setStatus("");
   } catch (error) {

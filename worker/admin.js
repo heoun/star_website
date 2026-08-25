@@ -2,11 +2,23 @@ import { verifyAccessRequest } from "./access.js";
 import { describeEnvironment, devIdentity } from "./env.js";
 import { purgeListingsCache } from "./listings.js";
 import {
+  MANAGER, AGENT, isManager, isManagerControlled, normalizeRole, resolveStaff
+} from "./staff.js";
+import {
   applyLeaseSettings,
   deleteApplication,
+  deleteApplicationDocument,
   deleteListing,
   deleteMediaRow,
+  deleteStaffMember,
+  fetchStaff,
+  isMissingTable,
+  upsertStaffMember,
+  fetchApplicationDocument,
   fetchApplicationForLease,
+  fetchApplication,
+  keepsSubmitted,
+  recordsDecisions,
   fetchApplications,
   fetchApplicationSsn,
   fetchBuilding,
@@ -25,6 +37,12 @@ import {
   updateMedia
 } from "./supabase.js";
 import {
+  DOCUMENT_TYPES,
+  deleteDocumentsByPrefix,
+  requireDocsBucket,
+  serveDocumentFile
+} from "./portal.js";
+import {
   LEASE_REGISTRY,
   dealValues,
   describeMissing,
@@ -34,6 +52,7 @@ import {
   leaseFilename,
   resolveValues
 } from "./lease.js";
+import { normalizeApplicationEdit } from "./apply.js";
 import { decryptSsn, formatSsn } from "./ssn.js";
 import {
   IMAGE_TYPES,
@@ -49,7 +68,7 @@ const TRANSACTION_TYPES = ["sale", "rental"];
 const MEDIA_KINDS = ["photo", "floor_plan"];
 const APPLICATION_STATUSES = [
   "new", "contacted", "fee_pending", "screening", "review",
-  "sent_to_landlord", "approved", "declined", "lease_sent", "lease_signed"
+  "sent_to_landlord", "needs_info", "approved", "declined", "lease_sent", "lease_signed"
 ];
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
@@ -77,6 +96,10 @@ function json(payload, status = 200) {
   });
 }
 
+// Enough to catch a typo before it becomes an account nobody can sign in as.
+// Cloudflare Access is what actually decides an address is real.
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 function cleanLine(value, maxLength = 300) {
   return String(value ?? "").replace(/[\r\n\t]+/g, " ").trim().slice(0, maxLength);
 }
@@ -96,9 +119,10 @@ function optionalNumber(value, { integer = false } = {}) {
   return integer ? Math.round(parsed) : parsed;
 }
 
-function normalizeListingInput(body, { partial = false } = {}) {
+function normalizeListingInput(body, { partial = false, identity = null } = {}) {
   const values = {};
   const errors = [];
+  const refused = [];
 
   if (!partial || body.category !== undefined) {
     const category = cleanLine(body.category, 20).toLowerCase();
@@ -137,13 +161,22 @@ function normalizeListingInput(body, { partial = false } = {}) {
   // Which building's lease settings this unit inherits. Empty unlinks it,
   // which costs the unit its whole building settings layer.
   if (body.building_id !== undefined) {
-    const buildingId = cleanLine(body.building_id, 40);
-    if (buildingId === "") values.building_id = null;
-    else if (!UUID_PATTERN.test(buildingId)) errors.push("building_id");
-    else values.building_id = buildingId;
+    // Which building a unit belongs to decides which settings layer its leases
+    // read. Re-pointing it swaps all 93 per-building values at once — the same
+    // write PUT /lease/settings refuses, reached by another door.
+    // No `identity &&` guard: a call that arrives without one must refuse, not
+    // fall through to the else branch and write the value.
+    if (!isManager(identity)) {
+      refused.push("the building this apartment belongs to");
+    } else {
+      const buildingId = cleanLine(body.building_id, 40);
+      if (buildingId === "") values.building_id = null;
+      else if (!UUID_PATTERN.test(buildingId)) errors.push("building_id");
+      else values.building_id = buildingId;
+    }
   }
 
-  return { values, errors };
+  return { values, errors, refused };
 }
 
 // Uploads one file to R2 under the listing's prefix. The caller decides what
@@ -184,9 +217,21 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
   // Access in production; on a developer's machine, the two-lock local
   // identity from env.js. Both return the same shape, so nothing below here
   // needs to know which one answered.
-  const identity = (await verifyAccessRequest(request, env)) || devIdentity(request, env);
-  if (!identity) {
+  const authenticated = (await verifyAccessRequest(request, env)) || devIdentity(request, env);
+  if (!authenticated) {
     return json({ error: "Not authorized." }, 403);
+  }
+
+  // Access proved who this is. public.staff says what they may do, and refuses
+  // an email it does not know rather than assuming the narrower role — see
+  // worker/staff.js for why there is no default.
+  let identity;
+  try {
+    const resolved = await resolveStaff(env, authenticated);
+    if (!resolved.identity) return json({ error: resolved.error }, resolved.status || 403);
+    identity = resolved.identity;
+  } catch (error) {
+    return json({ error: error.message }, 500);
   }
 
   const segments = pathname.replace(/^\/api\/admin\/?/, "").split("/").filter(Boolean);
@@ -194,19 +239,32 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
 
   try {
     if (resource === "me") {
-      return json({ email: identity.email, ...describeEnvironment(request, env) });
+      return json({
+        email: identity.email,
+        role: identity.role,
+        name: identity.name || "",
+        ...describeEnvironment(request, env)
+      });
+    }
+
+    if (resource === "staff") {
+      return await handleStaff(request, env, identity, id);
     }
 
     if (resource === "media" && id) {
       return await handleMediaItem(request, env, ctx, id);
     }
 
+    if (resource === "documents" && id) {
+      return await handleDocumentItem(request, env, ctx, id);
+    }
+
     if (resource === "applications") {
-      return await handleApplications(request, env, id, subresource);
+      return await handleApplications(request, env, ctx, identity, id, subresource);
     }
 
     if (resource === "buildings") {
-      return await handleBuildings(request, env, id);
+      return await handleBuildings(request, env, identity, id);
     }
 
     if (resource === "lease") {
@@ -235,8 +293,10 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
     }
 
     if (!id && request.method === "POST") {
-      const { values, errors } = normalizeListingInput(await request.json());
+      const { values, errors, refused } = normalizeListingInput(
+        await request.json(), { identity });
       if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
+      if (refused.length > 0) return listingRefusal(refused);
 
       const row = await insertListing(env, values);
       ctx.waitUntil(purgeListingsCache(request));
@@ -252,8 +312,10 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
     }
 
     if (request.method === "PATCH") {
-      const { values, errors } = normalizeListingInput(await request.json(), { partial: true });
+      const { values, errors, refused } = normalizeListingInput(
+        await request.json(), { partial: true, identity });
       if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
+      if (refused.length > 0) return listingRefusal(refused);
       if (Object.keys(values).length === 0) return json({ error: "Nothing to update." }, 400);
 
       const row = await updateListing(env, id, values);
@@ -276,10 +338,45 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
   }
 }
 
-async function handleApplications(request, env, id, subresource) {
-  // Reveal endpoint: decrypts one SSN on demand for an authenticated staff
-  // member. The list payload never carries more than the last four digits.
+// A document the applicant uploaded through the portal: staff read it, and
+// can remove one that is wrong or was uploaded twice. Uploading stays on the
+// portal side — the paperwork is the applicant's to provide.
+async function handleDocumentItem(request, env, ctx, documentId) {
+  if (!UUID_PATTERN.test(documentId)) {
+    return json({ error: "Document not found." }, 404);
+  }
+
+  const row = await fetchApplicationDocument(env, documentId);
+  if (!row) return json({ error: "Document not found." }, 404);
+
+  if (request.method === "GET") {
+    return serveDocumentFile(env, row);
+  }
+
+  if (request.method === "DELETE") {
+    await deleteApplicationDocument(env, documentId);
+    ctx.waitUntil(requireDocsBucket(env).delete(row.path));
+    return json({ deleted: true });
+  }
+
+  return json({ error: "Method not allowed." }, 405);
+}
+
+async function handleApplications(request, env, ctx, identity, id, subresource) {
+  // Reveal endpoint: decrypts one SSN on demand. The list payload never
+  // carries more than the last four digits, and this is the only way to the
+  // rest of them.
+  //
+  // A manager's, not an agent's. Nothing in the lease workflow reads an SSN —
+  // it is screening material and it is not on the document — so the only
+  // reason to ask for the whole number is to run a credit check, and that is
+  // the manager's job. An agent still sees the last four, which is what
+  // matching a report against an applicant needs.
   if (subresource === "ssn" && id && request.method === "GET") {
+    if (!isManager(identity)) {
+      return json({ error: "Only a manager can read a full Social Security number. "
+        + "The last four digits are on the application." }, 403);
+    }
     if (!UUID_PATTERN.test(id)) return json({ error: "Application not found." }, 404);
 
     const row = await fetchApplicationSsn(env, id);
@@ -298,7 +395,9 @@ async function handleApplications(request, env, id, subresource) {
   if (!id) {
     if (request.method === "GET") {
       const rows = await fetchApplications(env);
-      return json({ applications: rows });
+      // The checklist registry rides along so the admin page names document
+      // types the same way the portal does, from the same list.
+      return json({ applications: rows, document_types: DOCUMENT_TYPES });
     }
     return json({ error: "Method not allowed." }, 405);
   }
@@ -315,26 +414,99 @@ async function handleApplications(request, env, id, subresource) {
       const status = cleanLine(body.status, 20).toLowerCase();
       if (!APPLICATION_STATUSES.includes(status)) return json({ error: "Invalid status." }, 422);
       values.status = status;
+
+      // Who moved it, when, and why. Stamped here rather than sent by the
+      // browser: the console can say what it is doing, but it does not get to
+      // say who is doing it.
+      if (recordsDecisions()) {
+        values.decision = {
+          status,
+          by: identity.name || identity.email,
+          at: new Date().toISOString(),
+          reason: cleanMultiline(body.decision_reason, 2000) || ""
+        };
+      }
     }
 
     if (body.notes !== undefined) {
       values.notes = cleanMultiline(body.notes) || null;
     }
 
+    // Correcting the application itself, rather than the screening notes an
+    // agent keeps beside it. Needs the row first: what the applicant actually
+    // submitted is kept, and a name is made of two halves only one of which
+    // may have been sent.
+    const corrections = Object.keys(body)
+      .some((key) => key !== "status" && key !== "notes" && key !== "decision_reason");
+    if (corrections) {
+      if (!keepsSubmitted()) {
+        return json({
+          error: "This database cannot record what the applicant originally wrote yet. "
+            + "Run supabase/schema.sql on it, then try again."
+        }, 409);
+      }
+      const current = await fetchApplication(env, id);
+      if (!current) return json({ error: "Application not found." }, 404);
+
+      const edit = normalizeApplicationEdit(body, current);
+      if (edit.errors.length > 0) {
+        return json({ error: `Please check these fields: ${edit.errors.join(", ")}.` }, 422);
+      }
+      Object.assign(values, edit.values, submittedRecord(current, edit.values));
+    }
+
     if (Object.keys(values).length === 0) return json({ error: "Nothing to update." }, 400);
 
-    const row = await updateApplication(env, id, values);
+    let row;
+    try {
+      row = await updateApplication(env, id, values);
+    } catch (error) {
+      // A status this Worker knows and the table does not. It means the
+      // database has not had supabase/schema.sql run on it since "needs
+      // information" was added, and the person clicking the button deserves to
+      // be told that rather than "the request could not be completed".
+      if (values.status && /applications_status_check|23514/.test(String(error.message))) {
+        return json({
+          error: `This database does not accept the status "${values.status}" yet. `
+            + "Run supabase/schema.sql on it, then try again."
+        }, 409);
+      }
+      throw error;
+    }
     if (!row) return json({ error: "Application not found." }, 404);
     return json({ application: row });
   }
 
   if (request.method === "DELETE") {
     await deleteApplication(env, id);
+    // The database cascade removes the document rows; the bytes in R2 are
+    // this Worker's to clean up.
+    ctx.waitUntil(deleteDocumentsByPrefix(env, `${id.toLowerCase()}/`));
     return json({ deleted: true });
   }
 
   return json({ error: "Method not allowed." }, 405);
 }
+
+// What the applicant wrote, kept the first time an agent changes it.
+//
+// The lease has the tenant warrant that everything in the application is
+// accurate, so the version they warranted has to survive being corrected. Only
+// the first correction of a field records anything: after that the stored value
+// is already the submitted one, and overwriting it would lose the very thing
+// this is for.
+function submittedRecord(current, corrections) {
+  const submitted = { ...(current.submitted || {}) };
+  let added = false;
+  for (const [key, value] of Object.entries(corrections)) {
+    if (key in submitted) continue;
+    if (JSON.stringify(current[key] ?? null) === JSON.stringify(value ?? null)) continue;
+    submitted[key] = current[key] ?? null;
+    added = true;
+  }
+  return added ? { submitted } : {};
+}
+
 
 async function handleMediaCreate(request, env, ctx, listingId) {
   if (!UUID_PATTERN.test(listingId)) {
@@ -398,12 +570,152 @@ async function handleMediaItem(request, env, ctx, mediaId) {
   return json({ error: "Method not allowed." }, 405);
 }
 
-export async function guardAdminPage(request, env) {
-  const identity = (await verifyAccessRequest(request, env)) || devIdentity(request, env);
-  if (identity) return null;
+// ---- Staff accounts ----
 
-  return new Response("Not authorized.", {
-    status: 403,
+// Managing who may use the console, from inside the console.
+//
+// Manager-only, and it refuses two things a manager might otherwise do by
+// accident: change their own role, and remove their own account. Either would
+// end with the person holding the keys locked outside, and on a small team that
+// can mean nobody left who can let them back in.
+//
+// OWNER_EMAIL is not editable here at all. It is the bootstrap manager, it is
+// configuration rather than data, and it is what makes an empty table
+// recoverable — a row in this table cannot be allowed to contradict it.
+// Whether an active manager other than `email` is left on the list. Read fresh
+// rather than cached: the answer decides whether the console can be reopened.
+async function anotherManagerRemains(env, email) {
+  const rows = await fetchStaff(env);
+  return rows.some((row) => row.email !== email && row.role === MANAGER && row.active);
+}
+
+async function handleStaff(request, env, identity, id) {
+  if (!isManager(identity)) {
+    return json({ error: "Only a manager can see or change who uses the admin console." }, 403);
+  }
+
+  const owner = String(env.OWNER_EMAIL || "").trim().toLowerCase();
+
+  if (request.method === "GET" && !id) {
+    let rows;
+    try {
+      rows = await fetchStaff(env);
+    } catch (error) {
+      if (!isMissingTable(error)) throw error;
+      return json({
+        error: "The admin account list does not exist on this database yet. "
+          + "Run supabase/schema.sql on it, then reload."
+      }, 503);
+    }
+    return json({
+      staff: rows,
+      owner: owner || null,
+      you: { email: identity.email, role: identity.role }
+    });
+  }
+
+  if (request.method === "PUT" && !id) {
+    const body = await request.json().catch(() => ({}));
+    const email = cleanLine(body.email, 180).toLowerCase();
+    const role = normalizeRole(body.role);
+
+    if (!EMAIL_PATTERN.test(email)) return json({ error: "Enter a valid email address." }, 422);
+    if (!role) return json({ error: `Role must be ${MANAGER} or ${AGENT}.` }, 422);
+    if (owner && email === owner) {
+      return json({
+        error: "That address is the owner account, set by configuration. It is always a manager."
+      }, 422);
+    }
+    if (email === identity.email && role !== identity.role) {
+      return json({
+        error: "You cannot change your own role. Ask another manager to do it."
+      }, 422);
+    }
+
+    // An omitted `active` keeps whatever the row already says. Defaulting it to
+    // true would let a PUT that only meant to fix a name quietly reinstate a
+    // deactivated account. The string "false" is a value a form can send, and
+    // Boolean("false") is true, so it is read rather than coerced.
+    const existing = (await fetchStaff(env)).find((row) => row.email === email);
+    const active = body.active === undefined
+      ? (existing ? existing.active : true)
+      : !(body.active === false || body.active === "false" || body.active === 0);
+
+    if (email === identity.email && !active) {
+      return json({ error: "You cannot deactivate your own account." }, 422);
+    }
+
+    // Nobody may remove the last way back in. With OWNER_EMAIL set there is
+    // always one, which is what it is for; without it, this is the only guard.
+    const losesManager = existing && existing.role === MANAGER && existing.active
+      && (role !== MANAGER || !active);
+    if (!owner && losesManager && !(await anotherManagerRemains(env, email))) {
+      return json({
+        error: "That is the last manager. Add another before changing this one, "
+          + "or set OWNER_EMAIL so there is always a way back in."
+      }, 422);
+    }
+
+    const member = await upsertStaffMember(env, {
+      email,
+      role,
+      name: cleanLine(body.name, 120) || null,
+      active
+    });
+    return json({ member });
+  }
+
+  if (request.method === "DELETE" && id) {
+    const email = decodeURIComponent(id).trim().toLowerCase();
+    if (!EMAIL_PATTERN.test(email)) return json({ error: "Enter a valid email address." }, 422);
+    if (email === identity.email) {
+      return json({ error: "You cannot remove your own account." }, 422);
+    }
+    if (owner && email === owner) {
+      return json({ error: "The owner account is set by configuration, not here." }, 422);
+    }
+
+    const existing = (await fetchStaff(env)).find((row) => row.email === email);
+    // Reported rather than answered "deleted": a typo that matched nothing
+    // otherwise reads as a person successfully removed.
+    if (!existing) return json({ error: `${email} is not on the list.` }, 404);
+
+    if (!owner && existing.role === MANAGER && existing.active
+      && !(await anotherManagerRemains(env, email))) {
+      return json({
+        error: "That is the last manager. Add another first, or set OWNER_EMAIL."
+      }, 422);
+    }
+
+    await deleteStaffMember(env, email);
+    return json({ deleted: true });
+  }
+
+  return json({ error: "Method not allowed." }, 405);
+}
+
+// The page itself, not the API behind it. Somebody who passes Access but has no
+// staff row would otherwise get the console shell and watch every request in it
+// fail — so they are told here, once, in words that say what to do.
+export async function guardAdminPage(request, env) {
+  const authenticated = (await verifyAccessRequest(request, env)) || devIdentity(request, env);
+  if (!authenticated) return deniedPage("Not authorized.");
+
+  try {
+    const resolved = await resolveStaff(env, authenticated);
+    if (resolved.identity) return null;
+    return deniedPage(resolved.error, resolved.status || 403);
+  } catch (error) {
+    // Fail closed. The console cannot do anything useful without this database
+    // anyway, and guessing at a role because a query failed is the one outcome
+    // worth avoiding.
+    return deniedPage(`The admin console could not check your account: ${error.message}`, 503);
+  }
+}
+
+function deniedPage(message, status = 403) {
+  return new Response(`${message}\n`, {
+    status,
     headers: { "Content-Type": "text/plain; charset=utf-8", "Cache-Control": "no-store" }
   });
 }
@@ -413,7 +725,22 @@ export async function guardAdminPage(request, env) {
 const LEASE_SCOPES = ["company", "building", "unit"];
 const BUILDING_FIELDS = ["name", "street", "city", "state", "state_abbr", "zip"];
 
-async function handleBuildings(request, env, id) {
+// A building is not just a label. worker/lease.js reads its street, city, state
+// and ZIP as the premises address printed on the lease, so renaming one or
+// moving it to another street rewrites what every lease for it says the tenant
+// is renting. That is a landlord value by any other name, and it was the one
+// door into them that had no lock: this handler used to be dispatched without
+// an identity at all. Reading stays open to both roles — the lease screens need
+// the list — and every write is a manager's.
+async function handleBuildings(request, env, identity, id) {
+  const readOnly = request.method === "GET";
+  if (!readOnly && !isManager(identity)) {
+    return json({
+      error: "Only a manager can change a building. Its address is printed on "
+        + "every lease for the apartments in it."
+    }, 403);
+  }
+
   if (!id) {
     if (request.method === "GET") {
       return json({ buildings: await fetchBuildings(env) });
@@ -502,8 +829,8 @@ async function handleLease(request, env, identity, id, subresource) {
 
   if (id === "document") {
     return subresource
-      ? await handleLeaseDocument(request, env, subresource)
-      : await handleLeaseFromScratch(request, env);
+      ? await handleLeaseDocument(request, env, identity, subresource)
+      : await handleLeaseFromScratch(request, env, identity);
   }
 
   return json({ error: "Unknown endpoint." }, 404);
@@ -540,6 +867,16 @@ async function handleLeaseSettings(request, env, identity) {
   }
 
   if (request.method === "PUT") {
+    // Every value a settings layer can carry is a manager field — see
+    // normalizeSettingsPatch, which refuses anything else — so this one check
+    // covers all 125 of them, whichever screen sent them.
+    if (!isManager(identity)) {
+      return json({
+        error: "Only a manager can change the landlord settings. "
+          + "You can still read them, and they are what this lease will print."
+      }, 403);
+    }
+
     const body = await request.json();
     const scope = cleanLine(body.scope, 20);
     if (!LEASE_SCOPES.includes(scope)) return json({ error: "Unknown settings scope." }, 422);
@@ -578,7 +915,7 @@ async function handleLeaseSettings(request, env, identity) {
 // agent has to be able to start a lease from nothing and type all of it. The
 // stored settings for the apartment still supply what they can; everything else
 // arrives in `overrides`, deal fields included.
-async function handleLeaseFromScratch(request, env) {
+async function handleLeaseFromScratch(request, env, identity) {
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
 
   const body = await request.json().catch(() => ({}));
@@ -596,8 +933,9 @@ async function handleLeaseFromScratch(request, env) {
     layers = await fetchLeaseLayers(env, listingId);
   }
 
-  const { patch: overrides, errors } = normalizeOverrides(body.overrides);
+  const { patch: overrides, errors, refused } = normalizeOverrides(body.overrides, identity);
   if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
+  if (refused.length > 0) return overrideRefusal(refused);
 
   // The apartment answers what it can — its address, its rent — so an agent
   // starting from nothing is not retyping what the listing already knows.
@@ -657,7 +995,7 @@ async function respondWithLease(request, env, { mode, values, missing, extras = 
 
 // Resolves every placeholder for one application and either reports what is
 // still unanswered or hands back the finished .docx.
-async function handleLeaseDocument(request, env, applicationId) {
+async function handleLeaseDocument(request, env, identity, applicationId) {
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
   if (!UUID_PATTERN.test(applicationId)) return json({ error: "Application not found." }, 404);
 
@@ -671,8 +1009,9 @@ async function handleLeaseDocument(request, env, applicationId) {
   const building = listing.building_id ? await fetchBuilding(env, listing.building_id) : null;
   const layers = await fetchLeaseLayers(env, listing.id);
 
-  const { patch: overrides, errors } = normalizeOverrides(body.overrides);
+  const { patch: overrides, errors, refused } = normalizeOverrides(body.overrides, identity);
   if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
+  if (refused.length > 0) return overrideRefusal(refused);
 
   const today = todayParts(body.today);
   const deal = dealValues({ application, listing, building, today });
@@ -702,14 +1041,26 @@ async function handleLeaseDocument(request, env, applicationId) {
 // exact values behind it is what closes that, and it is not built yet — see
 // lease/README.md. Until it is, a per-lease change to a legal assertion leaves
 // no trace once the .docx is downloaded.
-function normalizeOverrides(body) {
+// What this one lease says, without disturbing what the next one will.
+//
+// The role check here matters more than the one on the settings layers. An
+// override never touches stored settings and leaves no audit row: an agent who
+// could send one would be altering the fine schedule or the insurance clause on
+// a document somebody signs, and nothing afterwards would show it happened.
+function normalizeOverrides(body, identity) {
   const patch = {};
   const errors = [];
+  const refused = [];
+  const mayWriteManagerFields = isManager(identity);
 
   for (const [id, raw] of Object.entries(body || {})) {
     const field = LEASE_REGISTRY.fields.find((candidate) => candidate.id === id);
     if (!field) {
       errors.push(id);
+      continue;
+    }
+    if (!mayWriteManagerFields && isManagerControlled(id)) {
+      refused.push(field.label || id);
       continue;
     }
     if (field.type === "checkbox") {
@@ -724,7 +1075,24 @@ function normalizeOverrides(body) {
     patch[id] = text;
   }
 
-  return { patch, errors };
+  return { patch, errors, refused };
+}
+
+// Both lease endpoints answer a refused override the same way, so the rule
+// cannot come apart between "from an application" and "from scratch".
+function listingRefusal(refused) {
+  return json({
+    error: `Only a manager can change ${refused.join(", ")}. `
+      + "It decides which building's landlord settings every lease for this apartment reads."
+  }, 403);
+}
+
+function overrideRefusal(refused) {
+  return json({
+    error: `Only a manager can change ${refused.length === 1 ? "this value" : "these values"} `
+      + `on a lease: ${refused.join(", ")}. They are the landlord's standing terms, `
+      + "the same on every lease for this apartment."
+  }, 403);
 }
 
 function todayParts(value) {

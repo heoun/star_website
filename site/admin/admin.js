@@ -1,5 +1,32 @@
 import { readDocxText } from "./docx.js";
-import { initLeaseScreen, openLeaseScreen } from "./lease-screen.js";
+import {
+  handleApplicationChange,
+  handleApplicationClick,
+  initApplicationScreen,
+  renderApplicationScreen,
+  resetApplicationScreen
+} from "./application-screen.js";
+import {
+  STAGES,
+  documentSummary,
+  documentsFact,
+  homeLabel,
+  incomeSummary,
+  money,
+  plainDate,
+  shortDay,
+  stageOf
+} from "./application-view.js";
+import { initDocViewer } from "./doc-viewer.js";
+import { closeLeaseScreen, initLeaseScreen, openLeaseScreen } from "./lease-screen.js";
+import {
+  forgetLayers,
+  handlePropertyClick,
+  initProperties,
+  renderProperty,
+  renderPropertyList
+} from "./properties.js";
+import { endDateFor } from "../shared/lease-dates.js";
 import {
   captionFromFilename,
   classifyFiles,
@@ -9,11 +36,36 @@ import {
 
 const API = "/api/admin";
 
+// Who is signed in, and as what. The role is only ever read from the server;
+// nothing here decides it, and nothing here enforces it — the Worker refuses a
+// write an agent should not make whatever this page renders. It exists so an
+// agent is shown a value rather than an input that will fail on Save.
+const session = { email: "", role: "", name: "" };
+
+function isManager() {
+  return session.role === "manager";
+}
+
 const rowsEl = document.getElementById("rows");
 const statusEl = document.getElementById("status");
 const whoEl = document.getElementById("who");
+const whoRoleEl = document.getElementById("who-role");
+const roleBadgeEl = document.getElementById("role-badge");
+const avatarEl = document.getElementById("avatar");
+const crumbEl = document.getElementById("crumb");
 const environmentEl = document.getElementById("environment");
 const environmentDatabaseEl = document.getElementById("environment-database");
+
+// One section per screen, shown one at a time. The three list screens share
+// #rows between them, because they are the same list wearing three filters.
+const ROUTE_HOSTS = {
+  listings: document.getElementById("route-listings"),
+  applications: document.getElementById("route-applications"),
+  application: document.getElementById("route-application"),
+  leases: document.getElementById("route-leases"),
+  properties: document.getElementById("route-properties"),
+  lease: document.getElementById("route-lease")
+};
 const editor = document.getElementById("editor");
 const form = document.getElementById("listing-form");
 const editorTitle = document.getElementById("editor-title");
@@ -38,6 +90,16 @@ const NUMBER_FIELDS = ["price_amount", "bedrooms", "bathrooms", "position"];
 let listings = [];
 let applications = [];
 let applicationsLoaded = false;
+// The portal's document checklist, sent with the applications list so this
+// screen names document types exactly the way the portal does.
+let documentTypes = [];
+// Which screen is open, and — for the two screens that show one thing — which
+// thing. Held here rather than read back out of location.hash so a re-render
+// never depends on the address bar having been updated first.
+let route = "listings";
+let routeId = "";
+// The listings screen's own filter. It is not part of the route: which chip is
+// pressed is not worth an address of its own.
 let filter = "all";
 let editingId = null;
 let currentMedia = [];
@@ -378,19 +440,17 @@ function coverUrl(listing) {
 }
 
 function render() {
-  dropzone.hidden = filter === "applications" || filter === "lease";
-
-  if (filter === "applications") {
-    renderApplications();
+  if (route === "applications") {
+    if (!routeId) return renderApplications();
+    const app = applications.find((item) => item.id === routeId);
+    if (app) renderApplicationScreen(ROUTE_HOSTS.application, app);
     return;
   }
+  if (route === "leases") return renderLeases();
+  if (route === "listings") return renderListings();
+}
 
-  if (filter === "lease") {
-    // The lease screen takes over the window rather than drawing into the list.
-    openLeaseScreen({});
-    return;
-  }
-
+function renderListings() {
   const visible = listings.filter((listing) => {
     if (filter === "all") return true;
     if (filter === "draft") return !listing.published;
@@ -424,133 +484,318 @@ function render() {
   `).join("");
 }
 
-// ---- Applications ----
+// ---- Routing ----
 
-// Mirrors the application pipeline: applicant pays the fee, screening runs,
-// the agent reviews, the landlord decides, the lease goes out for signing.
-const APP_STATUSES = [
-  ["new", "New"],
-  ["contacted", "Contacted"],
-  ["fee_pending", "Fee pending"],
-  ["screening", "Screening"],
-  ["review", "In review"],
-  ["sent_to_landlord", "Sent to landlord"],
-  ["approved", "Approved"],
-  ["declined", "Declined"],
-  ["lease_sent", "Lease sent"],
-  ["lease_signed", "Lease signed"]
+// Screens are addresses, so a property or a lease can be linked to, reloaded
+// and gone back from. The hash carries at most two parts: the screen, and the
+// one thing it is showing.
+const ROUTES = new Set(["listings", "applications", "leases", "properties"]);
+
+function readHash() {
+  const parts = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
+  const name = ROUTES.has(parts[0]) ? parts[0] : "listings";
+  return { name, id: decodeURIComponent(parts[1] || "") };
+}
+
+function crumbs(parts) {
+  crumbEl.innerHTML = parts.map((part, index) => {
+    const last = index === parts.length - 1;
+    const label = escapeHtml(part.label);
+    const cell = last ? `<b>${label}</b>` : `<a href="${escapeHtml(part.href)}">${label}</a>`;
+    return index === 0 ? cell : `<i>/</i>${cell}`;
+  }).join("");
+}
+
+// The screen a route wants, with the shared list shown only for the three that
+// use it. Every host is hidden first so no two are ever on screen together.
+// A screen that shows one thing keeps its list's nav item lit: reading one
+// application is still being in Applications.
+const NAV_OF = { lease: "leases", application: "applications" };
+
+function showRoute(name, { rows }) {
+  for (const [key, host] of Object.entries(ROUTE_HOSTS)) host.hidden = key !== name;
+  rowsEl.hidden = !rows;
+  if (!rows) rowsEl.innerHTML = "";
+  for (const link of document.querySelectorAll(".nav a[data-route]")) {
+    const active = link.dataset.route === (NAV_OF[name] || name);
+    if (active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  }
+}
+
+async function goto({ name, id }) {
+  route = name;
+  routeId = id;
+  setStatus("");
+
+  // The workspace covers the whole console. Any route that is not one lease
+  // has to put it away first, or it stays on top of whatever loads behind it.
+  if (name !== "leases" || !id) closeLeaseScreen();
+
+  if (name === "listings") {
+    showRoute("listings", { rows: true });
+    dropzone.hidden = false;
+    crumbs([{ label: "Listings", href: "#/listings" }]);
+    render();
+    return;
+  }
+
+  // Applications are a list and, one at a time, a page. The list never draws
+  // a whole application into itself: the row is a link to the address of the
+  // one thing it names.
+  if (name === "applications") {
+    showRoute(id ? "application" : "applications", { rows: !id });
+
+    if (id) {
+      ROUTE_HOSTS.application.innerHTML = '<p class="status">Loading…</p>';
+      crumbs([{ label: "Applications", href: "#/applications" }, { label: "Application", href: "" }]);
+    } else {
+      resetApplicationScreen();
+      crumbs([{ label: "Applications", href: "#/applications" }]);
+    }
+
+    if (!applicationsLoaded) await refreshApplications();
+
+    if (id) {
+      const app = applications.find((item) => item.id === id);
+      if (!app) {
+        crumbs([{ label: "Applications", href: "#/applications" }, { label: "Not found", href: "" }]);
+        ROUTE_HOSTS.application.innerHTML = `<p class="status" data-tone="error">That application no
+          longer exists. <a href="#/applications">Back to applications</a>.</p>`;
+        return;
+      }
+      crumbs([{ label: "Applications", href: "#/applications" }, { label: app.name, href: "" }]);
+    }
+
+    render();
+    return;
+  }
+
+  if (name === "leases") {
+    if (!applicationsLoaded) await refreshApplications();
+
+    // One lease is the workspace — the document beside what it will say. It
+    // covers the console rather than drawing into it, so the route opens it
+    // and leaving the route is what closes it.
+    if (id) {
+      const app = applications.find((item) => item.id === id);
+      if (!app) {
+        showRoute("lease", { rows: false });
+        crumbs([{ label: "Leases", href: "#/leases" }, { label: "Not found", href: "" }]);
+        ROUTE_HOSTS.lease.innerHTML = `<p class="status" data-tone="error">That application no longer
+          exists. <a href="#/leases">Back to leases</a>.</p>`;
+        return;
+      }
+      showRoute("lease", { rows: false });
+      crumbs([{ label: "Leases", href: "#/leases" }, { label: app.name, href: "" }]);
+      await openLeaseScreen({ application: app, returnTo: "#/leases" });
+      return;
+    }
+
+    closeLeaseScreen();
+    showRoute("leases", { rows: true });
+    crumbs([{ label: "Leases", href: "#/leases" }]);
+    render();
+    return;
+  }
+
+  if (name === "properties") {
+    // The Worker refuses these routes for an agent; this keeps the browser from
+    // asking in the first place.
+    if (!isManager()) {
+      showRoute("properties", { rows: false });
+      crumbs([{ label: "Properties", href: "#/properties" }]);
+      ROUTE_HOSTS.properties.innerHTML = `<p class="status">Landlord settings are a manager's.
+        You can read every one of them on a lease.</p>`;
+      return;
+    }
+
+    showRoute("properties", { rows: false });
+    if (id) {
+      await renderProperty(ROUTE_HOSTS.properties, id);
+      const heading = ROUTE_HOSTS.properties.querySelector("h1");
+      crumbs([
+        { label: "Properties", href: "#/properties" },
+        { label: heading ? heading.textContent : "Property", href: "" }
+      ]);
+      return;
+    }
+    crumbs([{ label: "Properties", href: "#/properties" }]);
+    await renderPropertyList(ROUTE_HOSTS.properties);
+  }
+}
+
+window.addEventListener("hashchange", () => goto(readHash()));
+
+// ---- Leases ----
+
+// A lease's life, as far as this system can honestly know it.
+//
+// There is no leases table. The only record that a lease happened is the
+// application it came from, through the statuses lease_sent and lease_signed —
+// which is what lease/README.md chose deliberately rather than adding a table
+// for a flow that had nowhere else to land. So the list reports what the
+// application says, and the workspace refines "Draft" to "Ready to send" once
+// it has loaded the values and counted what is missing.
+//
+// "Partially signed" is absent on purpose: nothing here talks to a signing
+// service, so nothing could ever set it.
+const LEASE_STATES = [
+  ["all", "All"],
+  ["draft", "Draft"],
+  ["sent", "Sent for signature"],
+  ["signed", "Fully signed"],
+  ["cancelled", "Cancelled"]
 ];
 
-function applicationListingLabel(app) {
-  if (!app.listings) return "Listing removed";
-  const home = [app.listings.building_name, app.listings.unit].filter(Boolean).join(" ");
-  return home ? `${app.listings.title} — ${home}` : app.listings.title;
+const LEASE_READY = new Set(["approved", "lease_sent", "lease_signed", "declined"]);
+
+function leaseState(app) {
+  if (app.status === "declined") return { key: "cancelled", label: "Cancelled", tone: "off" };
+  if (app.status === "lease_signed") return { key: "signed", label: "Fully signed", tone: "good" };
+  if (app.status === "lease_sent") return { key: "sent", label: "Sent for signature", tone: "busy" };
+  return { key: "draft", label: "Draft", tone: "off" };
 }
 
-function statusLabel(status) {
-  const found = APP_STATUSES.find(([value]) => value === status);
-  return found ? found[1] : status;
+let leaseFilter = "all";
+let leaseSearch = "";
+
+function leaseTerm(app) {
+  if (!app.move_in) return "—";
+  const end = endDateFor(app.move_in, app.lease_term_months);
+  return end ? `${app.move_in} – ${end}` : app.move_in;
 }
 
-function detailSection(title, inner) {
-  if (!inner) return "";
-  return `<section class="detail-section"><h3>${escapeHtml(title)}</h3>${inner}</section>`;
+function leaseRent(app) {
+  const amount = app.listings?.price_amount;
+  return amount === null || amount === undefined
+    ? "—"
+    : Number(amount).toLocaleString("en-US", { style: "currency", currency: "USD", maximumFractionDigits: 0 });
 }
 
-function detailRowsInner(pairs) {
-  return pairs
-    .filter(([, value]) => value !== "" && value !== null && value !== undefined)
-    .map(([label, value]) => `<div class="detail-row"><dt>${escapeHtml(label)}</dt><dd>${escapeHtml(String(value))}</dd></div>`)
-    .join("");
+function renderLeases() {
+  if (!applicationsLoaded) {
+    rowsEl.innerHTML = '<p class="status">Loading…</p>';
+    return;
+  }
+
+  const all = applications.filter((app) => LEASE_READY.has(app.status));
+  const needle = leaseSearch.trim().toLowerCase();
+
+  const visible = all.filter((app) => {
+    if (leaseFilter !== "all" && leaseState(app).key !== leaseFilter) return false;
+    if (!needle) return true;
+    return [app.name, app.email, app.listings?.title, app.listings?.building_name, app.listings?.unit]
+      .filter(Boolean).join(" ").toLowerCase().includes(needle);
+  });
+
+  if (all.length === 0) {
+    rowsEl.innerHTML = `<div class="empty">
+      <h2>No leases yet</h2>
+      <p>A lease starts from an approved application. Approve one and it appears here.</p>
+      <a href="#/applications"><button type="button" class="primary">View approved applications</button></a>
+    </div>`;
+    return;
+  }
+
+  if (visible.length === 0) {
+    rowsEl.innerHTML = '<p class="status">No lease matches that search.</p>';
+    return;
+  }
+
+  rowsEl.innerHTML = `
+    <div class="lease-row is-head">
+      <span>Property</span><span>Tenant</span><span>Rent</span>
+      <span>Term</span><span>Status</span><span>Updated</span><span></span>
+    </div>
+    ${visible.map((app) => {
+      const state = leaseState(app);
+      const home = [app.listings?.building_name, app.listings?.unit ? `Unit ${app.listings.unit}` : ""]
+        .filter(Boolean).join(" · ") || app.listings?.title || "Listing removed";
+      return `<a class="lease-row" href="#/leases/${escapeHtml(app.id)}">
+        <span class="lease-cell-strong">${escapeHtml(home)}</span>
+        <span>${escapeHtml(app.name)}</span>
+        <span class="num">${escapeHtml(leaseRent(app))}</span>
+        <span class="num">${escapeHtml(leaseTerm(app))}</span>
+        <span><span class="lease-pill is-${state.tone}">${escapeHtml(state.label)}</span></span>
+        <span class="lease-cell-soft">${escapeHtml(new Date(app.updated_at || app.created_at)
+          .toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }))}</span>
+        <span class="lease-cell-go">${state.key === "draft" ? "Open lease" : "View"} →</span>
+      </a>`;
+    }).join("")}`;
 }
 
-function detailRows(pairs) {
-  const rows = detailRowsInner(pairs);
-  return rows ? `<dl class="detail-dl">${rows}</dl>` : "";
+// ---- Applications ----
+
+// The list is a list. Each row answers one question per column — who, where,
+// when, how much, and whether it is ready to be decided — and opens the
+// application's own page for everything else. It used to expand the whole
+// application inline, which meant a screen of forty applicants was also forty
+// full applications, and finding the next name meant scrolling past a
+// stranger's employment history.
+
+let appFilter = "all";
+let appProperty = "all";
+let appDocs = "all";
+let appSearch = "";
+
+const APP_DOC_FILTERS = [
+  ["all", "Documents: any"],
+  ["complete", "Documents: complete"],
+  ["incomplete", "Documents: outstanding"]
+];
+
+function appMatches(app) {
+  if (appFilter !== "all" && stageOf(app).key !== appFilter) return false;
+  if (appProperty !== "all" && String(app.listing_id) !== appProperty) return false;
+
+  if (appDocs !== "all") {
+    const summary = documentSummary(app, documentTypes);
+    // A database with no checklist cannot answer this filter, so it is left
+    // out of the answer rather than counted as complete.
+    if (!summary) return false;
+    if (appDocs === "complete" && !summary.complete) return false;
+    if (appDocs === "incomplete" && summary.complete) return false;
+  }
+
+  const needle = appSearch.trim().toLowerCase();
+  if (!needle) return true;
+  return [app.name, app.email, app.phone, app.listings?.title,
+    app.listings?.building_name, app.listings?.unit]
+    .filter(Boolean).join(" ").toLowerCase().includes(needle);
 }
 
-function personItems(list) {
-  const items = (list || []).map((person) => {
-    const label = person.relationship ? `${person.name} (${person.relationship})` : person.name;
-    const contact = [person.phone, person.email].filter(Boolean).join(" · ");
-    return `<li><strong>${escapeHtml(label || "—")}</strong>${contact ? `<br>${escapeHtml(contact)}` : ""}</li>`;
-  }).join("");
-  return items ? `<ul class="detail-list">${items}</ul>` : "";
+// One action per row, and it depends on where the application has got to. A
+// lease can only start once somebody has approved it, and once one exists the
+// action is to open that one rather than to make a second.
+function appAction(app) {
+  const stage = stageOf(app);
+  if (stage.key === "lease") return "Open lease →";
+  if (stage.key === "approved") return "Create lease →";
+  return "Open →";
 }
 
-function employmentItems(list) {
-  const items = (list || []).map((job) => {
-    const when = job.start || job.end ? `${job.start || "?"} – ${job.end || "Present"}` : "";
-    const role = [job.position, job.employer].filter(Boolean).join(", ");
-    const supervisor = [job.supervisor_name, job.supervisor_phone, job.supervisor_email].filter(Boolean).join(" · ");
-    return `<li><strong>${escapeHtml(role || "—")}</strong>${when ? ` <span class="detail-muted">(${escapeHtml(when)})</span>` : ""}${supervisor ? `<br>Supervisor: ${escapeHtml(supervisor)}` : ""}</li>`;
-  }).join("");
-  return items ? `<ul class="detail-list">${items}</ul>` : "";
+function appIncome(app) {
+  const income = incomeSummary(app);
+  return income.annual === null ? (income.written || "—") : money(income.annual);
 }
 
-function rentalItems(list) {
-  const items = (list || []).map((home) => {
-    const when = home.start || home.end ? `${home.start || "?"} – ${home.end || "Present"}` : "";
-    const landlord = [home.landlord_name, home.landlord_phone, home.landlord_email].filter(Boolean).join(" · ");
-    const lines = [
-      home.monthly_rent ? `Rent: ${home.monthly_rent}` : "",
-      landlord ? `Landlord: ${landlord}` : ""
-    ].filter(Boolean).map(escapeHtml).join("<br>");
-    return `<li><strong>${escapeHtml(home.address || "—")}</strong>${when ? ` <span class="detail-muted">(${escapeHtml(when)})</span>` : ""}${lines ? `<br>${lines}` : ""}</li>`;
-  }).join("");
-  return items ? `<ul class="detail-list">${items}</ul>` : "";
-}
+// Rebuilt from whatever is in the list, keeping whatever was chosen. A
+// property that no longer has an application on it stops being offered.
+function renderPropertyFilter() {
+  const select = document.getElementById("app-property");
+  const seen = new Map();
+  for (const app of applications) {
+    if (!app.listing_id || seen.has(app.listing_id)) continue;
+    seen.set(app.listing_id, homeLabel(app));
+  }
+  if (appProperty !== "all" && !seen.has(appProperty)) appProperty = "all";
 
-function petItems(list) {
-  const items = (list || []).map((pet) => {
-    const label = [pet.type ? pet.type[0].toUpperCase() + pet.type.slice(1) : "", pet.species].filter(Boolean).join(" · ");
-    return `<li><strong>${escapeHtml(label || "—")}</strong>${pet.weight ? ` <span class="detail-muted">(${escapeHtml(pet.weight)} lbs)</span>` : ""}</li>`;
-  }).join("");
-  return items ? `<ul class="detail-list">${items}</ul>` : "";
-}
-
-function renderApplicationDetail(app) {
-  const employer = app.current_employer || {};
-  const supervisor = [employer.supervisor_name, employer.supervisor_phone, employer.supervisor_email]
-    .filter(Boolean).join(" · ");
-
-  // The SSN row carries its own reveal button; the full number only exists
-  // in the page after an explicit request to the admin API.
-  const ssnRow = app.ssn_last4
-    ? `<div class="detail-row"><dt>SSN</dt><dd><span data-role="ssn-cell">•••-••-${escapeHtml(app.ssn_last4)}</span> <button type="button" class="small" data-role="ssn-reveal">Reveal SSN</button></dd></div>`
-    : "";
-  const applicantRows = detailRowsInner([
-    ["Date of birth", app.dob],
-    ["Current address", app.current_address],
-    ["Lease term", app.lease_term_months ? `${app.lease_term_months} months` : ""],
-    ["Children under 11", app.children_under_11 === true ? "Yes" : app.children_under_11 === false ? "No" : ""]
-  ]);
-
-  const sections = [
-    detailSection("Applicant", applicantRows || ssnRow
-      ? `<dl class="detail-dl">${applicantRows}${ssnRow}</dl>`
-      : ""),
-    detailSection("Current employment", detailRows([
-      ["Employer", employer.employer],
-      ["Position", employer.position],
-      ["Since", employer.start],
-      ["Supervisor", supervisor]
-    ])),
-    detailSection("Employment history", employmentItems(app.employment_history)),
-    detailSection("Rental history", rentalItems(app.rental_history)),
-    detailSection("References", personItems(app.reference_contacts)),
-    detailSection("Emergency contacts", personItems(app.emergency_contacts)),
-    detailSection("Pets", petItems(app.pets))
-  ].filter(Boolean).join("");
-
-  if (!sections) return "";
-
-  return `
-    <details class="app-detail">
-      <summary>Full application</summary>
-      <div class="detail-grid">${sections}</div>
-    </details>
-  `;
+  select.innerHTML = `<option value="all">Every property</option>${
+    [...seen.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([id, label]) => `<option value="${escapeHtml(id)}"${
+        id === appProperty ? " selected" : ""}>${escapeHtml(label)}</option>`).join("")}`;
 }
 
 function renderApplications() {
@@ -559,60 +804,92 @@ function renderApplications() {
     return;
   }
 
+  renderPropertyFilter();
+
   if (applications.length === 0) {
-    rowsEl.innerHTML = '<p class="status">No applications yet. They will appear here as soon as someone applies from a property page.</p>';
+    rowsEl.innerHTML = `<div class="empty">
+      <h2>No applications yet</h2>
+      <p>They appear here the moment somebody applies from a property page.</p>
+      <a href="#/listings"><button type="button">Go to listings</button></a>
+    </div>`;
     return;
   }
 
-  rowsEl.innerHTML = applications.map((app) => {
-    const submitted = new Date(app.created_at).toLocaleString("en-US", {
-      month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit"
-    });
-    const facts = [
-      app.move_in ? `Move-in: ${app.move_in}` : "",
-      app.lease_term_months ? `Term: ${app.lease_term_months} mo` : "",
-      app.household_size ? `Household: ${app.household_size}` : "",
-      app.income_note ? `Income: ${app.income_note}` : ""
-    ].filter(Boolean).join(" · ");
+  const visible = applications.filter(appMatches);
 
-    return `
-      <article class="row app-row" data-app-id="${escapeHtml(app.id)}">
-        <div>
-          <h2>${escapeHtml(app.name)}</h2>
-          <p>${escapeHtml(applicationListingLabel(app))} · ${escapeHtml(submitted)}</p>
-          <p class="contact">
-            <a href="mailto:${escapeHtml(app.email)}">${escapeHtml(app.email)}</a>
-            ${app.phone ? ` · <a href="tel:${escapeHtml(app.phone)}">${escapeHtml(app.phone)}</a>` : ""}
-          </p>
-          ${facts ? `<p>${escapeHtml(facts)}</p>` : ""}
-          ${app.message ? `<p class="app-message">${escapeHtml(app.message)}</p>` : ""}
-          ${renderApplicationDetail(app)}
-          <div class="tags"><span class="tag st-${escapeHtml(app.status)}">${escapeHtml(statusLabel(app.status))}</span></div>
-        </div>
-        <div class="app-controls">
-          <select data-role="app-status" aria-label="Application status">
-            ${APP_STATUSES.map(([value, label]) =>
-              `<option value="${value}" ${app.status === value ? "selected" : ""}>${label}</option>`
-            ).join("")}
-          </select>
-          <textarea data-role="app-notes" placeholder="Notes (screening outcome, follow-ups…)">${escapeHtml(app.notes || "")}</textarea>
-          <button type="button" class="small" data-role="app-lease">Lease…</button>
-          <button type="button" class="danger small" data-role="app-delete">Delete</button>
-        </div>
-      </article>
-    `;
-  }).join("");
+  if (visible.length === 0) {
+    rowsEl.innerHTML = `<div class="empty">
+      <h2>Nothing matches</h2>
+      <p>No application matches this search and these filters. Clear them to see all
+         ${applications.length}.</p>
+      <button type="button" id="app-clear">Clear filters</button>
+    </div>`;
+    return;
+  }
+
+  rowsEl.innerHTML = `
+    <div class="app-row is-head">
+      <span>Applicant</span><span>Property / unit</span><span>Applied</span><span>Move-in</span>
+      <span>Income</span><span>Documents</span><span>Status</span><span></span>
+    </div>
+    ${visible.map((app) => {
+      const stage = stageOf(app);
+      const docs = documentsFact(app, documentTypes);
+      return `<a class="app-row" href="#/applications/${escapeHtml(app.id)}">
+        <span>
+          <b>${escapeHtml(app.name || "Applicant")}</b>
+          <small>${escapeHtml(app.email || "")}</small>
+        </span>
+        <span class="app-cell-soft">${escapeHtml(homeLabel(app))}</span>
+        <span class="num">${escapeHtml(shortDay(app.created_at))}</span>
+        <span class="num">${escapeHtml(plainDate(app.move_in))}</span>
+        <span class="num">${escapeHtml(appIncome(app))}</span>
+        <span><span class="pill is-${docs.tone}">${escapeHtml(docs.text)}</span></span>
+        <span><span class="pill is-${stage.tone}">${escapeHtml(stage.label)}</span></span>
+        <span class="app-cell-go">${escapeHtml(appAction(app))}</span>
+      </a>`;
+    }).join("")}`;
+}
+
+// A row that came back from the server, written into the list in place. It is
+// mutated rather than replaced because the open application screen is holding
+// this very object: swapping in a copy would leave it editing a row nothing
+// else can see.
+function remember(row) {
+  const found = applications.find((item) => item.id === row.id);
+  if (found) Object.assign(found, row);
+  else applications.unshift(row);
 }
 
 async function refreshApplications() {
   try {
-    const { applications: rows } = await api("/applications");
+    const { applications: rows, document_types } = await api("/applications");
     applications = rows;
+    if (Array.isArray(document_types)) documentTypes = document_types;
     applicationsLoaded = true;
-    if (filter === "applications") renderApplications();
+    if (route === "applications" || (route === "leases" && !routeId)) render();
   } catch (error) {
     setStatus(error.message, "error");
   }
+}
+
+// The role, in three places: the rail says who you are, the badge says it again
+// beside every screen, and the body attribute is what hides a manager-only nav
+// item. None of the three decides anything — the Worker does — but an agent who
+// can see that they are an agent stops wondering why a box will not open.
+function showSession() {
+  whoEl.textContent = session.email;
+  whoRoleEl.textContent = session.name || session.role || "—";
+  document.body.dataset.role = session.role;
+
+  roleBadgeEl.hidden = !session.role;
+  roleBadgeEl.textContent = session.role;
+
+  const source = session.name || session.email;
+  avatarEl.textContent = source
+    ? source.replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(/\s+/).slice(0, 2)
+        .map((part) => part[0].toUpperCase()).join("")
+    : "";
 }
 
 // The banner names the Supabase project, not just the environment. Running
@@ -627,7 +904,7 @@ function showEnvironment(me) {
     ? `database: ${me.database_label ? `${me.database_label} · ` : ""}${me.database}`
     : "";
   environmentEl.toggleAttribute("data-shown", local);
-  document.title = local ? "DEV — Listings Admin" : "Listings Admin";
+  document.title = local ? "DEV — Star Admin" : "Star Admin";
 }
 
 async function load() {
@@ -635,10 +912,15 @@ async function load() {
   try {
     const [{ listings: rows }, me] = await Promise.all([api("/listings"), api("/me").catch(() => null)]);
     listings = rows;
-    if (me?.email) whoEl.textContent = me.email;
+    if (me?.email) {
+      session.email = me.email;
+      session.role = me.role || "";
+      session.name = me.name || "";
+      showSession();
+    }
     showEnvironment(me);
     setStatus("");
-    render();
+    await goto(readHash());
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -945,94 +1227,165 @@ for (const button of document.querySelectorAll("button[data-filter]")) {
     for (const other of document.querySelectorAll("button[data-filter]")) {
       other.setAttribute("aria-pressed", String(other === button));
     }
-    render();
-    if (filter === "applications") refreshApplications();
+    renderListings();
   });
 }
 
-rowsEl.addEventListener("click", (event) => {
-  const leaseButton = event.target.closest('button[data-role="app-lease"]');
-  if (!leaseButton) return;
-
-  const row = leaseButton.closest(".app-row");
-  const app = applications.find((item) => item.id === row.dataset.appId);
-  if (app) openLeaseScreen({ application: app });
+// A lease with no application behind it: the workspace, opened empty. Behind a
+// menu and manager-only, because it is the exception rather than the workflow.
+document.getElementById("lease-blank").addEventListener("click", (event) => {
+  event.target.closest("details")?.removeAttribute("open");
+  openLeaseScreen({ returnTo: "#/leases" });
 });
 
-rowsEl.addEventListener("click", async (event) => {
-  const revealButton = event.target.closest('button[data-role="ssn-reveal"]');
-  if (revealButton) {
-    const row = revealButton.closest(".app-row");
-    const app = applications.find((item) => item.id === row.dataset.appId);
-    if (!app) return;
+// The status filters, built from the one list that defines them.
+document.getElementById("lease-filters").innerHTML = LEASE_STATES.map(([key, label]) =>
+  `<button type="button" class="chip" data-lease-state="${key}"
+           aria-pressed="${key === "all"}">${label}</button>`).join("");
 
-    const ssnCell = row.querySelector('[data-role="ssn-cell"]');
-
-    // Second click re-masks without another round trip.
-    if (revealButton.dataset.shown === "true") {
-      if (ssnCell) ssnCell.textContent = `•••-••-${app.ssn_last4}`;
-      revealButton.dataset.shown = "false";
-      revealButton.textContent = "Reveal SSN";
-      return;
-    }
-
-    revealButton.disabled = true;
-    try {
-      const { ssn } = await api(`/applications/${encodeURIComponent(app.id)}/ssn`);
-      if (ssnCell) ssnCell.textContent = ssn;
-      revealButton.dataset.shown = "true";
-      revealButton.textContent = "Hide SSN";
-    } catch (error) {
-      setStatus(error.message, "error");
-    } finally {
-      revealButton.disabled = false;
-    }
-    return;
-  }
-
-  const button = event.target.closest('button[data-role="app-delete"]');
+document.getElementById("lease-filters").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-lease-state]");
   if (!button) return;
-
-  const row = button.closest(".app-row");
-  const app = applications.find((item) => item.id === row.dataset.appId);
-  if (!app) return;
-
-  if (!confirm(`Delete the application from "${app.name}"? This cannot be undone.`)) return;
-
-  try {
-    await api(`/applications/${encodeURIComponent(app.id)}`, { method: "DELETE" });
-    applications = applications.filter((item) => item.id !== app.id);
-    setStatus("Application deleted.");
-    renderApplications();
-  } catch (error) {
-    setStatus(error.message, "error");
+  leaseFilter = button.dataset.leaseState;
+  for (const chip of document.querySelectorAll("[data-lease-state]")) {
+    chip.setAttribute("aria-pressed", String(chip === button));
   }
+  renderLeases();
 });
 
-rowsEl.addEventListener("change", async (event) => {
-  const control = event.target.closest('[data-role="app-status"], [data-role="app-notes"]');
-  if (!control) return;
-
-  const row = control.closest(".app-row");
-  const app = applications.find((item) => item.id === row.dataset.appId);
-  if (!app) return;
-
-  const isStatus = control.dataset.role === "app-status";
-  const values = isStatus ? { status: control.value } : { notes: control.value };
-
-  try {
-    const { application } = await api(`/applications/${encodeURIComponent(app.id)}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(values)
-    });
-    Object.assign(app, application);
-    if (isStatus) renderApplications();
-  } catch (error) {
-    setStatus(error.message, "error");
-  }
+document.getElementById("lease-search").addEventListener("input", (event) => {
+  leaseSearch = event.target.value;
+  renderLeases();
 });
 
-initLeaseScreen({ api, setStatus, escapeHtml, listings: () => listings });
+// A menu left open behind a click elsewhere is a menu nobody closed.
+document.addEventListener("click", (event) => {
+  for (const menu of document.querySelectorAll("details.menu[open]")) {
+    if (!menu.contains(event.target)) menu.removeAttribute("open");
+  }
+});
+document.addEventListener("keydown", (event) => {
+  if (event.key !== "Escape") return;
+  for (const menu of document.querySelectorAll("details.menu[open]")) menu.removeAttribute("open");
+});
+
+// The two new screens draw themselves into their own host and are re-rendered
+// whole, so their events are delegated from that host rather than bound to
+// controls a re-render would replace.
+ROUTE_HOSTS.properties.addEventListener("click", async (event) => {
+  await handlePropertyClick(event, ROUTE_HOSTS.properties, routeId);
+});
+
+
+// One application draws into its own host and is re-rendered whole, so its
+// events are delegated from that host rather than bound to controls a
+// re-render replaces.
+ROUTE_HOSTS.application.addEventListener("click", async (event) => {
+  const app = applications.find((item) => item.id === routeId);
+  if (!app) return;
+  await handleApplicationClick(event, ROUTE_HOSTS.application, app);
+});
+
+ROUTE_HOSTS.application.addEventListener("change", async (event) => {
+  const app = applications.find((item) => item.id === routeId);
+  if (!app) return;
+  await handleApplicationChange(event, ROUTE_HOSTS.application, app);
+});
+
+// ---- the applications list's own controls ----
+
+// The stage chips, built from the one list that defines them.
+document.getElementById("app-filters").innerHTML = [["all", "All"]]
+  .concat(STAGES.map((stage) => [stage.key, stage.label]))
+  .map(([key, label]) => `<button type="button" class="chip" data-app-stage="${key}"
+    aria-pressed="${key === "all"}">${escapeHtml(label)}</button>`).join("");
+
+document.getElementById("app-filters").addEventListener("click", (event) => {
+  const button = event.target.closest("[data-app-stage]");
+  if (!button) return;
+  appFilter = button.dataset.appStage;
+  for (const chip of document.querySelectorAll("[data-app-stage]")) {
+    chip.setAttribute("aria-pressed", String(chip === button));
+  }
+  renderApplications();
+});
+
+document.getElementById("app-docs").innerHTML = APP_DOC_FILTERS
+  .map(([key, label]) => `<option value="${key}">${escapeHtml(label)}</option>`).join("");
+
+document.getElementById("app-docs").addEventListener("change", (event) => {
+  appDocs = event.target.value;
+  renderApplications();
+});
+
+document.getElementById("app-property").addEventListener("change", (event) => {
+  appProperty = event.target.value;
+  renderApplications();
+});
+
+document.getElementById("app-search").addEventListener("input", (event) => {
+  appSearch = event.target.value;
+  renderApplications();
+});
+
+// The empty state's own way back out of a filter nobody meant to leave on.
+rowsEl.addEventListener("click", (event) => {
+  if (!event.target.closest("#app-clear")) return;
+  appFilter = "all";
+  appProperty = "all";
+  appDocs = "all";
+  appSearch = "";
+  document.getElementById("app-search").value = "";
+  document.getElementById("app-docs").value = "all";
+  document.getElementById("app-property").value = "all";
+  for (const chip of document.querySelectorAll("[data-app-stage]")) {
+    chip.setAttribute("aria-pressed", String(chip.dataset.appStage === "all"));
+  }
+  renderApplications();
+});
+
+initLeaseScreen({
+  api,
+  setStatus,
+  escapeHtml,
+  isManager,
+  listings: () => listings,
+  onApplicationChanged: (row) => {
+    remember(row);
+    if (route === "applications") render();
+  },
+  onClosed: () => {
+    // The workspace can write a unit layer, and the properties screen caches
+    // what the layers said. It may not answer from a stale copy afterwards.
+    //
+    // It does NOT navigate: goto() is what closes the workspace, so calling it
+    // back from here would call itself.
+    forgetLayers();
+  }
+});
+initApplicationScreen({
+  api,
+  setStatus,
+  escapeHtml,
+  isManager,
+  documentTypes: () => documentTypes,
+  onSaved: remember,
+  onDeleted: (id) => {
+    applications = applications.filter((item) => item.id !== id);
+    location.hash = "#/applications";
+  },
+  // The lease's own screen, not the document: what is wrong with a lease is
+  // nearly always one of twenty-two values, not one of a hundred and forty.
+  openLease: (app) => { location.hash = `#/leases/${encodeURIComponent(app.id)}`; }
+});
+initDocViewer({ escapeHtml });
+initProperties({
+  api,
+  setStatus,
+  escapeHtml,
+  isManager,
+  listings: () => listings,
+  openDocument: openLeaseScreen
+});
 
 load();

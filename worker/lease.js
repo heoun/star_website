@@ -1,6 +1,6 @@
 // Fills the lease template for one approved application.
 //
-// lease/schema/fields.json lists all 146 placeholders in the template and says
+// lease/schema/fields.json lists all 147 placeholders in the template and says
 // where each one's value comes from. Three sources feed them:
 //
 //   deal     the application and the listing — tenant, dates, rent, address
@@ -19,6 +19,10 @@
 import registry from "../lease/schema/fields.json" with { type: "json" };
 import { readEntries, readEntryText, replaceEntry } from "./zip.js";
 import { ADDRESS_FIELD, composeAddress } from "../site/shared/lease-address.js";
+import { applicationColumns } from "../site/shared/lease-application.js";
+// The date rules are shared with the lease workspace, which shows the end date
+// moving as the term changes. Two copies of that arithmetic is two answers.
+import { leaseEndDate, longDate, parseDate, shortDate } from "../site/shared/lease-dates.js";
 
 const TEMPLATE_PATH = "/admin/lease-template.docx";
 const PLACEHOLDER = /\{\{([a-z0-9_.]+)\}\}/g;
@@ -41,59 +45,9 @@ export function isManagerField(id) {
 
 // ------------------------------------------------------------ formatting
 
-const MONTHS = [
-  "January", "February", "March", "April", "May", "June",
-  "July", "August", "September", "October", "November", "December"
-];
-
-// A date, without letting the host's time zone shift the day.
-//
-// Both shapes have to be accepted. The apply form sends and the applications
-// table stores "10/01/2026", because that is what a New York applicant types
-// and what apply.js validates; a settings value or a hand-typed correction is
-// more likely to arrive as "2026-10-01". Reading only the second one silently
-// blanked the commencement and end dates on every lease generated from a real
-// application — the two dates that decide when the tenancy runs.
-function parseDate(value) {
-  const text = String(value || "").trim();
-
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(text);
-  if (iso) return validParts(Number(iso[1]), Number(iso[2]), Number(iso[3]));
-
-  const us = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/.exec(text);
-  if (us) return validParts(Number(us[3]), Number(us[1]), Number(us[2]));
-
-  return null;
-}
-
-function validParts(year, month, day) {
-  if (month < 1 || month > 12 || day < 1 || day > 31) return null;
-  // Reject a day the month does not have, so "02/30/2026" is not silently
-  // rolled forward into March on a signed lease.
-  const date = new Date(Date.UTC(year, month - 1, day));
-  if (date.getUTCMonth() !== month - 1 || date.getUTCDate() !== day) return null;
-  return { year, month, day };
-}
-
-function longDate(parts) {
-  if (!parts) return "";
-  return `${MONTHS[parts.month - 1]} ${parts.day}, ${parts.year}`;
-}
-
-function shortDate(parts) {
-  if (!parts) return "";
-  return `${String(parts.month).padStart(2, "0")}/${String(parts.day).padStart(2, "0")}/${parts.year}`;
-}
-
-// The last day the tenant holds the unit: the day before the same date N
-// months on, so a 12-month term starting 09/01/2026 ends 08/31/2027.
-function leaseEndDate(start, months) {
-  if (!start || !Number.isFinite(months) || months <= 0) return null;
-  const zeroBased = start.month - 1 + months;
-  const date = new Date(Date.UTC(start.year + Math.floor(zeroBased / 12), zeroBased % 12, start.day));
-  date.setUTCDate(date.getUTCDate() - 1);
-  return { year: date.getUTCFullYear(), month: date.getUTCMonth() + 1, day: date.getUTCDate() };
-}
+// The date rules moved to site/shared/lease-dates.js, imported above, so the
+// workspace can show the end date move as the term changes without holding a
+// second copy of the arithmetic.
 
 const money = new Intl.NumberFormat("en-US", {
   style: "currency",
@@ -122,8 +76,14 @@ const STATE_NAMES = { NY: "New York", NJ: "New Jersey", CT: "Connecticut" };
 
 // ------------------------------------------------------------ deal values
 
+// The lease values the application row is the authority for, read off the
+// registry rather than listed again here. Both admin screens write through the
+// same map, so a correction made on either of them is the same correction.
+export const APPLICATION_FIELDS = applicationColumns(FIELDS);
+
+
 // Everything the application and the listing already know. Each is a starting
-// point the agent can correct on the generate form.
+// point the agent can correct, on either screen.
 export function dealValues({ application, listing, building, today }) {
   const parsed = splitLocation(listing?.location);
   const street = building?.street || parsed.street;
@@ -149,6 +109,7 @@ export function dealValues({ application, listing, building, today }) {
     "lease.end_date": shortDate(end),
     "tenant.names": application?.name || "",
     "tenant.email": application?.email || "",
+    "concession.terms": application?.concession_terms || "",
     "property.address_full": addressFull,
     "property.street": street,
     "property.unit": unit,

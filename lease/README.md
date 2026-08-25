@@ -4,12 +4,12 @@ Turns an approved rental application into a ready-to-sign New York residential
 lease. Agent-facing, admin only — nothing here is reachable from the public
 site.
 
-The lease is a 30-page bundle: the lease itself plus the riders and statutory
+The lease is a 46-page bundle: the lease itself plus the riders and statutory
 notices that have to travel with it (utilities, packages, keys, renters
 insurance, community rules and fine schedule, window guards, bedbug disclosure,
 sprinkler notice, indoor allergen certification, gas and CO alarms, smoking
-policy, the DHCR electronic-signature consent, and the Good Cause Eviction
-notice). Every one of those repeats the tenant's name, the unit address and the
+policy, the rent concession, the DHCR electronic-signature consent, and the
+Good Cause Eviction notice). Every one of those repeats the tenant's name, the unit address and the
 lease date in its own preamble, which is exactly the kind of copying that goes
 wrong by hand.
 
@@ -23,6 +23,8 @@ wrong by hand.
 | `tools/check-fields.py` | Verifies the template and the registry still agree. Run it after editing either. |
 | `tools/test-lease.mjs` | Regression test for generation. No dependencies: `node lease/tools/test-lease.mjs`. |
 | `tools/test-schema.mjs` | Runs `supabase/schema.sql` on real PostgreSQL. Needs PGlite installed ad hoc. |
+| `tools/test-permissions.mjs` | Drives the admin routes with a stubbed fetch to prove an agent cannot write a landlord value. No dependencies. |
+| `tools/export-sheet.py` | Writes the spreadsheet of what is on the lease and what is not, one sheet per party. Reads the registry; writes `notes/`, outside git. |
 | `tools/build-template.py` | One-off. Rebuilt the template from the landlord's filled-in lease. |
 | `tools/restyle-template.py` | One-off. Underlines the placeholders and replaces the form's credit line. Idempotent. |
 | `tools/reflow-template.py` | One-off. Replaces the PDF conversion's layout tricks with text, and builds the footers. Idempotent. |
@@ -50,9 +52,18 @@ email address.
 Every field declares one of three sources. This is the whole design — get the
 source right and the rest follows.
 
-**`deal`** (19 fields) — from the application and the listing. Tenant names, the
-unit address, move-in date, rent, deposit. The agent confirms these on the
-generate form rather than typing them.
+**`deal`** (20 fields) — from the application and the listing. Tenant names, the
+unit address, move-in date, rent, deposit, the rent concession. The agent
+confirms these on the generate form rather than typing them.
+
+Five of them are values the application row *owns*, not merely starts:
+`tenant.names`, `tenant.email`, `lease.commencement_date`, `concession.terms`
+and the window guard answer. Correcting one on the lease screen writes it back
+to the application, because the admin's application panel edits the same five,
+and two screens that disagree about a tenant's name is how the wrong lease gets
+sent. `site/shared/lease-application.js` reads which they are off this registry
+— `"from": "applications.move_in"` — so neither side can hold a different
+list.
 
 **`manager`** (125 fields) — a stored setting, resolved in three layers where
 the later one wins:
@@ -109,7 +120,7 @@ exemption about a different one, in a document someone signs. So:
 
 ## How an agent produces a lease
 
-Everything happens on one screen: the lease itself on the left, the 146 values
+Everything happens on one screen: the lease itself on the left, the 147 values
 that fill it on the right.
 
 1. **New lease** (no application) or **Applications → Lease…** (one
@@ -253,7 +264,7 @@ different document from the one that gets signed.
 
 Two things the screen deliberately does not claim:
 
-- **It is a content preview, not a page preview.** Its 45 "pages" are the
+- **It is a content preview, not a page preview.** Its 46 "pages" are the
   template's `w:sectPr` sections. They line up one for one with the document's
   own pages, because every section break in the template is a page break and
   no section overflows — see *The PDF conversion* below — but a section whose
@@ -277,7 +288,7 @@ name inside a table cell with `right="3773"` printed one word per line.
 pictures of, and the shape of the document now follows from three rules:
 
 - **Every section break is a page break.** The ten `continuous` breaks were
-  column tricks and are gone. What is left is 45 sections, one per page of the
+  column tricks and are gone. What is left is 46 sections, one per page of the
   paper original, which is also the only kind of break a renderer gets right
   without implementing Word's column model. The bedbug disclosure was four
   pages and is one; the DHCR consent was seven and is one.
@@ -342,6 +353,11 @@ pictures of, and the shape of the document now follows from three rules:
   consent, the Good Cause notice — get a footer that is deliberately empty,
   because Word inherits the section before it otherwise.
 
+  What the footer does *not* carry is the copyright line the form printed
+  beside the label. The label, the page number and the Equal Housing mark are
+  the footer; the notice is still read off the body lines to find the label in
+  them, and then dropped.
+
   The footer names its font, which the line it replaces did not: Word fell
   back to the theme's and a browser to whatever `system-ui` is, and the
   difference in width was enough to fit the longest of these labels on one
@@ -352,6 +368,18 @@ pictures of, and the shape of the document now follows from three rules:
   this tool builds, took its own from the tab that used to draw the rule. It
   is one width now, so the landlord signs on a line that begins where the
   tenants' begin.
+- **There is a page the paper form does not have.** The landlord's own lease
+  for this building ends on a rent concession — two months waived against full
+  performance of the term — and nothing in the 45-page bundle could say that.
+  The Rent Concession Rider is a page of its own, ahead of the DHCR consent,
+  built by copying the fine schedule's: already a title, a paragraph and the
+  two signature blocks a rider needs, and — because it is copied after the
+  fixes that place tables and size their rules — already in its finished form.
+  Only the words change. Its terms are `concession.terms`, which the
+  application row owns like any other deal value, so the overview and the lease
+  screen write the same text. It prints blank when nobody has written one: a
+  rider named in a lease and missing from it is worse than a rider with nothing
+  on it, and an agent can see at a glance which they have.
 - **A seal beside an address is two cells, not a tab.** The DHCR consent sets
   its seal inline and sends the department's name to a tab stop past it. Word
   puts that stop where the paragraph asks; a renderer that lays tab stops out
@@ -366,8 +394,8 @@ pair, so Word — which reads that half — printed nothing where the title goes
 and the DBB-N form spelled the unit address out a second way, by hand, beside a
 lease that composes that line once and prints it everywhere else.
 
-Word and the preview now agree page for page: 45 sections, 45 pages in the
-.docx, 45 pages in the preview, none of them near-empty.
+Word and the preview now agree page for page: 46 sections, 46 pages in the
+.docx, 46 pages in the preview, none of them near-empty.
 
 ### What is not in document.xml
 

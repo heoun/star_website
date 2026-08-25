@@ -14,7 +14,10 @@
     "run_worker_first": ["/data/listings.json", "/data/property.json", "/admin", "/admin/*", "/api/*", "/media/*"]
   },
   "r2_buckets": [
-    { "binding": "MEDIA", "bucket_name": "listing-media" }
+    { "binding": "MEDIA", "bucket_name": "listing-media" },
+    // Applicant documents (IDs, paystubs, bank statements). Private: served
+    // only through authenticated portal and admin routes, never at /media/.
+    { "binding": "APPLICANT_DOCS", "bucket_name": "applicant-docs" }
   ],
   "observability": {
     "enabled": true

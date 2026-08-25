@@ -96,12 +96,20 @@ export async function verifyAccessRequest(request, env) {
     ["verify"]
   );
 
-  const verified = await crypto.subtle.verify(
-    "RSASSA-PKCS1-v1_5",
-    cryptoKey,
-    base64UrlToBytes(signatureSegment),
-    new TextEncoder().encode(`${headerSegment}.${payloadSegment}`)
-  );
+  // A signature that is not base64 at all makes atob throw. Every other
+  // malformed token is answered with null, and this one has to be too: a
+  // rejection that escapes as an exception is a 500 where a 403 belongs.
+  let verified = false;
+  try {
+    verified = await crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5",
+      cryptoKey,
+      base64UrlToBytes(signatureSegment),
+      new TextEncoder().encode(`${headerSegment}.${payloadSegment}`)
+    );
+  } catch {
+    return null;
+  }
 
   if (!verified) return null;
 

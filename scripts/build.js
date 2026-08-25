@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, "..");
 const site = path.join(root, "site");
 const dist = path.join(root, "dist");
 
-const copyTargets = ["index.html", "buy", "rental", "commercial", "listings", "new-development", "contact-us", "our-team", "property", "apply", "admin", "png", "video", "data", "shared", "favicon.ico", "favicon.svg", "apple-touch-icon.png"];
+const copyTargets = ["index.html", "buy", "rental", "commercial", "listings", "new-development", "contact-us", "our-team", "property", "apply", "portal", "admin", "png", "video", "data", "shared", "favicon.ico", "favicon.svg", "apple-touch-icon.png"];
 
 fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(dist, { recursive: true });

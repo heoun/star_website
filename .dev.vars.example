@@ -14,12 +14,37 @@
 # Use your own address: it is what the audit trail records for local changes.
 DEV_ADMIN_EMAIL=
 
+# Which half of the console to be locally: "manager" or "agent". Blank means
+# manager, which is what a local session has always been.
+#
+# Usually you do not need this: `npm run dev:agent` starts the same server as
+# an agent for one session, which is easier than editing this and remembering
+# to change it back. Set it here only if you want agent to be your default.
+#
+# As an agent you see what an agent sees — the 125 landlord values read-only,
+# no Properties screen, and every attempt to write one refused by the Worker
+# rather than merely hidden.
+# In production the role comes from public.staff, never from a variable.
+DEV_ADMIN_ROLE=
+
 # The DEVELOPMENT Supabase project — not production. Create a second free
 # project and run supabase/schema.sql on it, then paste its details here.
 # The admin page prints the project name it is connected to, so if this ever
 # says production you will see it before you delete anything.
 SUPABASE_URL=
 SUPABASE_SERVICE_ROLE_KEY=
+
+# The same project's low-privilege key: the publishable key
+# (sb_publishable_…) if the project has one, otherwise the legacy anon key.
+# Supabase retires the legacy one at the end of 2026; set whichever name
+# matches what you copied and the Worker takes it — publishable wins if both
+# are set. The applicant portal signs people in through Supabase Auth and
+# this is the key its API expects; it stays in the Worker, the browser never
+# sees it. Tip for local work: turning OFF "Confirm email" in the dev
+# project's Auth settings skips the email-code step, so registering locally
+# signs straight in.
+SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_ANON_KEY=
 
 # What to call this project in the admin banner. Supabase keeps the display
 # name in its dashboard only — neither the URL nor the key carries it — so

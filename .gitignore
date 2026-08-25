@@ -3,6 +3,7 @@ dist/
 node_modules/
 .wrangler/
 .dev.vars
+.dev.vars.*
 .env
 .env.*
 20250421 星维地产标志定稿（源文件）.ai

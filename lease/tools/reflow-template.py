@@ -2534,6 +2534,10 @@ SECTPR_ORDER = [
 # The line at the foot of the page: the lease's own notice on the left, and on
 # the right which document this is and which of its pages, with the Equal
 # Housing Opportunity mark closing the line.
+# The copyright the paper form printed beside its page label. It is not
+# reproduced — the footer carries the label, the number and the mark only —
+# but it is still what has to be stripped off the body lines to read the label
+# out of them.
 FOOTER_NOTICE = "2026 © Star Real Estate, Inc. All Rights Reserved."
 # The rest of this document names its font on every run; the line the
 # conversion put at the foot of the page did not, so Word fell back to the
@@ -2580,9 +2584,9 @@ FOOTER = (
     '<w:p><w:pPr>'
     '<w:tabs><w:tab w:val="right" w:leader="none" w:pos="{right}"/></w:tabs>'
     '<w:spacing w:after="0" w:before="0" w:line="240" w:lineRule="auto"/>'
-    '<w:ind w:left="{left}" w:right="0" w:firstLine="0"/>'
+    '<w:ind w:left="0" w:right="0" w:firstLine="0"/>'
     '<w:jc w:val="left"/><w:rPr>{size}</w:rPr></w:pPr>'
-    '<w:r><w:rPr>{size}</w:rPr><w:t xml:space="preserve">{notice}</w:t>'
+    '<w:r><w:rPr>{size}</w:rPr>'
     '<w:tab/><w:t xml:space="preserve">{label} - Page </w:t></w:r>'
     # A field, so that a rider that grows to a second page numbers itself.
     # The cached result is the number Word would cache: this document's first
@@ -2703,7 +2707,8 @@ def fix_page_footers(doc):
 
     One footer per document, referenced by every section of it, with the
     number as a `PAGE` field and `w:pgNumType` restarting the count where the
-    document does. Word inherits the previous section's footer where a section
+    document does. The copyright line the form printed beside the label is not
+    carried over; the label, the number and the Equal Housing mark are. Word inherits the previous section's footer where a section
     names none, so the pages the paper form leaves unlabelled — the two NYC
     notices bound into the lease, the DHCR consent, the Good Cause notice —
     are given a footer that is deliberately empty, the way the form does it.
@@ -2774,8 +2779,8 @@ def fix_page_footers(doc):
 
     for index, (name, first, last) in enumerate(documents, 1):
         link = footer(index, FOOTER.format(
-            w=W, r=RELATIONSHIPS, wp=WP, right=TEXT_RIGHT, left=TEXT_LEFT,
-            size=FOOTER_SIZE, notice=FOOTER_NOTICE, label=name, drop=MARK_DROP,
+            w=W, r=RELATIONSHIPS, wp=WP, right=TEXT_RIGHT,
+            size=FOOTER_SIZE, label=name, drop=MARK_DROP,
             mark=MARK.format(id=index, width=MARK_WIDTH, height=MARK_HEIGHT)))
         for number in range(first, last + 1):
             reference(number, link)
@@ -2807,6 +2812,85 @@ def fix_page_footers(doc):
                      {"before": 0, "after": 0, "line": 20, "lineRule": "exact"})
 
     return len(documents) + len(written) + len(stale)
+
+
+# A rider for a rent concession, which the paper form has no page for. The
+# landlord's own lease for this building ends on one — two months' rent waived
+# against full performance of the term — so it is a page this generator has to
+# be able to produce, and the terms of a concession are different every time.
+CONCESSION_TITLE = "Rent Concession Rider"
+CONCESSION_FIELD = "{{concession.terms}}"
+CONCESSION_LABEL = f"{CONCESSION_TITLE} - Page 1"
+# The page it goes in front of, and the page it is built out of.
+CONCESSION_BEFORE = "Electronic Lease Offer"
+CONCESSION_MODEL = "I hereby acknowledge the fine schedule"
+
+
+def deep_copy(element):
+    return ET.fromstring(ET.tostring(element))
+
+
+def fix_rent_concession(doc):
+    """A page for a rent concession, ahead of the DHCR consent.
+
+    Built by copying the fine schedule's, which is already the shape this
+    needs and — because this runs after the fixes that place tables and size
+    their rules — is already in its finished form: a title, a paragraph, the
+    two tenants' signature block and the landlord's. Only the words change.
+
+    The terms are the agent's to write and are blank until they do. The page
+    prints either way: a rider named in a lease and missing from it is worse
+    than a rider with nothing in it, and an agent who meant to add one can see
+    at a glance that they have not.
+    """
+    # Not the label: the footer step empties that paragraph once it has read
+    # it. The placeholder is the part of this page that stays put.
+    if doc.containing(CONCESSION_FIELD) is not None:
+        return 0
+
+    body = list(doc.body)
+    where = next((index for index, element in enumerate(body)
+                  if CONCESSION_BEFORE in "".join(element.itertext())), None)
+    if where is None:
+        return 0
+    # The page before it ends on the paragraph that carries its section break.
+    closes = [index for index in range(where)
+              if body[index].tag == WNS + "p" and section(body[index]) is not None]
+    if not closes:
+        return 0
+    previous = body[closes[-1]]
+
+    prose = doc.containing(CONCESSION_MODEL)
+    title = doc.find("Fine Schedule")
+    if prose is None or title is None:
+        return 0
+
+    # Everything under the fine schedule's last paragraph of prose: the blank
+    # lines that space the page out, both signature blocks, and the caption
+    # between them.
+    start = body.index(prose) + 1
+    end = next(index for index in range(start, len(body))
+               if body[index].tag == WNS + "p" and section(body[index]) is not None)
+
+    page = [deep_copy(title), deep_copy(prose)]
+    set_content(page[0], [clone_run(first_run(title), text=CONCESSION_TITLE)])
+    set_content(page[1], [clone_run(first_run(prose), text=CONCESSION_FIELD)])
+    page += [deep_copy(element) for element in body[start:end]]
+
+    # The label the footer is read out of. Written rather than copied: the one
+    # on the page above carries the mark the conversion drew beside it.
+    label = blank_like(previous)
+    sect = deep_copy(section(previous))
+    for stale in sect.findall(WNS + "footerReference") + sect.findall(WNS + "pgNumType"):
+        sect.remove(stale)
+    properties(label).append(sect)
+    set_content(label, [clone_run(first_run(previous), text=CONCESSION_LABEL)])
+    page.append(label)
+
+    for offset, element in enumerate(page, 1):
+        doc.body.insert(closes[-1] + offset, element)
+    doc.reindex()
+    return len(page)
 
 
 # Where every line this lease is signed on begins: the width of the column
@@ -3030,6 +3114,7 @@ FIXES = [
     ("table columns", fix_table_columns),
     ("signature columns", fix_signature_columns),
     ("rule widths", fix_rule_widths),
+    ("rent concession", fix_rent_concession),
     ("page footers", fix_page_footers),
     ("logo artwork", fix_logo_artwork),
     ("document identity", fix_document_identity),

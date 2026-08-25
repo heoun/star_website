@@ -112,6 +112,7 @@ export async function mountDocument(container, { onSlotClick } = {}) {
   indexSections();
   wrapPlaceholders();
   indexPositions();
+  remeasure();
 
   if (onSlotClick) {
     host.addEventListener("click", (event) => {
@@ -124,6 +125,9 @@ export async function mountDocument(container, { onSlotClick } = {}) {
     fields: [...slotsByField.keys()],
     occurrences: allSlots.length,
     sections: sections.length,
+    // The text of each rendered section, in order, so the caller can work out
+    // where each document in the package begins. See shared/lease-documents.js.
+    sectionTexts: sections.map((element) => element.textContent || ""),
     textBoxes: await countTextBoxes(bytes),
     tablesIndented: patched.tables,
     pagesNumbered: patched.pages,
@@ -300,6 +304,28 @@ function isClause(element) {
 // It has to be a single ordered walk rather than a backwards search from each
 // slot: a slot inside a table is several levels deep, and walking previous
 // siblings upwards would step over the clause that precedes the table.
+// docx-preview's own stylesheet sets `section.docx { position: relative }`, so
+// a clause paragraph's offsetTop is measured from its own section — or from an
+// enclosing table cell — never from the scroll container. The binary search
+// below needs one origin for everything or it is searching unsorted numbers, so
+// each mark carries a top accumulated up its offsetParent chain instead.
+function absoluteTop(element) {
+  let top = 0;
+  for (let node = element; node && node !== host; node = node.offsetParent) {
+    top += node.offsetTop;
+  }
+  return top;
+}
+
+// Zoom and the document filter both move everything. Re-measured rather than
+// re-indexed: the marks and their headings do not change, only where they are.
+export function remeasure() {
+  for (const mark of clauseMarks) mark.top = absoluteTop(mark.element);
+  sectionTops = sections.map((element) => absoluteTop(element));
+}
+
+let sectionTops = [];
+
 function indexPositions() {
   const walker = document.createTreeWalker(host, NodeFilter.SHOW_ELEMENT);
   let heading = "";
@@ -314,7 +340,7 @@ function indexPositions() {
       const text = headingText(element);
       if (text) {
         heading = text;
-        clauseMarks.push({ element, heading });
+        clauseMarks.push({ element, heading, top: 0 });
       }
       continue;
     }
@@ -414,6 +440,38 @@ export function patchValues(values, missingLabels = {}) {
   }
 }
 
+// ------------------------------------------------------- showing one document
+
+// Which run of sections is on screen, or null for the whole package.
+let shown = null;
+
+// Collapses every section outside `from..to` instead of removing it.
+//
+// NOT display:none. This lease numbers its clauses with Word list numbering
+// that docx-preview renders as CSS counters, and an element with no box does
+// not increment a counter — hiding the first sixteen sections that way would
+// renumber every clause of a rider shown on its own. A box of zero height
+// still counts, so the numbering on screen stays the numbering in the .docx.
+export function showSections(from, to) {
+  shown = from === null || from === undefined ? null : { from, to };
+  for (let i = 0; i < sections.length; i += 1) {
+    const hide = shown !== null && (i < shown.from || i > shown.to);
+    sections[i].toggleAttribute("data-doc-hidden", hide);
+  }
+  remeasure();
+}
+
+export function visibleSections() {
+  return shown;
+}
+
+// Which section a field prints in — the first of them, when it prints in
+// several. Used to open the right document before scrolling to a value.
+export function sectionOfField(fieldId) {
+  const slot = (slotsByField.get(fieldId) || [])[0];
+  return slot ? Number(slot.dataset.leaseSection) : null;
+}
+
 // ---------------------------------------------------------------- navigation
 
 let highlighted = null;
@@ -455,7 +513,7 @@ function lastAtOrAbove(items, limit) {
   let found = -1;
   while (low <= high) {
     const mid = (low + high) >> 1;
-    if (items[mid].element.offsetTop <= limit) {
+    if (items[mid].top <= limit) {
       found = mid;
       low = mid + 1;
     } else {
@@ -468,13 +526,20 @@ function lastAtOrAbove(items, limit) {
 export function describePosition(viewport) {
   if (sections.length === 0) return { section: 0, total: 0, heading: "" };
 
+  // A collapsed section is still in the flow at zero height, so offsetTop stays
+  // in order and the search below stays valid. It must not be counted, though:
+  // "section 3 of 46" while reading a rider on its own is not a position.
+  const first = shown === null ? 0 : shown.from;
+  const last = shown === null ? sections.length - 1 : shown.to;
+  const onScreen = sectionTops.slice(first, last + 1).map((top) => ({ top }));
+
   const limit = viewport.scrollTop + 8;
   const clause = lastAtOrAbove(clauseMarks, limit);
-  const section = lastAtOrAbove(sections.map((element) => ({ element })), limit);
+  const section = lastAtOrAbove(onScreen, limit);
 
   return {
     section: Math.max(0, section) + 1,
-    total: sections.length,
+    total: onScreen.length,
     heading: clause >= 0 ? clauseMarks[clause].heading : ""
   };
 }
