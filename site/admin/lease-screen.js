@@ -734,16 +734,6 @@ function bindOnce() {
       return;
     }
 
-    if (button.dataset.leaseAccept) {
-      const id = button.dataset.leaseAccept;
-      const input = formHost.querySelector(`[data-lease-input="${CSS.escape(id)}"]`);
-      if (input) {
-        input.value = state.byId.get(id).source_value;
-        onInput(id, input.value, false);
-      }
-      return;
-    }
-
     if (button.dataset.leaseZoom) {
       zoom = Math.min(1.5, Math.max(0.5, zoom + Number(button.dataset.leaseZoom) * 0.1));
       docHost.style.zoom = String(zoom);

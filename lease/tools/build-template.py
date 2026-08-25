@@ -16,6 +16,7 @@ The script only rewrites text inside w:t nodes, so every style, table, page
 break, and embedded form graphic in the original survives untouched.
 """
 
+import json
 import re
 import shutil
 import sys
@@ -25,8 +26,6 @@ from pathlib import Path
 
 W = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
 XML_SPACE = "{http://www.w3.org/XML/1998/namespace}space"
-LQ, RQ = "“", "”"  # curly quotes, as they appear in the source
-APOS = "’"    # curly apostrophe, likewise
 
 REPO = Path(__file__).resolve().parents[2]
 OUT_DOCX = REPO / "lease" / "template" / "lease-template.docx"
@@ -50,7 +49,7 @@ def para_replace(p, find, repl, limit=None):
     """Replace `find` with `repl` inside one paragraph, across run boundaries.
 
     Word splits a sentence into runs wherever formatting changes, so a value
-    like "37-34 33rd Street, ... NY" + " " + "11101" is three runs. This walks
+    like "12 Example Street, ... NY" + " " + "10001" is three runs. This walks
     the w:t nodes the match covers, drops `repl` into the first one, and
     deletes the covered text from the rest.
     """
@@ -109,129 +108,65 @@ def set_cell(tc, new_text):
 # Rules
 # --------------------------------------------------------------------------
 
-# Values that mean the same thing everywhere they appear. Longest first, so a
-# full address is consumed before its street half can match.
-GLOBAL = [
-    ("37-34 33rd Street, Unit 4E, Long Island City, NY 11101", "{{property.address_full}}"),
-    ("60 Cuttermill Road #405, Great Neck, NY 11021", "{{payee.address}}"),
-    ("33rd Street Ventures LLC", "{{payee.name}}"),
-    ("Solomon Oh and Nan Ni", "{{tenant.names}}"),
-    ("honomolos@gmail.com", "{{tenant.email}}"),
-    ("6/28/2024 12:00:00 AM", "{{sprinkler.last_inspection}}"),
-    ("July 30, 2024", "{{lease.effective_date}}"),
-    ("09/13/2025", "{{lease.end_date}}"),
-    ("J.P. Morgan Chase", "{{deposit.bank_name}}"),
-    ("1 (800) 752-6633", "{{gas.provider_phone}}"),
-    ("22 Grace Ave", "{{deposit.bank_address}}"),
-    ("Con Edison", "{{gas.provider_name}}"),
-    ("11:59 PM", "{{lease.end_time}}"),
-    # Every rider repeats this preamble; the landlord slot was left blank or
-    # stubbed with underscores depending on which rider it is.
-    (f"by and between (the {LQ}Landlord{RQ})",
-     f"by and between {{{{landlord.entity_name}}}} (the {LQ}Landlord{RQ})"),
-    (f"by and between _________ (the {LQ}Landlord{RQ})",
-     f"by and between {{{{landlord.entity_name}}}} (the {LQ}Landlord{RQ})"),
-    (f"by and between ________ (the {LQ}Landlord{RQ})",
-     f"by and between {{{{landlord.entity_name}}}} (the {LQ}Landlord{RQ})"),
-]
+# The three replacement tables are NOT here. They are the transcription of one
+# real signed lease — a named tenant, their email, the apartment, the rent, the
+# dates, the landlord's payee and bank, the emergency number — and the "find"
+# side of every pair IS that document. Keeping them in a tracked file put a
+# tenant's name and personal email in a public repository, and would put the
+# next one there every time the landlord reissues the base form, because
+# rebuilding means editing exactly this table.
+#
+# So they live beside the source lease, in notes/, which git ignores:
+#
+#     notes/template-rules.json   {"global": [[find, repl], ...],
+#                                  "anchored": [[anchor, find, repl], ...],
+#                                  "exact":    [[anchor, find, repl], ...]}
+#
+# The lists below this point are the form's own structure — statutory
+# exemptions, utility rows, key rows, fine rows. Nobody's data is in them, and
+# they stay.
 
-# (paragraph anchor, find, replace) — the anchor picks the paragraphs to touch,
-# which is what keeps a short value like "1" or "$25.00" from being replaced
-# in the wrong clause.
-ANCHORED = [
-    ("TERM. The term of the rental",
-     "09/14/2024", "{{lease.commencement_date}}"),
-    ("Monthly Rent. Tenant shall pay to Landlord",
-     "$4,250.00", "{{rent.monthly}}"),
-    ("Monthly Rent. Tenant shall pay to Landlord",
-     "shall be day 1 of each calendar month",
-     "shall be day {{rent.due_day}} of each calendar month"),
-    ("Returned Checks or Electronic Payment",
-     "a processing fee of $25.00",
-     "a processing fee of {{fee.returned_payment}}"),
-    ("Amount. Upon signing this Lease, Tenant shall deposit",
-     "$4,250.00", "{{deposit.amount}}"),
-    ("Guests. Persons not expressly identified",
-     "more than 3 consecutive days or 5 total days within any 14-day period",
-     "more than {{guest.consecutive_days}} consecutive days or "
-     "{{guest.total_days}} total days within any {{guest.window_days}}-day period"),
-    ("If Tenant breaches the No Advertising Covenant, Landlord reserves",
-     "administrative fee of $75.00",
-     "administrative fee of {{fee.lock_change_admin}}"),
-    ("ANIMALS. Tenant shall not allow any animal",
-     "shall not exceed $100.00",
-     "shall not exceed {{fee.animal_liability_cap}}"),
-    ("RENTERS INSURANCE. Renters insurance",
-     "Renters insurance [X] IS or [ ] IS NOT required",
-     "Renters insurance {{insurance.required_yes}} IS or "
-     "{{insurance.required_no}} IS NOT required"),
-    ("RENTERS INSURANCE. Renters insurance",
-     "monthly expense of $25.00",
-     "monthly expense of {{fee.lptli_monthly}}"),
-    ("If checkbox is selected, attorneys",
-     "[ ] If checkbox is selected",
-     "{{attorney_fees.cap_enabled}} If checkbox is selected"),
-    ("If checkbox is selected, attorneys",
-     "shall not exceed",
-     "shall not exceed {{attorney_fees.cap_amount}}"),
-    ("Smoking [ ] IS or [X] IS NOT allowed in the Unit",
-     "Smoking [ ] IS or [X] IS NOT allowed",
-     "Smoking {{smoking.in_unit_yes}} IS or {{smoking.in_unit_no}} IS NOT allowed"),
-    ("In case of a housing emergency",
-     "516-829-9401", "{{emergency.phone}}"),
-    # The payment block: "Name: / Address: / Phone:" carrying the payee details.
-    ("Address: {{payee.address}}",
-     "516-829-9401", "{{payee.phone}}"),
-    (f"TENANT{APOS}S RESPONSIBILITY. Tenant must obtain",
-     "minimum liability coverage of $100,000.00 per occurrence",
-     "minimum liability coverage of {{insurance.min_liability}} per occurrence"),
-    ("Monthly Renters Insurance Waiver:",
-     "$25.00", "{{fee.renters_insurance_waiver_monthly}}"),
-    ("Monthly Administrative Fee for Landlord Placed Liability Insurance:",
-     "Liability Insurance:",
-     "Liability Insurance: {{fee.lptli_admin_monthly}}"),
-    ("Date of vacancy lease:",
-     "09/14/2024", "{{lease.vacancy_lease_date}}"),
-    ("Complaints about smoke drifting",
-     "listed here: , .",
-     "listed here: {{manager.name}}, {{manager.phone}}."),
-    # Window guard notice — the source form has no check boxes at all, so the
-    # marks are introduced here. "No children" is replaced first because the
-    # other option's text is a suffix of it.
-    ("Check one:", "Check one:", "Check one:"),
-    ("Children 10 years of age or younger live in my apartment.",
-     "No children 10 years of age or younger live in my apartment.",
-     "{{window_guard.mark_no_children}} No children 10 years of age or "
-     "younger live in my apartment."),
-    ("Children 10 years of age or younger live in my apartment.",
-     "Children 10 years of age or younger live in my apartment.",
-     "{{window_guard.mark_has_children}} Children 10 years of age or "
-     "younger live in my apartment."),
-    ("I want window guards even though",
-     "I want window guards even though",
-     "{{window_guard.mark_wants_anyway}} I want window guards even though"),
-    # Bedbug disclosure — the five unchecked options carry a literal "[ ]".
-    ("During the past year the building had a bedbug infestation history that has been",
-     "[ ]", "{{bedbug.mark_building_eradicated}}"),
-    ("During the past year the building had a bedbug infestation history on the",
-     "[ ]", "{{bedbug.mark_building_not_eradicated}}"),
-    ("During the past year the apartment had a bedbug infestation history and eradication measures were employed",
-     "[ ]", "{{bedbug.mark_apartment_eradicated}}"),
-    ("During the past year the apartment had a bedbug infestation history and eradication measures were not employed",
-     "[ ]", "{{bedbug.mark_apartment_not_eradicated}}"),
-    ("[ ]Other:", "[ ]", "{{bedbug.mark_other}}"),
-    # Sprinkler notice.
-    ("Option 1:", "Option 1:", "{{sprinkler.mark_option1}} Option 1:"),
-    ("X Option 2", "X Option 2", "{{sprinkler.mark_option2}} Option 2"),
-]
+RULES_FILE = REPO / "notes" / "template-rules.json"
 
-# Same as ANCHORED, but the anchor must be the paragraph's entire text. These
-# marks sit alone in their own paragraph, and their anchors ("YES", "NO") are
-# far too common to match as substrings.
-EXACT = [
-    ("YES", "YES", "YES\t{{good_cause.mark_yes}}"),
-    ("NOX", "X", "{{good_cause.mark_no}}"),
-]
+
+def load_rules():
+    """The find/replace tables, read from outside the repository.
+
+    Missing is a hard stop rather than an empty run: a template built with no
+    rules is the source lease with its comments stripped — one tenant's data,
+    written to lease/template/lease-template.docx, which IS tracked.
+    """
+    if not RULES_FILE.exists():
+        sys.exit(
+            f"rules not found: {RULES_FILE}\n"
+            "It holds the find/replace pairs taken from the source lease and is\n"
+            "deliberately outside git. Without it this script would write the\n"
+            "source lease straight into lease/template/."
+        )
+
+    data = json.loads(RULES_FILE.read_text(encoding="utf-8"))
+    try:
+        rules = {
+            "global": [tuple(pair) for pair in data["global"]],
+            "anchored": [tuple(row) for row in data["anchored"]],
+            "exact": [tuple(row) for row in data["exact"]],
+            "premises": data["premises"],
+        }
+    except KeyError as missing:
+        sys.exit(f"{RULES_FILE} has no {missing} entry.")
+
+    for name, width in (("global", 2), ("anchored", 3), ("exact", 3)):
+        bad = [row for row in rules[name] if len(row) != width]
+        if bad:
+            sys.exit(f"{RULES_FILE}: {len(bad)} row(s) in \"{name}\" are not {width} strings.")
+
+    missing = [k for k in ("street", "unit", "city", "state", "state_abbr", "zip")
+               if not rules["premises"].get(k)]
+    if missing:
+        sys.exit(f"{RULES_FILE}: \"premises\" is missing {', '.join(missing)}.")
+
+    return rules
+
 
 # Good Cause exemption checkboxes: a distinctive phrase from each option, and
 # the field that decides whether it is marked.
@@ -316,15 +251,15 @@ def find_paras(paras, needle):
     return [p for p in paras if needle in para_runs_text(p)]
 
 
-def transform(root, report):
+def transform(root, report, rules):
     body = root.find(W + "body")
     paras = list(body.iter(W + "p"))
 
-    for find, repl in GLOBAL:
+    for find, repl in rules["global"]:
         hits = sum(para_replace(p, find, repl) for p in paras)
         report.append(("global", find, repl, hits))
 
-    for anchor, find, repl in ANCHORED:
+    for anchor, find, repl in rules["anchored"]:
         if find == repl:
             continue
         hits = 0
@@ -333,7 +268,7 @@ def transform(root, report):
                 hits += para_replace(p, find, repl, limit=1)
         report.append(("anchored", f"{anchor[:40]} | {find}", repl, hits))
 
-    for anchor, find, repl in EXACT:
+    for anchor, find, repl in rules["exact"]:
         hits = 0
         for p in paras:
             if para_runs_text(p).strip() == anchor:
@@ -390,7 +325,7 @@ def transform(root, report):
         report.append(("bedbug", "option 1 delisted", "bedbug.mark_none", 1))
 
     transform_tables(body, report)
-    transform_blank_fields(paras, report)
+    transform_blank_fields(paras, report, rules["premises"])
     return report
 
 
@@ -454,7 +389,7 @@ def transform_tables(body, report):
             report.append(("table", "smoking policy", f"{len(data_rows)} rows", 1))
 
 
-def transform_blank_fields(paras, report):
+def transform_blank_fields(paras, report, premises):
     """Fill in the form blanks that hold no value in the source document."""
     # NYC indoor allergen certification — the owner prints their name twice.
     for p in find_paras(paras, "(owner or representative name in print)"):
@@ -501,46 +436,55 @@ def transform_blank_fields(paras, report):
         set_text(p, "Address of landlord (owner or managing agent): {{landlord.address}}")
         report.append(("blank", "window guard landlord address", "landlord.address", 1))
 
-    # Bedbug disclosure address block. "Long Island City 4E" in the source is a
+    # The apartment the source lease was written for. Its parts come from the
+    # rules file rather than being spelled out here: this block is the address
+    # of somebody's home, and it is the same address the tables carry.
+    street, unit = premises["street"], premises["unit"]
+    city, state = premises["city"], premises["state"]
+    state_abbr, zip_code = premises["state_abbr"], premises["zip"]
+
+    # Bedbug disclosure address block. "<city> <unit>" in the source is a
     # data-entry slip: the unit number does not belong on the city line.
     for p in find_paras(paras, "Apt. #:"):
-        para_replace(p, "Unit 4E", "{{property.unit}}", limit=1)
-    for p in find_paras(paras, "37-34 33rd Street Unit 4E,"):
+        para_replace(p, f"Unit {unit}", "{{property.unit}}", limit=1)
+    for p in find_paras(paras, f"{street} Unit {unit},"):
         set_text(p, "{{property.street}} Unit {{property.unit}},")
-    for p in find_paras(paras, "Long Island City 4E"):
+    for p in find_paras(paras, f"{city} {unit}"):
         set_text(p, "{{property.city}}")
-    # Tabs are separate elements, so the searchable text here is "NY11101".
-    # Replace the two values in place to keep the tabs that space the line out.
-    for p in find_paras(paras, "NY11101"):
-        para_replace(p, "11101", "{{property.zip}}", limit=1)
-        para_replace(p, "NY", "{{property.state_abbr}}", limit=1)
+    # Tabs are separate elements, so the searchable text on this line is the
+    # state abbreviation and the zip with nothing at all between them.
+    for p in find_paras(paras, f"{state_abbr}{zip_code}"):
+        para_replace(p, zip_code, "{{property.zip}}", limit=1)
+        para_replace(p, state_abbr, "{{property.state_abbr}}", limit=1)
     report.append(("blank", "bedbug address block", "property.*", 1))
 
     # Good Cause notice unit block: one field per labelled line.
     for needle, repl in (
-        ("4E CITY/TOWN/VILLAGE:", ("4E", "{{property.unit}}")),
-        ("Long Island City STATE:", ("Long Island City", "{{property.city}}")),
-        ("New York ZIP CODE:", ("New York", "{{property.state}}")),
+        (f"{unit} CITY/TOWN/VILLAGE:", (unit, "{{property.unit}}")),
+        (f"{city} STATE:", (city, "{{property.city}}")),
+        (f"{state} ZIP CODE:", (state, "{{property.state}}")),
     ):
         for p in find_paras(paras, needle):
             para_replace(p, repl[0], repl[1], limit=1)
-    for p in find_paras(paras, "37-34 33rd Street"):
-        if para_runs_text(p).strip() == "37-34 33rd Street":
+    for p in find_paras(paras, street):
+        if para_runs_text(p).strip() == street:
             set_text(p, "{{property.street}}")
     for p in paras:
-        if para_runs_text(p).strip() == "11101":
+        if para_runs_text(p).strip() == zip_code:
             set_text(p, "{{property.zip}}")
     report.append(("blank", "good cause unit block", "property.*", 1))
 
     # Tenant's address line on the window guard notice ends with the bare unit.
     for p in find_paras(paras, "Apartment Number:"):
-        para_replace(p, "Apartment Number: 4E",
+        para_replace(p, f"Apartment Number: {unit}",
                      "Apartment Number: {{property.unit}}", limit=1)
         report.append(("blank", "window guard apartment number", "property.unit", 1))
 
 
 def main():
-    src = Path(sys.argv[1] if len(sys.argv) > 1 else REPO / "Lease Template (2).docx")
+    rules = load_rules()
+    src = Path(sys.argv[1] if len(sys.argv) > 1
+               else REPO / "notes" / "Lease Template (2).docx")
     if not src.exists():
         sys.exit(f"source lease not found: {src}")
 
@@ -556,7 +500,7 @@ def main():
         ET.register_namespace(prefix, uri)
     root = ET.fromstring(parts["word/document.xml"])
     report = []
-    transform(root, report)
+    transform(root, report, rules)
     strip_comments_and_highlights(root)
     parts["word/document.xml"] = (
         b'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\r\n'

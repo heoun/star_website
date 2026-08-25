@@ -38,7 +38,7 @@ catch (e) { t('schema.sql is re-runnable (idempotent)', false, e.message); }
 // 2. seed a building + listing
 const { rows: [b] } = await db.query(
   `insert into buildings (name, street, city, state, state_abbr, zip)
-   values ('Evergarden','37-34 33rd Street','Long Island City','New York','NY','11101') returning id`);
+   values ('Evergarden','12 Example Street','Long Island City','New York','NY','11101') returning id`);
 const { rows: [l] } = await db.query(
   `insert into listings (category, transaction_type, title, unit, building_id)
    values ('residential','rental','LIC Condo','4E',$1) returning id`, [b.id]);

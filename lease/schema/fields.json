@@ -8,7 +8,7 @@
     "agent": "The agent types this in for each lease.",
     "_needs_setup": "Fields marked needs_setup have no default because the source lease left them blank. A manager has to supply a value before the first lease is generated.",
     "_scope": "manager fields carry a scope: 'company' settings are the same everywhere; 'building' settings differ per building and their defaults came from one specific building, so review them before reusing.",
-    "_source_value": "The value the sample lease carried, kept as provenance. It is not a default: reusing it elsewhere would name the wrong entity or escrow account."
+    "_source_value": "Removed. It held what the one real lease this template was built from actually said — a landlord entity, an escrow bank, a payee address and phone — which is that landlord's and that tenancy's data, not a default. The find/replace table it came from now lives outside the repository, in notes/template-rules.json."
   },
   "groups": [
     {
@@ -391,7 +391,6 @@
       "required": true,
       "default": null,
       "scope": "building",
-      "source_value": "J.P. Morgan Chase",
       "needs_setup": true
     },
     {
@@ -403,7 +402,6 @@
       "required": true,
       "default": null,
       "scope": "building",
-      "source_value": "22 Grace Ave",
       "needs_setup": true
     },
     {
@@ -559,7 +557,6 @@
       "default": null,
       "note": "Who rent cheques are made out to; often the same as the landlord entity.",
       "scope": "building",
-      "source_value": "33rd Street Ventures LLC",
       "needs_setup": true
     },
     {
@@ -571,7 +568,6 @@
       "required": true,
       "default": null,
       "scope": "building",
-      "source_value": "60 Cuttermill Road #405, Great Neck, NY 11021",
       "needs_setup": true
     },
     {
@@ -583,7 +579,6 @@
       "required": true,
       "default": null,
       "scope": "building",
-      "source_value": "516-829-9401",
       "needs_setup": true
     },
     {
