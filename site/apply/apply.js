@@ -255,7 +255,14 @@ import { endDateFor } from "../shared/lease-dates.js";
       String(property.bedrooms ?? "").trim() === "0" ? "Studio" : count(property.bedrooms, "bedroom"),
       count(property.bathroom, "bathroom")
     ].filter(Boolean).join(" · ");
-    document.getElementById("summary-account").textContent = accountEmail;
+    // Masked, because the sidebar sits on screen for the whole application:
+    // enough to recognise your own account, not enough to read over a shoulder.
+    const maskedAccount = (() => {
+      const at = accountEmail.indexOf("@");
+      if (at < 2) return accountEmail;
+      return `${accountEmail[0]}•••••${accountEmail.slice(at)}`;
+    })();
+    document.getElementById("summary-account").textContent = maskedAccount;
 
     // Shown, not sent: the Worker files the application under the session's
     // email whatever the form says, so the form says the same thing.
@@ -478,7 +485,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         } else if (!isValidIdNumber()) {
           problems.push(problem(field("id_number"), idType() === "passport"
             ? "Check the passport number. It should be 5 to 20 letters and digits."
-            : "That is not a valid Social Security Number. It needs nine digits."));
+            : "That is not a valid Social Security Number. Enter the nine digits as printed on your card."));
         }
 
         required("address_street", "Enter your street address.", problems);
@@ -725,9 +732,18 @@ import { endDateFor } from "../shared/lease-dates.js";
         stale.forEach((errId) => document.getElementById(errId)?.remove());
       }
       if (el.type === "radio") {
+        // The whole group was marked together, so the whole group is cleared
+        // together — including each sibling's aria-describedby, which would
+        // otherwise point at the removed message.
         const group = el.closest("[data-group]");
         group?.removeAttribute("data-invalid");
-        group?.querySelectorAll("input").forEach((radio) => radio.removeAttribute("aria-invalid"));
+        group?.querySelectorAll("input").forEach((radio) => {
+          radio.removeAttribute("aria-invalid");
+          const staleIds = (radio.getAttribute("aria-describedby") || "")
+            .split(/\s+/).filter((token) => token.startsWith(ERROR_PREFIX));
+          undescribe(radio);
+          staleIds.forEach((errId) => document.getElementById(errId)?.remove());
+        });
       }
       if (el.name === "move_in" || el.name === "lease_term_months") paintLeaseEnd();
     });
@@ -862,9 +878,9 @@ import { endDateFor } from "../shared/lease-dates.js";
       progressFill.style.width = `${(step / TOTAL_STEPS) * 100}%`;
 
       backButton.hidden = step === 1;
-      nextButton.textContent = step === TOTAL_STEPS ? "Submit application" : "Continue →";
+      nextButton.textContent = step === TOTAL_STEPS ? "Submit Application" : "Continue →";
       actionNote.textContent = step === TOTAL_STEPS
-        ? "Your application is sent when you press Submit."
+        ? "Your application is sent when you press Submit Application."
         : `Step ${step} of ${TOTAL_STEPS} · nothing is sent until the last step`;
 
       if (step === TOTAL_STEPS) { paintReview(); paintDocsNote(); mountTurnstile(); }
@@ -1005,12 +1021,12 @@ import { endDateFor } from "../shared/lease-dates.js";
         headerStep.textContent = "Rental Application · Submitted";
         container.innerHTML = `
           <div class="success">
-            <h2>Application received</h2>
+            <h2>Application Received</h2>
             <p>Thank you. The Star Real Estate team will review your application for
                ${escapeHtml(property.title || "this property")} and follow up shortly.</p>
-            <p>The next step is to upload your supporting documents in your applicant
-               portal. We will need your government ID, your ${escapeHtml(proofOfMeans)},
-               and your bank statements.</p>
+            <p>Once the team has looked at your application, you will upload your
+               supporting documents in your applicant portal. We will need your
+               government ID, your ${escapeHtml(proofOfMeans)}, and your bank statements.</p>
             <p><a href="../portal/">Open the applicant portal</a></p>
             <p><a href="../property/?id=${encodeURIComponent(id)}">Back to the property</a></p>
           </div>`;
@@ -1019,7 +1035,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         showSubmitError(error.message);
         state.submitting = false;
         nextButton.disabled = false;
-        nextButton.textContent = "Submit application";
+        nextButton.textContent = "Submit Application";
         if (widgetId !== null && window.turnstile) window.turnstile.reset(widgetId);
       }
     };

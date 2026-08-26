@@ -583,7 +583,31 @@
     .sub { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
     /* A card that opens with a subsection has nothing above it to rule off. */
     .pbody > .sub:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
+    .appl-fold-body > .sub:first-child { margin-top: 0; padding-top: 0; border-top: 0; }
     .sub > h3 { margin: 0 0 10px; font-size: 11.5px; font-weight: 800; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7680; }
+
+    /* The screening tab is closed sections, each one line until it is opened:
+       what is not on the lease is there to consult, not to scroll past. */
+    .appl-fold { border: 1px solid var(--line); border-radius: var(--radius); background: var(--white); overflow: hidden; }
+    .appl-fold + .appl-fold { margin-top: 12px; }
+    .appl-fold > summary {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 14px;
+      flex-wrap: wrap;
+      padding: 13px 16px;
+      cursor: pointer;
+      list-style: none;
+    }
+    .appl-fold > summary::-webkit-details-marker { display: none; }
+    .appl-fold-title { font-family: var(--display); font-weight: 700; font-size: 15px; color: var(--blue); }
+    .appl-fold-title::before { content: "\25b8 "; }
+    .appl-fold[open] .appl-fold-title::before { content: "\25be "; }
+    .appl-fold-note { font-size: 12.5px; color: var(--soft); }
+    .appl-fold[open] > summary { box-shadow: inset 0 -1px 0 var(--line); }
+    .appl-fold-body { padding: 14px 16px; }
+    .appl-fold-tools { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 
     /* auto-fill, not auto-fit: one emergency contact is one card, not a card
        stretched across the width of four. */

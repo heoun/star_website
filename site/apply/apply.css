@@ -16,6 +16,7 @@
   --bg: #f7f6f1;
   --panel: #ffffff;
   --line: rgba(31, 42, 51, 0.14);
+  --line-input: rgba(31, 42, 51, 0.3);
   --primary: #0d3b52;
   --primary-soft: #dce9ef;
   --accent: #c1752e;
@@ -33,19 +34,27 @@
   margin: 0;
   font-family: "Public Sans", system-ui, -apple-system, sans-serif;
   color: var(--ink);
-  background: var(--page-bg-image) center / cover fixed no-repeat;
+  /* Solid ground; the photo lives only on the fixed ::before. Painting it
+     here too would over-zoom on iOS (fixed attachment falls back to scroll
+     and cover then sizes against the whole document), ghost through the
+     veil, and leave a white flash while the image loads. */
+  background: #1e3240;
   position: relative;
 }
 
+/* The photo stays, but this is a task page before it is a gallery: a dark
+   veil and a saturation cut keep the table and glassware from competing
+   with the form, and nothing bright sits behind the white side cards. */
 .application-page::before {
   content: "";
   position: fixed;
   inset: -32px;
   z-index: 0;
   pointer-events: none;
-  background: var(--page-bg-image) center / cover fixed no-repeat;
-  filter: blur(7px) saturate(1.04);
-  opacity: 0.58;
+  background: linear-gradient(rgba(12, 31, 40, 0.38), rgba(12, 31, 40, 0.38)),
+              var(--page-bg-image) center / cover no-repeat;
+  filter: blur(7px) saturate(0.82);
+  opacity: 0.75;
   transform: scale(1.018);
 }
 
@@ -53,7 +62,10 @@
 
 .application-page * { box-sizing: border-box; }
 
-.application-page :focus-visible { outline: 2px solid var(--primary-soft); outline-offset: 2px; }
+/* Strong enough to see on the white cards; the dark header and footer swap
+   the ring to white for the same reason. */
+.application-page :focus-visible { outline: 2.5px solid #135678; outline-offset: 2px; }
+.app-header :focus-visible, .app-foot :focus-visible { outline-color: #ffffff; }
 
 /* ---------------------------------------------------------- the header
 
@@ -282,7 +294,7 @@
 .app-steps h2 {
   margin: 0 0 10px;
   font-family: "Sora", system-ui, sans-serif;
-  font-size: 12px;
+  font-size: 15px;
   font-weight: 800;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -293,7 +305,7 @@
 
 .step-link {
   display: grid;
-  grid-template-columns: 28px 1fr;
+  grid-template-columns: 30px 1fr;
   align-items: center;
   gap: 9px;
   width: 100%;
@@ -304,7 +316,7 @@
   border: 1px solid transparent;
   border-radius: 10px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
   text-align: left;
   cursor: pointer;
@@ -323,11 +335,11 @@
 .step-index {
   display: grid;
   place-items: center;
-  width: 26px;
-  height: 26px;
+  width: 30px;
+  height: 30px;
   border: 1.5px solid currentColor;
   border-radius: 50%;
-  font-size: 12px;
+  font-size: 14px;
   font-weight: 800;
   font-variant-numeric: tabular-nums;
 }
@@ -352,15 +364,6 @@
 .form-step { display: none; padding: clamp(20px, 3vw, 30px); }
 .form-step.is-active { display: block; }
 
-.step-kicker {
-  margin: 0 0 6px;
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.4px;
-  text-transform: uppercase;
-  color: var(--accent);
-}
-
 .form-step h1 {
   margin: 0;
   width: fit-content;
@@ -377,8 +380,8 @@
 /* The step heading takes focus on every step change, so its ring hugs the
    words rather than drawing a box the width of the card. */
 .form-step h1:focus { outline: none; }
-.form-step h1:focus-visible { outline: 2px solid var(--primary-soft); outline-offset: 6px; }
-.step-intro { max-width: 640px; margin: 8px 0 22px; color: var(--text); font-size: 14.5px; line-height: 1.55; }
+.form-step h1:focus-visible { outline: 2.5px solid #135678; outline-offset: 6px; }
+.step-intro { max-width: 640px; margin: 8px 0 22px; color: var(--text); font-size: 15px; line-height: 1.55; }
 
 /* :where() keeps this reset at zero extra specificity, so the class rules
    that dress a fieldset up again — .repeat-card's padding and border, or
@@ -396,7 +399,7 @@
   margin-bottom: 14px;
   padding: 0;
   font-family: "Sora", system-ui, sans-serif;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -409,7 +412,7 @@
 .group-title {
   margin: 0 0 4px;
   font-family: "Sora", system-ui, sans-serif;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   letter-spacing: 0.6px;
   text-transform: uppercase;
@@ -419,7 +422,7 @@
 
 .group-title + .repeat-list, .group-title + .group-help { margin-top: 0; }
 .group-title + .field-grid { margin-top: 14px; }
-.group-help { margin: 0 0 14px; color: var(--text); font-size: 13px; line-height: 1.5; }
+.group-help { margin: 0 0 14px; color: var(--text); font-size: 14px; line-height: 1.5; }
 
 .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px 14px; }
 
@@ -435,21 +438,45 @@
    on its own full-width line. */
 .field-grid > .field-help { grid-column: 1 / -1; margin-top: -6px; }
 
-.application-page label, .field-label { font-size: 13px; font-weight: 700; color: var(--ink); line-height: 1.35; }
+/* Field captions only: the pills and the consent paragraph are labels too,
+   but they are answers and prose, not captions, and keep their own type. */
+.application-page .field > label, .field-label { font-size: 16px; font-weight: 600; color: var(--ink); line-height: 1.3; }
 /* line-height 1 keeps the smaller type from growing the label's line box,
    so two labels with and without the marker stay exactly the same height. */
-.optional { color: var(--text); font-size: 12.5px; font-weight: 400; line-height: 1; }
-.field-help { margin: 0; color: var(--text); font-size: 12.5px; line-height: 1.5; }
+.optional { color: var(--text); font-size: 13.5px; font-weight: 400; line-height: 1; }
+.field-help { margin: 0; color: var(--text); font-size: 13px; line-height: 1.5; }
+
+/* The asterisk convention: a box that has to be filled says so on its label.
+   :has() reads the live required attribute, so the marks follow the
+   work-or-school branch as it toggles which fields are required. */
+.field:has(:required) > label:not(.consent)::after,
+.field:has(:required) > .field-label::after,
+.field:has(:required) > .consent > span::after { content: " *"; color: var(--danger); font-weight: 700; }
+
+/* The one quiet trust line on the identity row, with its little lock. */
+.privacy-note {
+  display: flex;
+  align-items: baseline;
+  gap: 7px;
+  margin: 0;
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.5;
+}
+
+.privacy-note svg { flex: 0 0 auto; align-self: center; color: var(--primary); }
+.field-grid > .privacy-note { grid-column: 1 / -1; margin-top: -4px; }
 
 .application-page input,
 .application-page select,
 .application-page textarea {
   appearance: none;
   font: inherit;
+  font-size: 18px;
   width: 100%;
-  min-height: 41px;
+  min-height: 46px;
   padding: 10px 12px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-input);
   border-radius: 10px;
   background: #ffffff;
   color: var(--ink);
@@ -461,7 +488,7 @@
    may render a little taller than a text input in some browsers, and boxes
    that share a row then disagree by a few pixels. */
 .application-page input:not([type="radio"]):not([type="checkbox"]),
-.application-page select { height: 41px; }
+.application-page select { height: 46px; }
 
 .application-page select {
   background-image: linear-gradient(45deg, transparent 50%, var(--text) 50%),
@@ -488,28 +515,39 @@
    above, or the reset's accent would win on source order */
 .application-page .choice:has(input:checked) input { accent-color: #ffffff; }
 
+/* Lighter than what the applicant types, still readable against white. */
 .application-page input::placeholder,
-.application-page textarea::placeholder { color: #8a949c; opacity: 1; }
+.application-page textarea::placeholder { color: #66727c; opacity: 1; }
 
 .application-page input:focus,
 .application-page select:focus,
-.application-page textarea:focus { outline: 2px solid var(--primary-soft); border-color: var(--primary); }
+.application-page textarea:focus {
+  outline: 2.5px solid #135678;
+  outline-offset: 1px;
+  border-color: var(--primary);
+}
 
-.application-page input:focus:not(:focus-visible),
-.application-page select:focus:not(:focus-visible),
-.application-page textarea:focus:not(:focus-visible) { outline: 2px solid var(--primary-soft); }
-
+/* The raw box never draws its own ring; the pill or paragraph that wraps it
+   does, so keyboard focus is a visible frame around the whole control. */
 .application-page input[type="radio"]:focus,
 .application-page input[type="checkbox"]:focus { outline: none; }
+
+.application-page .choice:has(input:focus-visible),
+.application-page label.consent:has(input:focus-visible) {
+  outline: 2.5px solid #135678;
+  outline-offset: 1px;
+}
 
 /* The account email: shown so the applicant can see where the application
    is filed, taken from the session either way. */
 .application-page input[readonly] { color: var(--text); background: #fbfaf7; border-style: dashed; }
 .application-page input[readonly]:hover { border-color: var(--line); }
 
-/* An empty date input renders its locale hint (mm/dd/yyyy) as if it were a
-   value; hidden until there is one, or until it is being typed into. */
-.application-page input[type="date"]:not(.has-value):not(:focus) { color: transparent; }
+/* An empty date input renders its locale hint (mm/dd/yyyy) in value ink, as
+   if it were an answer; until there is one, the hint wears placeholder grey
+   instead, and doubles as the format prompt. The colour sits on the input
+   itself so every engine honours it, Firefox included. */
+.application-page input[type="date"]:not(.has-value):not(:focus) { color: #66727c; }
 
 .choice-grid { display: flex; flex-wrap: wrap; gap: 10px; }
 
@@ -520,10 +558,10 @@
   gap: 8px;
   min-height: 41px;
   padding: 0 16px;
-  font-size: 13.5px;
+  font-size: 14.5px;
   font-weight: 600;
   background: #ffffff;
-  border: 1px solid var(--line);
+  border: 1px solid var(--line-input);
   border-radius: 10px;
   cursor: pointer;
   transition: background-color 180ms ease, color 180ms ease, border-color 180ms ease;
@@ -549,14 +587,14 @@
 .choice-branch input { margin-top: 3px; flex: none; }
 
 .choice-copy { display: grid; gap: 3px; }
-.choice-copy b { font-family: "Sora", "Public Sans", sans-serif; font-size: 14px; }
-.choice-copy small { font-size: 12.5px; font-weight: 500; line-height: 1.5; color: var(--text); }
+.choice-copy b { font-family: "Sora", "Public Sans", sans-serif; font-size: 15px; }
+.choice-copy small { font-size: 13px; font-weight: 500; line-height: 1.5; color: var(--text); }
 .choice-branch:has(input:checked) .choice-copy small { color: rgba(255, 255, 255, 0.85); }
 
 /* ------------------------------------------- documents that come later */
 
 .docs-note { display: grid; gap: 7px; margin: 0; padding-left: 20px; }
-.docs-note li { font-size: 13.5px; line-height: 1.5; color: var(--ink); }
+.docs-note li { font-size: 14px; line-height: 1.5; color: var(--ink); }
 .docs-note li.is-soft { color: var(--text); }
 
 /* Honeypot: visually removed, still present for bots that fill every field.
@@ -592,7 +630,7 @@
   margin: 0 0 12px;
   padding-right: 104px;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 800;
   letter-spacing: 0.4px;
   text-transform: uppercase;
@@ -613,7 +651,7 @@
   color: var(--danger);
   font: inherit;
   font-weight: 700;
-  font-size: 12.5px;
+  font-size: 13px;
   cursor: pointer;
 }
 
@@ -631,14 +669,14 @@
   border-radius: 10px;
   font: inherit;
   font-weight: 700;
-  font-size: 13px;
+  font-size: 14px;
   cursor: pointer;
 }
 
 .repeat-add:hover { background: var(--primary-soft); }
 .repeat-add[hidden] { display: none; }
 
-.repeat-count { margin: 10px 0 0; font-size: 13px; font-weight: 700; color: var(--text); }
+.repeat-count { margin: 10px 0 0; font-size: 13.5px; font-weight: 700; color: var(--text); }
 .repeat-count.is-done { color: var(--good); }
 
 /* ------------------------------------------------------------- errors
@@ -651,7 +689,7 @@
 
 .field-error {
   margin: 0;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 600;
   line-height: 1.45;
   display: flex;
@@ -661,7 +699,7 @@
 
 .field-error::before { content: "\26A0"; flex: 0 0 auto; }
 .application-page [aria-invalid="true"] { border-color: var(--danger); }
-.application-page [aria-invalid="true"]:focus { border-color: var(--danger); outline-color: rgba(179, 38, 30, 0.2); }
+.application-page [aria-invalid="true"]:focus { border-color: var(--danger); outline-color: rgba(179, 38, 30, 0.45); }
 .choice-grid[data-invalid="true"] .choice { border-color: var(--danger); }
 .repeat-add[data-invalid="true"] { border-color: var(--danger); border-style: solid; color: var(--danger); }
 
@@ -674,9 +712,9 @@
 }
 
 .app-error-summary:focus { outline: none; }
-.app-error-summary h2 { margin: 0 0 6px; font-family: "Sora", system-ui, sans-serif; font-size: 14px; font-weight: 800; }
+.app-error-summary h2 { margin: 0 0 6px; font-family: "Sora", system-ui, sans-serif; font-size: 15px; font-weight: 800; }
 .app-error-summary ul { margin: 0; padding-left: 18px; }
-.app-error-summary li { font-size: 13px; line-height: 1.5; }
+.app-error-summary li { font-size: 14px; line-height: 1.5; }
 .app-error-summary li + li { margin-top: 3px; }
 .app-error-summary a { color: var(--danger); font-weight: 700; }
 /* Never `hidden`: role="alert" announces on insertion, and a screen reader
@@ -699,7 +737,7 @@
   color: var(--primary);
   font: inherit;
   font-weight: 700;
-  font-size: 12px;
+  font-size: 13px;
   cursor: pointer;
   padding: 6px 8px;
 }
@@ -719,8 +757,8 @@
 }
 
 .review-copy { min-width: 0; }
-.review-copy strong { display: block; font-size: 13.5px; font-weight: 800; color: var(--primary); }
-.review-copy span { display: block; margin-top: 2px; color: var(--text); font-size: 13px; line-height: 1.45; }
+.review-copy strong { display: block; font-size: 14px; font-weight: 800; color: var(--primary); }
+.review-copy span { display: block; margin-top: 2px; color: var(--text); font-size: 13.5px; line-height: 1.45; }
 .review-copy span.is-short { color: var(--danger); font-weight: 600; }
 
 .review-edit {
@@ -732,20 +770,22 @@
   color: var(--primary);
   border-radius: 999px;
   font-family: inherit;
-  font-size: 12.5px;
+  font-size: 13px;
   font-weight: 700;
   cursor: pointer;
 }
 
 .review-edit:hover { background: var(--primary-soft); }
 
-.consent {
+/* A paragraph with a checkbox, not a field caption: it keeps body weight
+   even though it is a label, or three lines of bold would shout. */
+.application-page label.consent {
   display: grid;
   grid-template-columns: 22px 1fr;
   gap: 10px;
   align-items: start;
   margin-top: 18px;
-  font-size: 13px;
+  font-size: 14px;
   line-height: 1.5;
   font-weight: 400;
 }
@@ -772,7 +812,7 @@
   padding: 11px 24px;
   border-radius: 999px;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 800;
   line-height: 1.2;
   cursor: pointer;
@@ -786,7 +826,7 @@
 .step-next:hover { background: #0a2e41; border-color: #0a2e41; }
 .step-next:disabled { opacity: 0.6; cursor: not-allowed; }
 .step-next:disabled:hover { background: var(--primary); border-color: var(--primary); }
-.action-note { color: var(--text); font-size: 12.5px; text-align: center; line-height: 1.45; }
+.action-note { color: var(--text); font-size: 13px; text-align: center; line-height: 1.45; }
 
 .turnstile-box:not(:empty) { margin-top: 18px; }
 
@@ -808,28 +848,40 @@
 .property-price {
   margin: 0 0 2px;
   font-family: "Sora", system-ui, sans-serif;
-  font-size: 20px;
+  font-size: 24px;
   font-weight: 800;
   color: var(--primary);
   font-variant-numeric: tabular-nums;
 }
 
-.property-copy h2 { margin: 0; font-size: 15px; font-weight: 700; line-height: 1.3; }
-.property-address { margin: 6px 0 12px; color: var(--text); font-size: 13px; line-height: 1.45; }
-.property-facts { margin: 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--text); font-size: 13px; line-height: 1.45; }
+.property-copy h2 { margin: 0; font-size: 17px; font-weight: 700; line-height: 1.3; }
+.property-address { margin: 6px 0 12px; color: var(--text); font-size: 15px; line-height: 1.45; }
+.property-facts { margin: 0; padding-top: 12px; border-top: 1px solid var(--line); color: var(--text); font-size: 15px; line-height: 1.45; }
 
 .property-account {
+  display: grid;
+  gap: 2px;
   margin: 14px 0 0;
   padding: 10px 12px;
   border-radius: var(--radius-sm);
   background: var(--primary-soft);
   color: var(--primary);
-  font-size: 12.5px;
+  font-size: 14px;
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
 
-.property-account b { color: var(--primary); }
+.property-account b { color: var(--primary); font-size: 15px; }
+
+.account-kicker {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+
+.account-note { font-size: 14px; font-weight: 400; opacity: 0.85; }
 
 /* ------------------------------------------------------------ help dialog */
 
@@ -913,7 +965,7 @@
   .app-shell > .app-steps { position: static; grid-row: 2; overflow-x: auto; padding: 10px; }
   .app-steps h2 { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .app-step-list { display: flex; min-width: max-content; }
-  .step-link { width: auto; min-width: 150px; }
+  .step-link { width: auto; min-width: 165px; }
   .app-shell > .form-card { grid-row: 3; }
 }
 
@@ -930,6 +982,11 @@
 }
 
 @media (max-width: 640px) {
+  /* On a phone the photo is all edges and highlights behind a full-width
+     form; the solid ground the body already paints is calmer and costs
+     nothing, so the photo layer simply goes. */
+  .application-page::before { display: none; }
+
   .app-header { top: 8px; margin-top: 8px; width: calc(100% - 24px); }
   .app-progress { width: calc(100% - 24px); }
   .app-brand .brand-mark { width: 40px; height: 40px; }
@@ -948,7 +1005,7 @@
   .property-copy { display: block; }
   .property-facts { padding-top: 12px; border-top: 1px solid var(--line); }
   .property-account { margin-top: 12px; }
-  .step-link { min-width: 138px; }
+  .step-link { min-width: 150px; }
   .form-step { padding: 20px 16px; }
   .field-grid, .field-grid.thirds { grid-template-columns: 1fr; }
   .field.full, .field.span2 { grid-column: auto; }

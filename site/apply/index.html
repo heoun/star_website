@@ -73,13 +73,13 @@
       <ul>
         <li>Your answers stay on this page while you move between steps. Nothing is sent
             until you submit the last step.</li>
-        <li>Every field is required unless its label says <b>Optional</b>. If a step will not
-            let you continue, the reason is listed at the top of that step.</li>
+        <li>Required fields are marked with <b>*</b>. If a step will not let you continue,
+            the reason is listed at the top of that step.</li>
         <li>Your Social Security or passport number is encrypted before it is stored and is
             never included in any email.</li>
-        <li>No documents are uploaded here. After you submit, you upload them in your
-            applicant portal. The exact list depends on whether you work or study, and the
-            last step of this form shows it to you.</li>
+        <li>No documents are uploaded here. Once the leasing team has looked at your
+            application, you upload them in your applicant portal. The exact list depends
+            on whether you work or study, and the last step of this form shows it to you.</li>
       </ul>
       <div class="app-dialog-actions">
         <a class="contact-link" href="../contact-us/" target="_blank" rel="noopener">Message the leasing team</a>
@@ -98,7 +98,11 @@
           <h2 id="property-heading">Property</h2>
           <p class="property-address" id="summary-address"></p>
           <p class="property-facts" id="summary-facts"></p>
-          <p class="property-account">Filed under <b id="summary-account"></b></p>
+          <p class="property-account">
+            <span class="account-kicker">Application Account</span>
+            <b id="summary-account"></b>
+            <span class="account-note">You will sign in to your applicant portal with it.</span>
+          </p>
         </div>
       </aside>
 
@@ -131,9 +135,8 @@
       <form class="form-card" id="apply-form" method="post" action="/api/apply" novalidate>
         <section class="form-step is-active" data-step="1" aria-labelledby="step-1-title">
           <div class="app-error-summary" id="errors-1" role="alert" tabindex="-1"></div>
-          <p class="step-kicker">Step 1 of 6</p>
           <h1 id="step-1-title" tabindex="-1">About You</h1>
-          <p class="step-intro">Your basic information.</p>
+          <p class="step-intro">Tell us about yourself. Fields marked * are required.</p>
 
           <div class="field-grid thirds form-block">
             <div class="field">
@@ -160,7 +163,7 @@
             </div>
             <div class="field">
               <label for="id_type">SSN or passport</label>
-              <select id="id_type" name="id_type" aria-describedby="id-number-help">
+              <select id="id_type" name="id_type" required aria-describedby="id-number-help">
                 <option value="ssn" selected>SSN</option>
                 <option value="passport">Passport</option>
               </select>
@@ -177,6 +180,10 @@
             </div>
             <p class="field-help" id="id-number-help">Nine digits with or without dashes. If you
                do not have an SSN yet, you can use your passport number instead.</p>
+            <p class="privacy-note">
+              <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="5" y="10" width="14" height="10" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
+              Your information is encrypted and used only to process this rental application.
+            </p>
           </div>
 
           <div class="group form-block">
@@ -185,17 +192,17 @@
               <div class="field span2">
                 <label for="address_street">Street address</label>
                 <input id="address_street" name="address_street" maxlength="160"
-                       autocomplete="address-line1" placeholder="81-07 Kew Gardens Road" required>
+                       autocomplete="address-line1" placeholder="123 Main Street" required>
               </div>
               <div class="field">
                 <label for="address_unit">Apartment or unit</label>
                 <input id="address_unit" name="address_unit" maxlength="30"
-                       autocomplete="address-line2" placeholder="Apt 2F" required>
+                       autocomplete="address-line2" placeholder="Apt 4B" required>
               </div>
               <div class="field">
                 <label for="address_city">City</label>
                 <input id="address_city" name="address_city" maxlength="80"
-                       autocomplete="address-level2" placeholder="Queens" required>
+                       autocomplete="address-level2" placeholder="New York" required>
               </div>
               <div class="field">
                 <label for="address_state">State</label>
@@ -205,7 +212,7 @@
               <div class="field">
                 <label for="address_zip">ZIP code</label>
                 <input id="address_zip" name="address_zip" maxlength="10" inputmode="numeric"
-                       autocomplete="postal-code" placeholder="11415" required>
+                       autocomplete="postal-code" placeholder="10001" required>
               </div>
             </div>
           </div>
@@ -234,7 +241,6 @@
 
         <section class="form-step" data-step="2" aria-labelledby="step-2-title" hidden>
           <div class="app-error-summary" id="errors-2" role="alert" tabindex="-1"></div>
-          <p class="step-kicker">Step 2 of 6</p>
           <h1 id="step-2-title" tabindex="-1">Occupation</h1>
           <p class="step-intro">The questions and the documents we ask for depend on whether
              you are working or studying.</p>
@@ -294,7 +300,8 @@
 
             <div class="group form-block">
               <h2 class="group-title">Previous Employment <span class="optional">Optional</span></h2>
-              <p class="group-help">Add a job only if it helps show your income history.</p>
+              <p class="group-help">Add a job only if it helps show your income history.
+                 Each job you add needs every field filled in.</p>
               <div class="repeat-list" id="rep-employment" data-repeat="employment"></div>
               <button class="repeat-add" type="button" id="add-employment">+ Add previous employment</button>
             </div>
@@ -331,7 +338,6 @@
 
         <section class="form-step" data-step="3" aria-labelledby="step-3-title" hidden>
           <div class="app-error-summary" id="errors-3" role="alert" tabindex="-1"></div>
-          <p class="step-kicker">Step 3 of 6</p>
           <h1 id="step-3-title" tabindex="-1">Rental History</h1>
           <p class="step-intro">Start with where you live now. Leave <b>Until</b> blank
              if you still live there, and add a previous landlord if it helps your history.</p>
@@ -344,7 +350,6 @@
 
         <section class="form-step" data-step="4" aria-labelledby="step-4-title" hidden>
           <div class="app-error-summary" id="errors-4" role="alert" tabindex="-1"></div>
-          <p class="step-kicker">Step 4 of 6</p>
           <h1 id="step-4-title" tabindex="-1">References</h1>
           <p class="step-intro">Two people the leasing team can speak to, such as an employer,
              a previous landlord, or a colleague.</p>
@@ -358,7 +363,6 @@
 
         <section class="form-step" data-step="5" aria-labelledby="step-5-title" hidden>
           <div class="app-error-summary" id="errors-5" role="alert" tabindex="-1"></div>
-          <p class="step-kicker">Step 5 of 6</p>
           <h1 id="step-5-title" tabindex="-1">Additional Information</h1>
           <p class="step-intro">Who else is moving in with you.</p>
 
@@ -385,7 +389,8 @@
           <div class="group form-block">
             <h2 class="group-title">Roommates <span class="optional">Optional</span></h2>
             <p class="group-help">Renting together with someone? Add each person who will live
-               here and sign the lease with you.</p>
+               here and sign the lease with you. Each roommate you add needs their full name,
+               phone, and email.</p>
             <div class="repeat-list" id="rep-roommates" data-repeat="roommate"></div>
             <button class="repeat-add" type="button" id="add-roommate">+ Add a roommate</button>
           </div>
@@ -400,7 +405,6 @@
 
         <section class="form-step" data-step="6" aria-labelledby="step-6-title" hidden>
           <div class="app-error-summary" id="errors-6" role="alert" tabindex="-1"></div>
-          <p class="step-kicker">Step 6 of 6</p>
           <h1 id="step-6-title" tabindex="-1">Review &amp; Submit</h1>
           <p class="step-intro">Check your answers, then submit. Nothing has been sent yet.</p>
 
@@ -419,7 +423,7 @@
 
           <div class="form-block">
             <div class="field">
-              <label for="message">Anything else you would like us to know? <span class="optional">Optional</span></label>
+              <label for="message">Anything else you would like us to know?</label>
               <textarea id="message" name="message" maxlength="2000"
                         placeholder="Anything that helps the leasing team read your application."></textarea>
             </div>
@@ -459,7 +463,7 @@
         <div class="field span2"><label data-label="employer">Employer</label><input data-field="employer" maxlength="160"></div>
         <div class="field"><label data-label="position">Position</label><input data-field="position" maxlength="120"></div>
         <div class="field"><label data-label="start">From</label><input data-field="start" maxlength="20" inputmode="numeric" placeholder="01/2019"></div>
-        <div class="field"><label data-label="end">Until <span class="optional">Optional</span></label><input data-field="end" maxlength="20" inputmode="numeric" placeholder="MM/YYYY"></div>
+        <div class="field"><label data-label="end">Until</label><input data-field="end" maxlength="20" inputmode="numeric" placeholder="MM/YYYY"></div>
         <div class="field"><label data-label="income">Annual income</label><input data-field="income" maxlength="30" inputmode="decimal" placeholder="$90,000"></div>
         <div class="field"><label data-label="supervisor_name">Supervisor name</label><input data-field="supervisor_name" maxlength="120"></div>
         <div class="field"><label data-label="supervisor_phone">Supervisor phone</label><input data-field="supervisor_phone" type="tel" inputmode="tel" maxlength="30"></div>
@@ -478,7 +482,7 @@
         <div class="field"><label data-label="landlord_phone">Phone</label><input data-field="landlord_phone" type="tel" inputmode="tel" maxlength="30"></div>
         <div class="field span2"><label data-label="landlord_email">Email</label><input data-field="landlord_email" type="email" maxlength="180"></div>
         <div class="field"><label data-label="start">From</label><input data-field="start" maxlength="20" inputmode="numeric" placeholder="08/2022"></div>
-        <div class="field"><label data-label="end">Until <span class="optional">Optional</span></label><input data-field="end" maxlength="20" inputmode="numeric" placeholder="MM/YYYY"></div>
+        <div class="field"><label data-label="end">Until</label><input data-field="end" maxlength="20" inputmode="numeric" placeholder="MM/YYYY"></div>
         <div class="field"><label data-label="monthly_rent">Monthly rent</label><input data-field="monthly_rent" maxlength="30" inputmode="decimal" placeholder="$2,950"></div>
       </div>
     </fieldset>
@@ -490,7 +494,7 @@
       <div class="repeat-head"></div>
       <div class="field-grid">
         <div class="field"><label data-label="name">Name</label><input data-field="name" maxlength="120"></div>
-        <div class="field"><label data-label="relationship">Relationship</label><input data-field="relationship" maxlength="80" placeholder="Employer, landlord, colleague"></div>
+        <div class="field"><label data-label="relationship">Relationship</label><input data-field="relationship" maxlength="80" placeholder="Employer or landlord"></div>
         <div class="field"><label data-label="phone">Phone</label><input data-field="phone" type="tel" inputmode="tel" maxlength="30"></div>
         <div class="field"><label data-label="email">Email</label><input data-field="email" type="email" maxlength="180"></div>
       </div>

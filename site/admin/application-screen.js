@@ -6,9 +6,10 @@
 // into a column somebody had to scroll past to reach the next name. Reading
 // one was fine. Working a pipeline was not.
 //
-// So the list is a list, and this is the page it opens. Six tabs, because the
-// six things a reader wants are six different questions, and one sticky panel
-// down the right, because the answer to all of them is a decision.
+// So the list is a list, and this is the page it opens. Two tabs, because the
+// reader's first question is what the lease will print, and everything else is
+// screening material behind it, opened a section at a time. One sticky panel
+// down the right, because the answer to both is a decision.
 //
 // What stays out of here, deliberately:
 //
@@ -55,13 +56,12 @@ export function initApplicationScreen(deps) {
 
 // ------------------------------------------------------------------- shape
 
+// Two tabs, split by one rule: a value the lease document prints — read off
+// lease/schema/fields.json's `applications.*` sources — is on the first tab,
+// and everything the applicant answered for screening is on the second.
 const TABS = [
-  ["overview", "Overview"],
-  ["applicant", "Applicant & household"],
-  ["income", "Employment & income"],
-  ["rental", "Rental history"],
-  ["documents", "Documents"],
-  ["references", "References & contacts"]
+  ["lease", "Info On Lease"],
+  ["screening", "Info NOT On Lease"]
 ];
 
 const IDENTITY_FIELDS = [
@@ -73,10 +73,15 @@ const IDENTITY_FIELDS = [
   { key: "phone", label: "Phone", type: "tel" }
 ];
 
-const RESIDENCE_FIELDS = [
+const HOUSEHOLD_FIELDS = [
   { key: "dob", label: "Date of birth", type: "text", placeholder: "MM/DD/YYYY" },
   { key: "current_address", label: "Current address", type: "text" },
-  { key: "household_size", label: "Household size", type: "number", min: 1, max: 20 },
+  { key: "household_size", label: "Household size", type: "number", min: 1, max: 20 }
+];
+
+// The window guard notice is the one part of the lease answered by check
+// boxes rather than a printed value, which is why these two sit apart.
+const GUARD_FIELDS = [
   { key: "children_under_11", label: "Children 10 or younger", type: "boolean",
     note: "Answers the window guard notice on the lease." },
   { key: "wants_window_guards", label: "Wants window guards anyway", type: "boolean",
@@ -165,13 +170,14 @@ const LISTS = {
   ] }
 };
 
-// Which tab owns which fields, so an Edit button only ever collects its own.
-// `employer` and `student` are the two halves of the work-or-school branch;
-// collect() only ever finds the inputs of the half that was rendered, which
-// is the half this application answered.
+// Which section owns which fields, so an Edit button only ever collects its
+// own. `employer` and `student` are the two halves of the work-or-school
+// branch; collect() only ever finds the inputs of the half that was rendered,
+// which is the half this application answered.
 const EDITABLE = {
-  applicant: { scalars: [...IDENTITY_FIELDS, ...RESIDENCE_FIELDS, ...TENANCY_FIELDS, ...MESSAGE_FIELDS],
-    lists: ["roommates", "pets"], employer: false },
+  lease: { scalars: [...IDENTITY_FIELDS, ...TENANCY_FIELDS, ...GUARD_FIELDS],
+    lists: ["roommates"], employer: false },
+  household: { scalars: [...HOUSEHOLD_FIELDS, ...MESSAGE_FIELDS], lists: ["pets"], employer: false },
   income: { scalars: INCOME_FIELDS, lists: ["employment_history"], employer: true, student: true },
   rental: { scalars: [], lists: ["rental_history"], employer: false },
   references: { scalars: [], lists: ["reference_contacts", "emergency_contacts"], employer: false }
@@ -180,19 +186,23 @@ const EDITABLE = {
 // ------------------------------------------------------------------- state
 
 // Which tab is open survives a re-render — reading the documents, correcting
-// a value and coming back should not throw the reader to Overview — but not a
+// a value and coming back should not throw the reader to the top — but not a
 // different application: opening somebody else starts at the top.
 let openId = "";
-let tab = "overview";
+let tab = "lease";
 let editing = "";
+// Which screening sections are unfolded. A save re-renders the whole page,
+// and the section being worked in should still be open afterwards.
+let expanded = new Set();
 // "decline" or "request": the two actions that ask for a sentence before they
 // happen, shown inline rather than through a browser prompt.
 let pending = "";
 
 export function resetApplicationScreen() {
   openId = "";
-  tab = "overview";
+  tab = "lease";
   editing = "";
+  expanded = new Set();
   pending = "";
 }
 
@@ -371,105 +381,29 @@ function panel(title, note, body, { section = "", extra = "" } = {}) {
 
 // ------------------------------------------------------------------ tabs
 
-function overviewTab(app) {
-  const income = incomeSummary(app);
-  const docs = documentSummary(app, documentTypesOf());
-  const employer = app.current_employer || {};
-  const student = app.student || {};
-
-  const means = isStudentApp(app)
-    ? group("Study", [
-      fact("Supports rent as", "Student"),
-      fact("School", student.school_name),
-      fact("Major", student.major),
-      fact("Years", [student.entry_year, student.graduation_year].filter(Boolean).join(" – ")),
-      fact("Country of citizenship", student.country)
-    ].join(""))
-    : group("Income and employment", [
-      fact("Employer", employer.employer),
-      fact("Annual income", income.annual === null ? income.written : money(income.annual)),
-      fact("Monthly income", income.monthly === null ? "" : money(income.monthly)),
-      fact("Rent on this apartment", income.rent === null ? "" : money(income.rent)),
-      fact("Rent to income", income.ratio === null ? "" : ratioText(income.ratio),
-        income.ratio === null ? "" : "of monthly income")
-    ].join(""));
-
-  const summary = group("Applicant", [
-    fact("Email", app.email),
-    fact("Phone", app.phone),
-    fact("Current address", app.current_address),
-    fact("Household size", app.household_size)
-  ].join("")) + means;
-
-  const startingValues = `<dl class="factlist">${[
-    fact("Tenant legal name", app.name),
-    fact("Also named", coApplicants(app)),
-    fact("Contact email", app.email),
-    fact("Contact phone", app.phone),
-    fact("Lease start", plainDate(app.move_in)),
-    fact("Preferred term", app.lease_term_months ? `${app.lease_term_months} months` : ""),
-    fact("Children 10 or younger",
-      app.children_under_11 === true ? "Yes" : app.children_under_11 === false ? "No" : "",
-      "decides the window guard notice"),
-    fact("Wants window guards anyway", app.wants_window_guards === true ? "Yes" : ""),
-    fact("Roommates", roommatesLine(app)),
-    fact("Pets", petsLine(app))
-  ].join("")}</dl>`;
-
-  return `
-    ${panel("Application summary", "What a decision needs, and nothing else.",
-      `<div class="facts">${summary}</div>`)}
-
-    ${panel("Lease starting values",
-      "These are starting values from the application. The agent confirms final lease terms when creating the lease.",
-      `${startingValues}
-       <p class="note">Rent, deposit, concession, prorated rent and every other transaction term are
-          settled in the lease workspace, not here.</p>`,
-      { extra: "is-start" })}
-
-    ${panel("Document readiness", docs
-      ? (docs.complete
-        ? "Every required document has been received."
-        : `${docs.missing} required document${docs.missing === 1 ? "" : "s"} still to come.`)
-      : "This database has no document checklist yet.",
-      docs ? `<div class="counts">
-          <div class="count"><span class="k">Required</span><b>${docs.requiredMet} / ${docs.required}</b></div>
-          <div class="count"><span class="k">Optional</span><b>${docs.optionalReceived} / ${docs.optional}</b></div>
-          <div class="count"><span class="k">Missing</span><b class="${docs.missing ? "is-bad" : "is-good"}">${docs.missing}</b></div>
-        </div>
-        <button type="button" class="small" data-appl-goto="documents">Open the document checklist</button>`
-        : '<p class="note">Run supabase/schema.sql on this database and the checklist appears here.</p>')}`;
+// A screening section: closed, one line saying what it holds; open, the same
+// panel it always was. Nothing but its own Edit tools lives in the body head,
+// because the summary row is a toggle, not a toolbar.
+function fold(key, title, note, body, { section = "" } = {}) {
+  return `<details class="appl-fold"${expanded.has(key) ? " open" : ""} data-appl-fold="${escapeHtml(key)}">
+    <summary>
+      <span class="appl-fold-title">${escapeHtml(title)}</span>
+      ${note ? `<span class="appl-fold-note">${escapeHtml(note)}</span>` : ""}
+    </summary>
+    <div class="appl-fold-body">
+      ${section ? `<div class="appl-fold-tools">${editTools(section)}</div>` : ""}
+      ${body}
+    </div>
+  </details>`;
 }
 
-// The lease prints one `name`, and it may hold more than one person. Anything
-// joined by "and", "&" or a comma is somebody else who will sign.
-function coApplicants(app) {
-  const parts = String(app.name || "").split(/\s*(?:,| and | & )\s*/i).filter(Boolean);
-  return parts.length > 1 ? parts.slice(1).join(", ") : "";
-}
+function leaseTab(app) {
+  const edit = editing === "lease";
 
-function petsLine(app) {
-  const pets = Array.isArray(app.pets) ? app.pets : [];
-  if (pets.length === 0) return "None reported";
-  return pets.map((pet) => [pet.type, pet.species, pet.weight ? `${pet.weight} lb` : ""]
-    .filter(Boolean).join(" · ")).join("; ");
-}
-
-// Who the applicant says will rent alongside them. They are not on the lease
-// until the agent puts them there, which is why they are named here.
-function roommatesLine(app) {
-  const mates = Array.isArray(app.roommates) ? app.roommates : [];
-  if (mates.length === 0) return "";
-  return mates.map((mate) => `${mate.first_name || ""} ${mate.last_name || ""}`.trim())
-    .filter(Boolean).join(", ");
-}
-
-function applicantTab(app) {
-  const edit = editing === "applicant";
-
-  const identity = group("Personal", fields(app, IDENTITY_FIELDS, edit) + (edit ? "" : ssnRow(app)));
-  const residence = group("Residence and household", fields(app, RESIDENCE_FIELDS, edit));
+  const tenant = group("Tenant", fields(app, IDENTITY_FIELDS, edit)
+    + (edit ? "" : fact("Also named", coApplicants(app))));
   const tenancy = group("The tenancy applied for", fields(app, TENANCY_FIELDS, edit));
+  const guards = group("Window guard notice", fields(app, GUARD_FIELDS, edit));
 
   const roommates = edit
     ? entryEditor(app, "roommates")
@@ -479,6 +413,39 @@ function applicantTab(app) {
           ${fact("Phone", mate.phone)}
           ${fact("Email", mate.email)}
         </dl></div>`);
+
+  return panel("Lease starting values",
+    "These are starting values from the application. The agent confirms final lease terms when creating the lease.",
+    `<div class="facts">${tenant}${tenancy}${guards}</div>
+     <div class="sub"><h3>Roommates</h3>${roommates}
+       <p class="note">A roommate is on the lease once the agent adds them to the tenant legal names.</p></div>
+     <p class="note">Rent, deposit, concession, prorated rent and every other transaction term are
+        settled in the lease workspace, not here.</p>`,
+    { section: "lease", extra: "is-start" });
+}
+
+function screeningTab(app) {
+  return [
+    householdSection(app),
+    incomeSection(app),
+    rentalSection(app),
+    documentsSection(app),
+    referencesSection(app)
+  ].join("");
+}
+
+// The lease prints one `name`, and it may hold more than one person. Anything
+// joined by "and", "&" or a comma is somebody else who will sign.
+function coApplicants(app) {
+  const parts = String(app.name || "").split(/\s*(?:,| and | & )\s*/i).filter(Boolean);
+  return parts.length > 1 ? parts.slice(1).join(", ") : "";
+}
+
+function householdSection(app) {
+  const edit = editing === "household";
+
+  const residence = group("Residence and household",
+    fields(app, HOUSEHOLD_FIELDS, edit) + (edit ? "" : ssnRow(app)));
 
   const pets = edit
     ? entryEditor(app, "pets")
@@ -494,16 +461,15 @@ function applicantTab(app) {
     : (app.message ? `<p class="longtext">${escapeHtml(app.message)}</p>`
       : '<p class="none">The applicant did not add a message.</p>');
 
-  return panel("Applicant and household", "Who is applying, and who is moving in.",
-    `<div class="facts">${identity}${residence}${tenancy}</div>
-     <div class="sub"><h3>Roommates</h3>${roommates}</div>
+  return fold("household", "Household and residence", "Who is moving in, and from where.",
+    `<div class="facts">${residence}</div>
      <div class="sub"><h3>Pets</h3>${pets}</div>
      <div class="sub"><h3>Anything else the applicant wrote</h3>${message}</div>
      ${edit ? "" : `<p class="sensitive">Sensitive information is masked. ${
        isManager()
          ? "Revealing the full identity number is a manager’s, and it is never shown in the lease workflow."
          : "The full identity number is a manager’s to see, and it is never shown in the lease workflow."}</p>`}`,
-    { section: "applicant" });
+    { section: "household" });
 }
 
 // The identity number is an SSN or, for applicants without one, a passport
@@ -529,7 +495,7 @@ function ssnRow(app) {
      <button type="button" class="link reveal" data-role="ssn-reveal">Reveal in full</button>`);
 }
 
-function incomeTab(app) {
+function incomeSection(app) {
   const edit = editing === "income";
   const income = incomeSummary(app);
   const employer = app.current_employer || {};
@@ -581,13 +547,13 @@ function incomeTab(app) {
     ? ""
     : `<div class="sub"><h3>Previous employment</h3>${history}</div>`;
 
-  return panel(isStudentApp(app) ? "Study and income" : "Employment and income",
-    "Screening information. None of it is transferred to the lease.",
+  return fold("income", isStudentApp(app) ? "Study and income" : "Employment and income",
+    "How the rent is supported.",
     `<div class="facts">${current}${summary}</div>${historyBlock}`,
     { section: "income" });
 }
 
-function rentalTab(app) {
+function rentalSection(app) {
   const edit = editing === "rental";
 
   const body = edit
@@ -603,11 +569,11 @@ function rentalTab(app) {
           ${fact("Landlord email", entry.landlord_email)}
         </dl></div>`);
 
-  return panel("Rental history", "Most recent residence first. Screening information only.",
+  return fold("rental", "Rental history", "Most recent residence first.",
     body, { section: "rental" });
 }
 
-function referencesTab(app) {
+function referencesSection(app) {
   const edit = editing === "references";
 
   const contactCard = (entry) => `<div class="card">
@@ -625,8 +591,8 @@ function referencesTab(app) {
     ? entryEditor(app, "emergency_contacts")
     : entryCards(app, "emergency_contacts", contactCard);
 
-  return panel("References and contacts",
-    "Part of the application record. None of it is transferred to the lease.",
+  return fold("references", "References and contacts",
+    "References the applicant named, and who to reach in an emergency.",
     `<div class="sub"><h3>References</h3>${references}</div>
      <div class="sub"><h3>Emergency contacts</h3>${emergency}</div>`,
     { section: "references" });
@@ -643,11 +609,11 @@ const DOC_STATES = {
   optional: { label: "Optional", tone: "off" }
 };
 
-function documentsTab(app) {
+function documentsSection(app) {
   const docs = documentSummary(app, documentTypesOf());
 
   if (!docs) {
-    return panel("Screening documents", "",
+    return fold("documents", "Documents", "No document checklist on this database.",
       `<p class="none">This database has no document checklist. Run supabase/schema.sql on it and
         the applicant's uploads appear here.</p>`);
   }
@@ -681,8 +647,9 @@ function documentsTab(app) {
     </div>`;
   }).join("");
 
-  return panel("Screening documents",
-    "The applicant uploads these at /portal/. Opening one shows the file itself.",
+  return fold("documents", "Documents",
+    docs.complete ? "Every required document has been received."
+      : `${docs.requiredMet} of ${docs.required} required received.`,
     `<div class="counts">
         <div class="count"><span class="k">Required received</span><b>${docs.requiredMet} / ${docs.required}</b></div>
         <div class="count"><span class="k">Optional received</span><b>${docs.optionalReceived} / ${docs.optional}</b></div>
@@ -690,7 +657,8 @@ function documentsTab(app) {
         <div class="count"><span class="k">Overall</span><b class="${docs.complete ? "is-good" : ""}">${
           docs.complete ? "Complete" : `${Math.round((docs.requiredMet / Math.max(docs.required, 1)) * 100)}%`}</b></div>
      </div>
-     <div class="doclist">${rows}</div>`);
+     <div class="doclist">${rows}</div>
+     <p class="note">The applicant uploads these at /portal/. Opening one shows the file itself.</p>`);
 }
 
 // Replace, download and remove are one click away, not zero: a red Delete
@@ -845,8 +813,9 @@ function actionButtons(app, stage) {
 export function renderApplicationScreen(host, app) {
   if (app.id !== openId) {
     openId = app.id;
-    tab = "overview";
+    tab = "lease";
     editing = "";
+    expanded = new Set();
     pending = "";
   }
 
@@ -858,12 +827,8 @@ export function renderApplicationScreen(host, app) {
     : "—";
 
   const bodies = {
-    overview: overviewTab,
-    applicant: applicantTab,
-    income: incomeTab,
-    rental: rentalTab,
-    documents: documentsTab,
-    references: referencesTab
+    lease: leaseTab,
+    screening: screeningTab
   };
 
   host.innerHTML = `
@@ -901,8 +866,7 @@ export function renderApplicationScreen(host, app) {
     <div class="tabs" role="tablist" aria-label="Application sections">
       ${TABS.map(([key, label]) => `<button type="button" class="tab" role="tab"
         id="appl-tab-${key}" data-appl-tab="${key}" aria-selected="${key === tab}"
-        aria-controls="appl-panel">${escapeHtml(
-          key === "income" && isStudentApp(app) ? "Student" : label)}</button>`).join("")}
+        aria-controls="appl-panel">${escapeHtml(label)}</button>`).join("")}
     </div>
 
     <div class="appl-cols">
@@ -1002,9 +966,29 @@ export async function handleApplicationClick(event, host, app) {
     return true;
   }
 
+  // The fold's open state is ours, not the browser's: a save re-renders the
+  // whole page, and a details element rebuilt from HTML forgets it was open.
+  const summary = event.target.closest("summary");
+  if (summary) {
+    const key = summary.closest("details")?.dataset.applFold;
+    if (key) {
+      event.preventDefault();
+      if (expanded.has(key)) {
+        expanded.delete(key);
+        if (editing === key) editing = "";
+      } else {
+        expanded.add(key);
+      }
+      renderApplicationScreen(host, app);
+      host.querySelector(`[data-appl-fold="${CSS.escape(key)}"] > summary`)?.focus();
+      return true;
+    }
+  }
+
   const jump = event.target.closest("[data-appl-goto]");
   if (jump) {
-    tab = jump.dataset.applGoto;
+    tab = "screening";
+    expanded.add(jump.dataset.applGoto);
     editing = "";
     pending = "";
     renderApplicationScreen(host, app);
@@ -1014,6 +998,7 @@ export async function handleApplicationClick(event, host, app) {
   const startEdit = event.target.closest("[data-appl-edit]");
   if (startEdit) {
     editing = startEdit.dataset.applEdit;
+    expanded.add(editing);
     renderApplicationScreen(host, app);
     return true;
   }
