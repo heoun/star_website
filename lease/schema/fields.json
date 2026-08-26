@@ -2085,7 +2085,7 @@
       "required": false,
       "default": false,
       "from": "applications.wants_window_guards",
-      "note": "The application form does not ask this yet; the column has to be added."
+      "note": "Answered by the application form's window guard checkbox."
     }
   ]
 }

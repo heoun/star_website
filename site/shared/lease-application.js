@@ -16,15 +16,12 @@
 
 const COLUMN = /^applications\.([a-z0-9_]+)$/;
 
-// The columns that exist and that an agent may correct. The registry names one
-// more — `applications.wants_window_guards`, for the third window guard answer
-// — as a plan rather than a fact: the application form does not ask it and the
-// column is not there, so nothing may write to it. Keep this in step with the
-// fields worker/apply.js accepts a correction for.
+// The columns that exist and that an agent may correct. Keep this in step
+// with the fields worker/apply.js accepts a correction for.
 const WRITABLE = new Set([
   "name", "email", "phone", "move_in", "lease_term_months", "dob",
   "current_address", "household_size", "income_note", "children_under_11",
-  "message", "concession_terms"
+  "wants_window_guards", "message", "concession_terms"
 ]);
 
 export function applicationColumns(fields) {

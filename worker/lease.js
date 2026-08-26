@@ -122,12 +122,16 @@ export function dealValues({ application, listing, building, today }) {
     "deposit.amount": rent
   };
 
-  // The window guard notice asks two questions. The application answers the
-  // first; nothing answers the second yet, so it stays for the agent.
+  // The window guard notice asks two questions and the application answers
+  // both: whether young children live in the unit, and whether the tenant
+  // wants the guards anyway.
   const hasChildren = application?.children_under_11;
   if (hasChildren === true || hasChildren === false) {
     values["window_guard.mark_has_children"] = hasChildren;
     values["window_guard.mark_no_children"] = !hasChildren;
+  }
+  if (application?.wants_window_guards === true || application?.wants_window_guards === false) {
+    values["window_guard.mark_wants_anyway"] = application.wants_window_guards;
   }
 
   return values;
@@ -204,6 +208,20 @@ export function resolveValues({ layers, deal, overrides = {} }) {
   }
 
   return { values, missing };
+}
+
+// Which required fields a set of already-resolved values leaves blank.
+//
+// resolveValues() works this out on its way through the layers. A lease read
+// back from its snapshot has no layers left to walk — only the strings the
+// document was filled with — so the same question is asked of those directly.
+// Checkboxes are skipped for the same reason they are never required: false is
+// an answer.
+export function missingIn(values) {
+  return FIELDS
+    .filter((field) => field.required && field.type !== "checkbox"
+      && String(values?.[field.id] ?? "") === "")
+    .map((field) => field.id);
 }
 
 export function describeMissing(ids) {

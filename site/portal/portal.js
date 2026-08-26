@@ -106,7 +106,7 @@
     container.innerHTML = `
       <h1>Applicant Portal</h1>
       <p class="lede">${nextPath.startsWith("/apply/")
-        ? "Sign in — or create your account — to continue your application. Your account is where you follow its progress and upload your documents afterwards."
+        ? "Sign in, or create your account, to continue your application. Your account is where you follow its progress and upload your documents afterwards."
         : "Follow your rental application and upload your supporting documents. Sign in with your applicant account."}</p>
       <form class="portal-login" id="signin-form" novalidate>
         <label for="login-email">Email</label>
@@ -151,8 +151,8 @@
   function renderRegister() {
     container.innerHTML = `
       <h1>Create your account</h1>
-      <p class="lede">Use the email address you want your application filed under —
-        we will send a code to confirm it is yours.</p>
+      <p class="lede">Use the email address you want your application filed under.
+        We will send a code to confirm it is yours.</p>
       <form class="portal-login" id="register-form" novalidate>
         <label for="reg-email">Email</label>
         <input id="reg-email" type="email" maxlength="180" autocomplete="email" required
@@ -203,7 +203,7 @@
     container.innerHTML = `
       <h1>Check your email</h1>
       <p class="lede">We sent a 6-digit code to <b>${escapeHtml(state.email)}</b>.
-        It is good for about an hour — if it is not in your inbox, check spam.</p>
+        It is good for about an hour. If it is not in your inbox, check spam.</p>
       <form class="portal-login" id="code-form" novalidate>
         <label for="login-code">Code</label>
         <input id="login-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
@@ -332,7 +332,7 @@
     const listing = app.listing;
     if (!listing) return "Property no longer listed";
     const home = [listing.building_name, listing.unit].filter(Boolean).join(" ");
-    return home ? `${listing.title} — ${home}` : (listing.title || "Property");
+    return home ? `${listing.title} · ${home}` : (listing.title || "Property");
   }
 
   function formatSize(bytes) {
@@ -341,21 +341,62 @@
     return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   }
 
-  function requiredProgress(app) {
-    const required = (state.data.document_types || []).filter((type) => type.required > 0);
-    const met = required.filter((type) =>
-      app.documents.filter((doc) => doc.doc_type === type.id).length >= type.required);
-    return { met: met.length, total: required.length };
+  // The checklist this application is asked for. `when` limits a type to one
+  // work-or-school answer; applications from before the question all had an
+  // employer on the form, so a missing answer reads as employed. The Worker
+  // filters uploads by the same rule, so the buttons here and the uploads it
+  // accepts are one list.
+  function applicableTypes(app) {
+    const status = app.employment_status === "student" ? "student" : "employed";
+    return (state.data.document_types || []).filter((type) => !type.when || type.when === status);
   }
 
-  function docTypeRow(app, type) {
+  // Types sharing an `either` value are alternatives — a job offer letter
+  // proves income the same way two paystubs do — so a satisfied sibling
+  // satisfies the group.
+  function typeSatisfied(app, type, types) {
+    const enough = (entry) =>
+      app.documents.filter((doc) => doc.doc_type === entry.id).length >= entry.required;
+    if (!type.either) return enough(type);
+    return types.some((other) => other.either === type.either && enough(other));
+  }
+
+  function requiredProgress(app) {
+    const types = applicableTypes(app);
+    // An either-group is one requirement, not two: counting the offer letter
+    // and the paystubs separately would tell an applicant who finished that
+    // they are still one short.
+    const counted = new Set();
+    let total = 0;
+    let met = 0;
+    for (const type of types) {
+      if (type.required === 0) continue;
+      const unit = type.either || type.id;
+      if (counted.has(unit)) continue;
+      counted.add(unit);
+      total += 1;
+      if (typeSatisfied(app, type, types)) met += 1;
+    }
+    return { met, total };
+  }
+
+  // `orphan` marks a type this application is no longer asked for but has
+  // files under — uploaded before an agent corrected the work-or-school
+  // answer. The files stay visible and removable; only new uploads stop,
+  // because the Worker refuses them too.
+  function docTypeRow(app, type, types, { orphan = false } = {}) {
     const files = app.documents.filter((doc) => doc.doc_type === type.id);
-    const satisfied = type.required > 0 && files.length >= type.required;
-    const badge = type.required === 0
-      ? '<span class="doc-req">Optional</span>'
-      : satisfied
-        ? '<span class="doc-req is-done">Received</span>'
-        : `<span class="doc-req is-missing">Required${type.required > 1 ? ` · ${files.length}/${type.required}` : ""}</span>`;
+    const ownSatisfied = type.required > 0 && files.length >= type.required;
+    const groupSatisfied = type.required > 0 && typeSatisfied(app, type, types);
+    const badge = orphan
+      ? '<span class="doc-req">No longer requested</span>'
+      : type.required === 0
+        ? '<span class="doc-req">Optional</span>'
+        : ownSatisfied
+          ? '<span class="doc-req is-done">Received</span>'
+          : groupSatisfied
+            ? '<span class="doc-req is-done">Covered</span>'
+            : `<span class="doc-req is-missing">Required${type.required > 1 ? ` · ${files.length}/${type.required}` : ""}</span>`;
 
     const list = files.map((doc) => `
       <li class="doc-file">
@@ -368,14 +409,23 @@
       <div class="doc-type">
         <div class="doc-type-head">
           <span class="doc-label">${escapeHtml(type.label)} ${badge}</span>
-          <button type="button" class="doc-add" data-upload="${escapeHtml(type.id)}"
+          ${orphan ? "" : `<button type="button" class="doc-add" data-upload="${escapeHtml(type.id)}"
                   data-app="${escapeHtml(app.id)}"${files.length >= type.max ? " disabled" : ""}>
             ${files.length > 0 ? "Add another" : "Upload"}
-          </button>
+          </button>`}
         </div>
-        ${type.hint ? `<p class="doc-hint">${escapeHtml(type.hint)}</p>` : ""}
+        ${orphan || !type.hint ? "" : `<p class="doc-hint">${escapeHtml(type.hint)}</p>`}
         ${list ? `<ul class="doc-files">${list}</ul>` : ""}
       </div>`;
+  }
+
+  // Files under types the checklist no longer asks this application for.
+  function orphanRows(app, types) {
+    return (state.data.document_types || [])
+      .filter((type) => !types.includes(type)
+        && app.documents.some((doc) => doc.doc_type === type.id))
+      .map((type) => docTypeRow(app, type, types, { orphan: true }))
+      .join("");
   }
 
   function renderDashboard() {
@@ -386,6 +436,7 @@
       const submitted = new Date(app.created_at).toLocaleDateString("en-US", {
         month: "long", day: "numeric", year: "numeric"
       });
+      const types = applicableTypes(app);
       const progress = requiredProgress(app);
       const facts = [
         `Submitted ${submitted}`,
@@ -402,11 +453,11 @@
           <p class="portal-facts">${escapeHtml(facts)}</p>
           <p class="portal-progress${progress.met === progress.total ? " is-done" : ""}">
             ${progress.met === progress.total
-              ? "All required documents received — thank you"
+              ? "All required documents received. Thank you"
               : `Required documents · ${progress.met} of ${progress.total} complete`}
           </p>
           <div class="doc-list">
-            ${(data.document_types || []).map((type) => docTypeRow(app, type)).join("")}
+            ${types.map((type) => docTypeRow(app, type, types)).join("")}${orphanRows(app, types)}
           </div>
         </section>`;
     }).join("");
@@ -419,8 +470,8 @@
       <h1>Your application${apps.length === 1 ? "" : "s"}</h1>
       ${apps.length === 0
         ? `<p class="lede">There is no application under ${escapeHtml(data.email)} yet.
-             <a href="../rental/">Browse the rentals</a> and apply from any property page —
-             your application will appear here.</p>`
+             <a href="../rental/">Browse the rentals</a> and apply from any property page.
+             Your application will appear here.</p>`
         : `<p class="lede">Upload each document below as a PDF or a photo (JPEG, PNG, HEIC),
              up to 10&nbsp;MB per file. We are notified automatically once everything
              required is in.</p>`}

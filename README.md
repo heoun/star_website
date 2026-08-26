@@ -184,7 +184,7 @@ Four screens, each with its own address so one can be linked to and gone back fr
 | `#/listings` | Everything the public site shows. Folder import, media, the listing editor |
 | `#/applications` | The pipeline, as a table, and `#/applications/<id>` for one of them |
 | `#/leases` | Approved applications, and `#/leases/<id>` for one of them |
-| `#/properties` | Landlord settings, per layer. Manager only |
+| `#/properties` | Properties and their landlord defaults, and `#/properties/<id>` for one. Manager only |
 
 `#/applications/<id>` is the **application page**. The list is a list —
 applicant, apartment, applied, move-in, income, documents, status, one action —
@@ -229,6 +229,37 @@ Two things the agent is deliberately never asked for: the address, which is comp
 **E-sign recipients** names every signer before anything is produced: the tenants from the application, then the landlord signer, which comes from the property and cannot be changed from a lease. There is no e-signature integration — the console produces the Word file and says who it is for, and the tab says so rather than implying a delivery that does not happen.
 
 The status in the header is `Draft` until every required value is answered and `Ready to send` once they are; beyond that it reports what the application says, because the application row carries the only record that a lease was sent or signed. There is no `leases` table and no `Partially signed`, since nothing here talks to a signing service.
+
+`#/properties/<id>` is the **property configuration**. The list says only what a
+manager decides on: entity, signer, apartment count, and whether an agent can
+send a lease for it today — `Ready`, `1 required item`, or `Setup incomplete`.
+Not a count of blanks; twenty-seven unanswered values with no priority between
+them tells nobody what to do next.
+
+The page has three tabs. **Property defaults** regroups the same registry the
+document is built from — contacts, fees, utilities, keys, fines, disclosures —
+by what a value is *for* rather than where it prints: Landlord & signing,
+Management & notices, Payments & standing fees, Utilities & services, and the
+sixty-three genuinely optional ones folded away behind one button. Nothing is
+stored twice; `site/admin/property-sections.js` is a second reading of the same
+fields, and it refuses to lose one. **Lease setup** says who owns which values —
+the application, the agent, the manager, the system — and lists the fifteen
+documents in the package, each of which opens. **Document preview** opens the
+real lease reader on this property's values, one document at a time.
+
+The **landlord signer** is the one setting whose absence stops an agent, so it
+is the one with its own affordance rather than a row in a table of ninety-three.
+It is stored in two places for a reason: the printed name is a lease value
+(`landlord.print_name`) because it appears above the signature line, and the
+address the signature request goes to appears nowhere in the document, so it has
+no placeholder and lives on the property row as `buildings.landlord_signer_email`.
+Both are refused for an agent by the Worker.
+
+**A sent lease stops following this screen.** The moment an application moves to
+`lease_sent`, every value the lease was generated from is frozen onto it as
+`applications.lease_snapshot`, and generation reads that from then on. Without
+it a manager correcting a payee address next week would change what somebody has
+already been asked to sign.
 
 **One value, one place it is written.** A building default is written on Properties; a single lease's override on the document screen; a tenant correction straight back to the application row. No screen writes a layer that belongs to another screen, which is why the settings form and the generate dialog were merged in the first place — two write paths to the same 147 values is how somebody edits a building's legal disclosures without realising it.
 
@@ -282,6 +313,39 @@ history, three required references, emergency contacts, pets, and whether
 children under 11 will live in the home. Repeated sections follow the same
 structure Innago uses, so agents can review them the way they are used to.
 
+It is asked in five steps, not on one page: **About you · Employment & income ·
+Rental history · References & household · Identity & review**. The page wears
+its own header — the property, the step, a way back to that property and a help
+dialog, and none of the site navigation, because every one of those links is a
+way to lose a part-filled form. Its styling lives in `site/apply/apply.css`,
+loaded by that page alone, which is where the form-density decisions sit:
+sentence-case labels at 15px, a full 1.5px input border at 3:1 against white,
+and 54px controls.
+
+Three things about that shape are load-bearing:
+
+- **All five steps are one `<form>` and one document.** A step that is not on
+  screen is hidden, never unmounted, so moving between steps cannot lose an
+  answer and the last step validates everything at once. The step lives in the
+  URL fragment (`#step-3`) and nothing else does — no answer is ever written to
+  the address bar.
+- **There is no draft and no autosave**, so the page promises neither. What it
+  does instead is ask before the page goes away once anything has been typed.
+- **The form is `method="post" action="/api/apply"`, and both should be dead
+  letters.** With JavaScript off there is no form at all: the whole thing lives
+  inside a `<template>`, which is inert, and the page renders a `<noscript>`
+  panel saying so. With JavaScript on, the page always intercepts its own
+  submit. The method and action exist for the one case in between — the handler
+  failing to attach after the form has been rendered — because a form with no
+  method is a form that would put a Social Security Number in a URL. The Worker
+  then refuses a body that is not `application/json` with a page explaining
+  that JavaScript is needed, which is also what keeps a cross-site form off the
+  route: no HTML form can set that header, whatever it does with `enctype`.
+
+  The `novalidate` attribute survives from the previous page on purpose. The
+  five step validators and the Worker's own re-check are stricter than native
+  bubbles, and native validation cannot run against four hidden panels.
+
 The SSN is handled more strictly than everything else:
 
 - The Worker encrypts it with AES-256-GCM before insert (`worker/ssn.js`); the
@@ -293,6 +357,14 @@ The SSN is handled more strictly than everything else:
   demand through `GET /api/admin/applications/<id>/ssn` (behind Cloudflare
   Access) when a manager clicks "Reveal in full" on the application page.
 - Notification email carries the applicant's name only — never form contents.
+- Nothing writes it to `localStorage`, `sessionStorage`, a URL or an analytics
+  call, because the page has none of those. A failed insert is logged with the
+  row Supabase quoted back stripped out, so not even the last four digits reach
+  a log line. `lease/tools/test-apply.mjs` holds all of this to account.
+  That redaction matches PostgREST's `Failing row contains …` detail, which is
+  the shape every constraint on `applications` produces today — a column added
+  later with a unique index would raise `Key (col)=(value) already exists`
+  instead, and would need the same treatment.
 
 The full number is a **manager's**. `GET /api/admin/applications/<id>/ssn`
 refuses an agent: nothing in the lease workflow reads an SSN — it is screening
@@ -711,6 +783,8 @@ npm run build
 for file in server.js scripts/*.js worker/*.js site/shared/*.js site/admin/*.js site/apply/apply.js site/portal/portal.js; do node --check "$file"; done
 python3 lease/tools/check-fields.py
 node lease/tools/test-lease.mjs
+node lease/tools/test-apply.mjs
+node lease/tools/test-permissions.mjs
 ```
 
 Also verify that:

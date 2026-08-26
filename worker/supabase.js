@@ -144,6 +144,22 @@ const APPLICATION_COLUMNS =
   "current_employer,employment_history,rental_history,reference_contacts," +
   "emergency_contacts,pets,message,status,notes,created_at,updated_at";
 
+// These columns arrived with the branched application form: whether the
+// applicant works or studies, which kind of identity number they gave, the
+// school record a student fills in instead of an employer, the window guard
+// request, and the roommates who will sign alongside. On a database that has
+// not run supabase/schema.sql they are left out together — the portal and
+// console then treat every application the way they treated all of them
+// before the branch existed.
+const APPLICATION_WORK_OR_SCHOOL =
+  "employment_status,id_type,student,wants_window_guards,roommates";
+let workOrSchoolColumns = true;
+
+function namesWorkOrSchool(error) {
+  return /\bemployment_status\b|\bid_type\b|\bstudent\b|\bwants_window_guards\b|\broommates\b/i
+    .test(String(error && error.message));
+}
+
 // Two columns arrived after some databases were created: `submitted`, which is
 // what the applicant wrote before an agent corrected it, and `concession_terms`,
 // which is the rent concession rider. Asking PostgREST for a column that is not
@@ -172,6 +188,20 @@ export function recordsDecisions() {
 
 function namesDecision(error) {
   return /\bdecision\b/i.test(String(error && error.message));
+}
+
+// The values a lease was generated from, frozen when it went out. Its own flag
+// rather than sharing `decision`'s: a database that has one and not the other
+// should lose only the one it is missing.
+const APPLICATION_SNAPSHOT = "lease_snapshot";
+let snapshotColumn = true;
+
+export function keepsLeaseSnapshots() {
+  return snapshotColumn;
+}
+
+function namesSnapshot(error) {
+  return /\blease_snapshot\b/i.test(String(error && error.message));
 }
 
 export function keepsSubmitted() {
@@ -208,8 +238,10 @@ function missingDocumentsTable(error) {
 
 async function selectApplications(env, filter) {
   const parts = [APPLICATION_COLUMNS];
+  if (workOrSchoolColumns) parts.push(APPLICATION_WORK_OR_SCHOOL);
   if (correctionColumns) parts.push(APPLICATION_CORRECTIONS);
   if (decisionColumn) parts.push(APPLICATION_DECISION);
+  if (snapshotColumn) parts.push(APPLICATION_SNAPSHOT);
   if (documentsTable) parts.push(APPLICATION_DOCUMENTS_SELECT);
   const order = documentsTable ? "&application_documents.order=created_at.asc" : "";
 
@@ -219,6 +251,12 @@ async function selectApplications(env, filter) {
     let degraded = false;
     if (documentsTable && missingDocumentsTable(error)) {
       documentsTable = false;
+      degraded = true;
+    } else if (workOrSchoolColumns && missingColumn(error) && namesWorkOrSchool(error)) {
+      workOrSchoolColumns = false;
+      degraded = true;
+    } else if (snapshotColumn && missingColumn(error) && namesSnapshot(error)) {
+      snapshotColumn = false;
       degraded = true;
     } else if (decisionColumn && missingColumn(error) && namesDecision(error)) {
       // Named explicitly rather than lumped in below. A database can have
@@ -270,17 +308,29 @@ export async function updateApplication(env, id, values) {
     return row;
   };
 
-  if (!("decision" in values)) return send(values);
+  const WORK_OR_SCHOOL_KEYS =
+    ["employment_status", "id_type", "student", "wants_window_guards", "roommates"];
+
+  const known = { ...values };
+  if (!decisionColumn) delete known.decision;
+  if (!snapshotColumn) delete known.lease_snapshot;
+  if (!workOrSchoolColumns) for (const key of WORK_OR_SCHOOL_KEYS) delete known[key];
 
   try {
-    return await send(values);
+    return await send(known);
   } catch (error) {
-    if (!decisionColumn || !missingWriteColumn(error) || !namesDecision(error)) throw error;
-    // The status change is the point; the note of who made it is not worth
-    // refusing it over on a database that has not been migrated yet.
-    decisionColumn = false;
-    const { decision, ...rest } = values;
-    return send(rest);
+    if (!missingWriteColumn(error)) throw error;
+
+    // The correction is the point; the note of who made it, the copy of what
+    // the lease said, and the branched-form answers are not worth refusing it
+    // over on a database that has not been migrated yet. Flip the one flag
+    // the error names and go again — each retry strips one more group, so
+    // this ends.
+    if (decisionColumn && namesDecision(error)) decisionColumn = false;
+    else if (snapshotColumn && namesSnapshot(error)) snapshotColumn = false;
+    else if (workOrSchoolColumns && namesWorkOrSchool(error)) workOrSchoolColumns = false;
+    else throw error;
+    return updateApplication(env, id, values);
   }
 }
 
@@ -289,10 +339,21 @@ export async function deleteApplication(env, id) {
 }
 
 export async function fetchApplicationSsn(env, id) {
-  const response = await restRequest(
-    env,
-    `applications?id=eq.${encodeURIComponent(id)}&select=id,ssn_encrypted`
-  );
+  // `id_type` says whether the ciphertext holds an SSN or a passport number,
+  // which decides how the reveal formats it — behind the same degrade flag
+  // as every other read of the work-or-school columns.
+  const columns = workOrSchoolColumns ? "id,ssn_encrypted,id_type" : "id,ssn_encrypted";
+  let response;
+  try {
+    response = await restRequest(
+      env,
+      `applications?id=eq.${encodeURIComponent(id)}&select=${columns}`
+    );
+  } catch (error) {
+    if (!workOrSchoolColumns || !missingColumn(error) || !namesWorkOrSchool(error)) throw error;
+    workOrSchoolColumns = false;
+    return fetchApplicationSsn(env, id);
+  }
   const [row] = await response.json();
   return row ?? null;
 }
@@ -313,25 +374,48 @@ function escapeLikePattern(value) {
   return value.replace(/([\\%_*])/g, "\\$1");
 }
 
+// `employment_status` decides which document checklist the applicant sees, so
+// the portal reads it — behind the same degrade flag as the console, because
+// both are asking the same database.
 export async function fetchApplicationsByEmail(env, email) {
-  const response = await restRequest(
-    env,
-    `applications?select=${PORTAL_APPLICATION_COLUMNS}` +
-    `&email=ilike.${encodeURIComponent(escapeLikePattern(email))}` +
-    "&order=created_at.desc&application_documents.order=created_at.asc"
-  );
+  const columns = workOrSchoolColumns
+    ? `${PORTAL_APPLICATION_COLUMNS},employment_status`
+    : PORTAL_APPLICATION_COLUMNS;
+  let response;
+  try {
+    response = await restRequest(
+      env,
+      `applications?select=${columns}` +
+      `&email=ilike.${encodeURIComponent(escapeLikePattern(email))}` +
+      "&order=created_at.desc&application_documents.order=created_at.asc"
+    );
+  } catch (error) {
+    if (!workOrSchoolColumns || !missingColumn(error) || !namesWorkOrSchool(error)) throw error;
+    workOrSchoolColumns = false;
+    return fetchApplicationsByEmail(env, email);
+  }
   const rows = await response.json();
   return rows.filter((row) => String(row.email || "").trim().toLowerCase() === email);
 }
 
 // One application, with only what the portal's upload path needs: whose it
-// is, and enough of the listing to name it in the completion notice.
+// is, which checklist applies, and enough of the listing to name it in the
+// completion notice.
 export async function fetchPortalApplication(env, id) {
-  const response = await restRequest(
-    env,
-    `applications?id=eq.${encodeURIComponent(id)}` +
-    "&select=id,name,email,status,listings(title,building_name,unit)"
-  );
+  const columns = workOrSchoolColumns
+    ? "id,name,email,status,employment_status,listings(title,building_name,unit)"
+    : "id,name,email,status,listings(title,building_name,unit)";
+  let response;
+  try {
+    response = await restRequest(
+      env,
+      `applications?id=eq.${encodeURIComponent(id)}&select=${columns}`
+    );
+  } catch (error) {
+    if (!workOrSchoolColumns || !missingColumn(error) || !namesWorkOrSchool(error)) throw error;
+    workOrSchoolColumns = false;
+    return fetchPortalApplication(env, id);
+  }
   const [row] = await response.json();
   return row || null;
 }
@@ -466,18 +550,44 @@ export function toAdminListing(row) {
 
 // ---------------------------------------------------------------- leases
 
-const BUILDING_COLUMNS = "id,name,street,city,state,state_abbr,zip,created_at,updated_at";
+const BUILDING_BASE = "id,name,street,city,state,state_abbr,zip,created_at,updated_at";
+
+// Where the landlord's signature request is sent. It arrived with the property
+// setup screen, so it degrades the way the application columns do: a database
+// that has not had supabase/schema.sql run on it still lists its buildings and
+// still generates leases — it just cannot record a signer address, and the
+// screen says so rather than failing.
+let signerEmailColumn = true;
+
+export function keepsSignerEmail() {
+  return signerEmailColumn;
+}
+
+function namesSignerEmail(error) {
+  return /\blandlord_signer_email\b/i.test(String(error && error.message));
+}
+
+function buildingColumns() {
+  return signerEmailColumn ? `${BUILDING_BASE},landlord_signer_email` : BUILDING_BASE;
+}
+
+async function selectBuildings(env, filter) {
+  try {
+    return await restRequest(env, `buildings?select=${buildingColumns()}${filter}`);
+  } catch (error) {
+    if (!signerEmailColumn || !missingColumn(error) || !namesSignerEmail(error)) throw error;
+    signerEmailColumn = false;
+    return selectBuildings(env, filter);
+  }
+}
 
 export async function fetchBuildings(env) {
-  const response = await restRequest(env, `buildings?select=${BUILDING_COLUMNS}&order=name.asc`);
+  const response = await selectBuildings(env, "&order=name.asc");
   return response.json();
 }
 
 export async function fetchBuilding(env, id) {
-  const response = await restRequest(
-    env,
-    `buildings?id=eq.${encodeURIComponent(id)}&select=${BUILDING_COLUMNS}`
-  );
+  const response = await selectBuildings(env, `&id=eq.${encodeURIComponent(id)}`);
   const [row] = await response.json();
   return row || null;
 }
@@ -493,13 +603,39 @@ export async function insertBuilding(env, values) {
 }
 
 export async function updateBuilding(env, id, values) {
-  const response = await restRequest(env, `buildings?id=eq.${encodeURIComponent(id)}`, {
-    method: "PATCH",
-    headers: { Prefer: "return=representation" },
-    body: JSON.stringify(values)
-  });
-  const [row] = await response.json();
-  return row;
+  const send = async (body) => {
+    const response = await restRequest(env, `buildings?id=eq.${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { Prefer: "return=representation" },
+      body: JSON.stringify(body)
+    });
+    const [row] = await response.json();
+    return row;
+  };
+
+  if (!("landlord_signer_email" in values)) return send(values);
+
+  const without = () => {
+    const { landlord_signer_email: dropped, ...rest } = values;
+    // Nothing left to write is not an error: the row is returned unchanged.
+    return Object.keys(rest).length === 0 ? fetchBuilding(env, id) : send(rest);
+  };
+
+  // Already known to be absent — from the select this session, which runs
+  // first on every screen that offers the field. Trying anyway would fail, and
+  // the catch below only forgives the first failure.
+  if (!signerEmailColumn) return without();
+
+  try {
+    return await send(values);
+  } catch (error) {
+    if (!missingWriteColumn(error) || !namesSignerEmail(error)) throw error;
+    // Refusing the whole save would lose an address change over a column the
+    // address does not use. The screen reports the signer as unrecordable
+    // afterwards, which is true of this database.
+    signerEmailColumn = false;
+    return without();
+  }
 }
 
 // One application with everything a lease needs from its listing: the address
@@ -508,21 +644,33 @@ export async function updateBuilding(env, id, values) {
 export async function fetchApplicationForLease(env, id) {
   // The rider's text is a deal value, so it has to arrive with the rest of the
   // application or the Rent Concession Rider prints blank however carefully it
-  // was written. Named explicitly rather than selected with * because the
-  // encrypted SSN lives on this row and a lease has no business reading it.
+  // was written — and the window guard request the same, or the notice's third
+  // checkbox prints unticked whatever the applicant asked for. Named
+  // explicitly rather than selected with * because the encrypted SSN lives on
+  // this row and a lease has no business reading it.
   const base = "id,listing_id,name,email,phone,move_in,lease_term_months," +
     "children_under_11,status," +
     "listings(id,title,building_name,unit,location,price_amount,building_id)";
   const select = (columns) =>
     restRequest(env, `applications?id=eq.${encodeURIComponent(id)}&select=${columns}`);
 
+  const parts = [base];
+  if (concessionColumn) parts.push("concession_terms");
+  if (workOrSchoolColumns) parts.push("wants_window_guards");
+
   let response;
   try {
-    response = await select(concessionColumn ? `${base},concession_terms` : base);
+    response = await select(parts.join(","));
   } catch (error) {
-    if (!concessionColumn || !missingColumn(error)) throw error;
-    concessionColumn = false;
-    response = await select(base);
+    if (!missingColumn(error)) throw error;
+    if (concessionColumn && /\bconcession_terms\b/i.test(String(error && error.message))) {
+      concessionColumn = false;
+    } else if (workOrSchoolColumns && namesWorkOrSchool(error)) {
+      workOrSchoolColumns = false;
+    } else {
+      throw error;
+    }
+    return fetchApplicationForLease(env, id);
   }
 
   const [row] = await response.json();

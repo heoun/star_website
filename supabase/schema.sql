@@ -103,24 +103,41 @@ create table if not exists public.applications (
   move_in text,
   lease_term_months integer check (lease_term_months between 1 and 60),
   dob text,
+  -- The identity number is an SSN or a passport number — international
+  -- students rarely have the first. `id_type` says which one `ssn_encrypted`
+  -- holds; rows from before the choice existed are all SSNs and leave it null.
+  id_type text check (id_type in ('ssn', 'passport')),
   ssn_encrypted text,
   ssn_last4 text,
   household_size integer check (household_size >= 1),
   children_under_11 boolean,
+  -- The window guard notice's third answer, for applicants without young
+  -- children who want the guards anyway. The lease registry reads it as
+  -- window_guard.mark_wants_anyway.
+  wants_window_guards boolean,
   income_note text,
+
+  -- Whether the applicant supports the rent by working or by studying. It
+  -- decides which of `current_employer` and `student` is filled in, and which
+  -- documents the portal checklist asks for.
+  employment_status text check (employment_status in ('employed', 'student')),
 
   -- Structured sections, shaped by the Worker (never raw client JSON):
   -- current_employer  {employer, position, start, supervisor_name, supervisor_phone, supervisor_email}
-  -- employment_history [{employer, position, start, end, supervisor_name, supervisor_phone, supervisor_email}]
+  -- student            {school_name, major, entry_year, graduation_year, country}
+  -- employment_history [{employer, position, start, income}]  (older rows also carry end, supervisor_*)
   -- rental_history     [{address, start, end, monthly_rent, landlord_name, landlord_phone, landlord_email}]
-  -- reference_contacts [{name, relationship, phone, email}]  (3 required)
-  -- emergency_contacts [{name, relationship, phone, email}]
+  -- reference_contacts [{name, relationship, phone, email}]  (2 required)
+  -- emergency_contacts [{name, relationship, phone, email}]  (older applications; the form no longer asks)
+  -- roommates          [{first_name, last_name, phone, email}]
   -- pets               [{type, species, weight}]
   current_employer jsonb,
+  student jsonb,
   employment_history jsonb,
   rental_history jsonb,
   reference_contacts jsonb,
   emergency_contacts jsonb,
+  roommates jsonb,
   pets jsonb,
 
   message text,
@@ -135,6 +152,13 @@ create table if not exists public.applications (
   -- The Rent Concession Rider, written for this tenancy. It reaches the lease
   -- as a deal value, so the overview and the lease screen edit the same text.
   concession_terms text,
+
+  -- Every value the lease was generated from, frozen the moment it went out
+  -- for signature: {field_id: value}. Without it a manager correcting a
+  -- building default — a payee address, a fee, a disclosure — would silently
+  -- change what an already-signed lease says the next time anyone opened it.
+  -- A signed instrument does not follow the settings screen.
+  lease_snapshot jsonb,
 
   status text not null default 'new'
     check (status in ('new', 'contacted', 'fee_pending', 'screening', 'review',
@@ -172,14 +196,26 @@ alter table public.applications add column if not exists rental_history jsonb;
 alter table public.applications add column if not exists reference_contacts jsonb;
 alter table public.applications add column if not exists emergency_contacts jsonb;
 alter table public.applications add column if not exists pets jsonb;
+alter table public.applications add column if not exists id_type text;
+alter table public.applications add column if not exists employment_status text;
+alter table public.applications add column if not exists student jsonb;
+alter table public.applications add column if not exists wants_window_guards boolean;
+alter table public.applications add column if not exists roommates jsonb;
 alter table public.applications add column if not exists submitted jsonb;
 alter table public.applications add column if not exists concession_terms text;
 alter table public.applications add column if not exists decision jsonb;
+alter table public.applications add column if not exists lease_snapshot jsonb;
 alter table public.applications drop constraint if exists applications_status_check;
 alter table public.applications add constraint applications_status_check
   check (status in ('new', 'contacted', 'fee_pending', 'screening', 'review',
                     'sent_to_landlord', 'needs_info', 'approved', 'declined',
                     'lease_sent', 'lease_signed'));
+alter table public.applications drop constraint if exists applications_id_type_check;
+alter table public.applications add constraint applications_id_type_check
+  check (id_type in ('ssn', 'passport'));
+alter table public.applications drop constraint if exists applications_employment_status_check;
+alter table public.applications add constraint applications_employment_status_check
+  check (employment_status in ('employed', 'student'));
 
 create index if not exists applications_listing_idx
   on public.applications (listing_id, created_at desc);
@@ -236,9 +272,19 @@ create table if not exists public.buildings (
   state_abbr text,
   zip text,
 
+  -- Where the landlord's signature request goes. The signer's *name* is a
+  -- lease value (landlord.print_name) because it prints above the signature
+  -- line; the address it is sent to never appears in the document, so it has
+  -- no placeholder and no registry entry, and it lives here on the building
+  -- it signs for. One landlord signer per property, fixed by a manager.
+  landlord_signer_email text,
+
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Migration for databases created before the property setup screen.
+alter table public.buildings add column if not exists landlord_signer_email text;
 
 -- Two rows for one building would split its settings in half, and a lease
 -- would be generated from whichever half the listing happened to point at.
@@ -510,7 +556,8 @@ create table if not exists public.application_documents (
 
   doc_type text not null check (doc_type in (
     'government_id_front', 'government_id_back', 'job_offer_letter',
-    'paystub', 'bank_statement', 'tax_return', 'landlord_reference')),
+    'paystub', 'school_offer_letter', 'student_visa_i20',
+    'bank_statement', 'tax_return', 'landlord_reference')),
 
   -- Object key inside the applicant-docs R2 bucket:
   -- "<application-id>/<doc-type>/<uuid>.<ext>".
@@ -527,6 +574,15 @@ create table if not exists public.application_documents (
 
   created_at timestamptz not null default now()
 );
+
+-- Migration for databases created before the student document types. Safe to
+-- run repeatedly; a fresh install already has this list from create table.
+alter table public.application_documents drop constraint if exists application_documents_doc_type_check;
+alter table public.application_documents add constraint application_documents_doc_type_check
+  check (doc_type in (
+    'government_id_front', 'government_id_back', 'job_offer_letter',
+    'paystub', 'school_offer_letter', 'student_visa_i20',
+    'bank_statement', 'tax_return', 'landlord_reference'));
 
 create index if not exists application_documents_application_idx
   on public.application_documents (application_id, doc_type, created_at);

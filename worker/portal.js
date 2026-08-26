@@ -45,22 +45,47 @@ const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // `max` is where uploads stop. The counts are on files, not on months proven:
 // the agent reviews content either way, and the checklist only has to say
 // when it is worth their while to look.
+//
+// `when` limits a type to applications with that employment_status; a type
+// without it is asked of everyone. Types sharing an `either` value are
+// alternatives: satisfying any one of them satisfies them all — a job offer
+// letter proves income the same way two paystubs do.
+//
+// The id `landlord_reference` predates the "Rental payment record" label and
+// stays as it is: uploaded files carry the id in their rows and their R2 keys,
+// and renaming it would orphan every one already received.
 export const DOCUMENT_TYPES = [
-  { id: "government_id_front", label: "Government ID — front", required: 1, max: 2,
+  { id: "government_id_front", label: "Government ID (Front)", required: 1, max: 2,
     hint: "Driver's license, state ID, or passport photo page." },
-  { id: "government_id_back", label: "Government ID — back", required: 1, max: 2,
+  { id: "government_id_back", label: "Government ID (Back)", required: 1, max: 2,
     hint: "The back of the same ID. For a passport, the signature page." },
-  { id: "job_offer_letter", label: "Job offer letter", required: 1, max: 3,
-    hint: "On company letterhead, stating your position and salary." },
-  { id: "paystub", label: "Last two paystubs", required: 2, max: 6,
-    hint: "Your two most recent paystubs, one file each." },
-  { id: "bank_statement", label: "Last two months' bank statements", required: 2, max: 6,
+  { id: "job_offer_letter", label: "Job Offer Letter", required: 1, max: 3,
+    when: "employed", either: "income_proof",
+    hint: "On company letterhead stating your position and salary. Either this or your last two paystubs is enough." },
+  { id: "paystub", label: "Last Two Paystubs", required: 2, max: 6,
+    when: "employed", either: "income_proof",
+    hint: "Your two most recent paystubs, one file each. Either these or your job offer letter is enough." },
+  { id: "school_offer_letter", label: "School Offer Letter", required: 1, max: 3,
+    when: "student",
+    hint: "Your school's offer or enrollment letter." },
+  { id: "student_visa_i20", label: "Student Visa / I-20", required: 1, max: 4,
+    when: "student",
+    hint: "Your student visa or your I-20. Upload both if you have them." },
+  { id: "bank_statement", label: "Last Two Bank Statements", required: 2, max: 6,
     hint: "The last two monthly statements, one file each." },
-  { id: "tax_return", label: "Tax returns — last two years", required: 0, max: 4,
+  { id: "tax_return", label: "Last Two Tax Returns", required: 0, max: 4,
     hint: "Optional. The first two pages of each year's return are enough." },
-  { id: "landlord_reference", label: "Landlord's reference letter", required: 0, max: 2,
-    hint: "Optional. A short letter from a previous landlord." }
+  { id: "landlord_reference", label: "Rental Payment Record", required: 0, max: 4,
+    hint: "Optional. Proof of rent paid on time, such as a payment ledger or a letter from a previous landlord." }
 ];
+
+// The types this application is asked for. Applications from before the
+// work-or-school question — employment_status null — all had an employer on
+// the form, so they read as employed rather than being asked for a visa.
+export function applicableDocumentTypes(application) {
+  const status = application?.employment_status === "student" ? "student" : "employed";
+  return DOCUMENT_TYPES.filter((type) => !type.when || type.when === status);
+}
 
 const DOCUMENT_FILE_TYPES = {
   "application/pdf": "pdf",
@@ -384,12 +409,19 @@ export function requireDocsBucket(env) {
   return env.APPLICANT_DOCS;
 }
 
-// Whether every required type has enough files. This is the one signal the
-// office is notified on, so it lives here rather than being re-derived in
-// two frontends from two copies of the registry.
-export function checklistComplete(documents) {
-  return DOCUMENT_TYPES.every((type) => type.required === 0
-    || documents.filter((doc) => doc.doc_type === type.id).length >= type.required);
+// Whether every required type has enough files, for the checklist this
+// application is actually asked for. This is the one signal the office is
+// notified on, so it lives here rather than being re-derived in two frontends
+// from two copies of the registry.
+export function checklistComplete(documents, application) {
+  const types = applicableDocumentTypes(application);
+  const satisfied = (type) =>
+    documents.filter((doc) => doc.doc_type === type.id).length >= type.required;
+  return types.every((type) => {
+    if (type.required === 0) return true;
+    if (!type.either) return satisfied(type);
+    return types.some((other) => other.either === type.either && satisfied(other));
+  });
 }
 
 function documentContentType(file) {
@@ -492,6 +524,7 @@ async function handleList(env, session) {
     created_at: row.created_at,
     move_in: row.move_in,
     lease_term_months: row.lease_term_months,
+    employment_status: row.employment_status || null,
     listing: row.listings ? {
       title: row.listings.title,
       building_name: row.listings.building_name,
@@ -516,7 +549,10 @@ async function handleUpload(request, env, ctx, session, applicationId) {
 
   const form = await request.formData().catch(() => null);
   const file = form?.get("file");
-  const docType = DOCUMENT_TYPES.find((type) => type.id === String(form?.get("doc_type") ?? ""));
+  // Only the types this application is asked for: a student's checklist has
+  // no paystub slot, so no paystub can be filed onto it either.
+  const docType = applicableDocumentTypes(application)
+    .find((type) => type.id === String(form?.get("doc_type") ?? ""));
 
   if (!docType) return json({ error: "Unknown document type." }, 422);
   if (!file || typeof file === "string") return json({ error: "No file was uploaded." }, 400);
@@ -562,7 +598,7 @@ async function handleUpload(request, env, ctx, session, applicationId) {
 
   // Tell the office once, when the checklist crosses from incomplete to
   // complete — not on every one of the eight uploads.
-  if (!checklistComplete(existing) && checklistComplete(existing.concat(row))) {
+  if (!checklistComplete(existing, application) && checklistComplete(existing.concat(row), application)) {
     ctx.waitUntil(sendCompletionNotice(request, env, application));
   }
 

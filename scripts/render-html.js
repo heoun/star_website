@@ -48,6 +48,8 @@ function renderSharedHeader(options, filePath) {
         return context.brandHref;
       case "brandLabel":
         return context.brandLabel;
+      case "logoSrc":
+        return context.logoSrc;
       case "desktopNavLinks":
         return desktopNavLinks;
       case "mobileNavLinks":
@@ -76,8 +78,9 @@ function buildHeaderContext(options, filePath) {
     depth,
     currentNav,
     basePrefix,
-    brandHref: depth === 0 ? "#hero" : basePrefix,
-    brandLabel: depth === 0 ? "Back to top" : "Go to homepage"
+    brandHref: depth === 0 ? "#home" : basePrefix,
+    brandLabel: depth === 0 ? "Back to top" : "Go to homepage",
+    logoSrc: `${basePrefix}jpg/logo-primary.jpg`
   };
 }
 
@@ -96,7 +99,7 @@ function renderNavLinks(context, mode) {
 
 function resolveNavHref(item, context) {
   if (item.key === "home") {
-    return context.depth === 0 ? "#hero" : context.basePrefix;
+    return context.depth === 0 ? "#home" : context.basePrefix;
   }
 
   if (item.key === "sell") {

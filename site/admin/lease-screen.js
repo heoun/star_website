@@ -223,8 +223,11 @@ export async function openLeaseScreen(options = {}) {
     syncChecked();
     recomputeMissing();
     doc.patchValues(state.values, state.missingLabels);
-    // Every document, until somebody chooses one.
-    showDocument("");
+    // Every document, unless the caller named one — the property screen opens
+    // a single document from its package list, and landing on the whole
+    // package would make that button look broken.
+    showDocument(options.document || "");
+    if (options.document) state.tab = "documents";
     workspace.renderWorkspace(formHost, state);
     // Again, now that the values are in: the header states the status, and a
     // status must never read "Ready to send" over a set of gaps nobody has

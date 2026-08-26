@@ -2,6 +2,7 @@ import { fetchListing, insertApplication } from "./supabase.js";
 import { encryptionReady, encryptSsn } from "./ssn.js";
 import { sendEmail } from "./email.js";
 import { readSession } from "./portal.js";
+import { renderPage } from "./contact.js";
 
 const CONTACT_EMAIL = "info@starreusa.com";
 const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
@@ -9,7 +10,10 @@ const TURNSTILE_ENDPOINT = "https://challenges.cloudflare.com/turnstile/v0/sitev
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const PET_TYPES = ["dog", "cat", "other"];
+const EMPLOYMENT_STATUSES = ["employed", "student"];
+const ID_TYPES = ["ssn", "passport"];
 const MAX_ENTRIES = 10;
+const REFERENCES_REQUIRED = 2;
 
 function json(payload, status = 200) {
   return new Response(JSON.stringify(payload), {
@@ -121,15 +125,57 @@ const PERSON_SPEC = {
   email: emailField()
 };
 
+// Somebody who will rent and sign alongside the applicant. Their details are
+// what lets the leasing team reach them and, later, invite them to a portal
+// account of their own.
+const ROOMMATE_SPEC = {
+  first_name: line(80),
+  last_name: line(80),
+  phone: phoneField(),
+  email: emailField()
+};
+
+// A previous job: where, what, since when, what it paid. The form asks only
+// these four — supervisor contact is asked about the current employer alone —
+// but `end` and the supervisor keys stay in the spec because older
+// applications carry them, and an admin correction rebuilds every entry from
+// this whitelist: a key missing here is a key erased on save.
 const EMPLOYMENT_SPEC = {
   employer: line(160),
   position: line(120),
   start: line(20),
   end: line(20),
+  income: line(30),
   supervisor_name: line(120),
   supervisor_phone: phoneField(),
   supervisor_email: emailField()
 };
+
+// The identity number is a nine-digit SSN or a passport number. Both are
+// encrypted the same way and stored in the same column; `id_type` records
+// which one it is.
+function isValidIdNumber(idType, value) {
+  if (idType === "passport") return /^[A-Z0-9]{5,20}$/.test(value);
+  return /^\d{9}$/.test(value) && !/^(\d)\1{8}$/.test(value);
+}
+
+// What a student fills in instead of an employer.
+function shapeStudent(raw, errors) {
+  const source = typeof raw === "object" && raw !== null ? raw : {};
+  const student = {
+    school_name: cleanLine(source.school_name, 200),
+    major: cleanLine(source.major, 120),
+    entry_year: cleanLine(source.entry_year, 10),
+    graduation_year: cleanLine(source.graduation_year, 10),
+    country: cleanLine(source.country, 80)
+  };
+  if (!student.school_name) errors.push("school name");
+  if (!student.major) errors.push("major");
+  if (!/^\d{4}$/.test(student.entry_year)) errors.push("school entry year");
+  if (!/^\d{4}$/.test(student.graduation_year)) errors.push("graduation year");
+  if (!student.country) errors.push("country");
+  return student;
+}
 
 const RENTAL_SPEC = {
   address: line(300),
@@ -169,17 +215,22 @@ const SCALAR_EDITS = {
   email: { clean: (v) => cleanLine(v, 180), check: isValidEmail, label: "email" },
   phone: { clean: (v) => cleanLine(v, 30), check: isValidPhone, label: "phone" },
   current_address: { clean: (v) => cleanLine(v, 300), required: true, label: "current address" },
-  move_in: { clean: (v) => cleanLine(v, 10), check: isRealDate, label: "move-in date" },
+  move_in: { clean: (v) => cleanLine(v, 10), check: isRealDate, label: "lease start date" },
   dob: { clean: (v) => cleanLine(v, 10), check: isAdultDob, label: "date of birth" },
-  income_note: { clean: (v) => cleanLine(v, 300), required: true, label: "annual income" },
+  // Blank on purpose is a student with no salary to note, so empty maps to
+  // null rather than being refused.
+  income_note: { clean: (v) => cleanLine(v, 300) || null, blank: true, label: "annual income" },
   message: { clean: (v) => cleanMultiline(v, 2000) || null, blank: true, label: "message" }
 };
 
 const LIST_EDITS = {
-  employment_history: { spec: EMPLOYMENT_SPEC, required: ["employer"], label: "employment history", least: 0 },
+  employment_history: { spec: EMPLOYMENT_SPEC, required: ["employer"], label: "previous employment", least: 0 },
   rental_history: { spec: RENTAL_SPEC, required: ["address"], label: "rental history", least: 0 },
-  reference_contacts: { spec: PERSON_SPEC, required: ["name"], label: "references", least: 3 },
-  emergency_contacts: { spec: PERSON_SPEC, required: ["name"], label: "emergency contact", least: 1 },
+  reference_contacts: { spec: PERSON_SPEC, required: ["name"], label: "references", least: REFERENCES_REQUIRED },
+  // The form no longer asks for an emergency contact; the ones on older
+  // applications stay editable, and removing the last one is allowed.
+  emergency_contacts: { spec: PERSON_SPEC, required: ["name"], label: "emergency contact", least: 0 },
+  roommates: { spec: ROOMMATE_SPEC, required: ["first_name", "last_name"], label: "roommates", least: 0 },
   pets: { spec: PET_SPEC, required: ["type"], label: "pets", least: 0 }
 };
 
@@ -206,16 +257,54 @@ export function normalizeApplicationEdit(body, current = {}) {
   }
 
   if (body.household_size !== undefined) {
-    const size = parseIntInRange(body.household_size, 1, 20);
-    if (size === null) errors.push("household size");
-    else values.household_size = size;
+    // The branched form does not ask this, so a row may honestly have nothing
+    // here — blank stays blank instead of being refused.
+    if (body.household_size === null || String(body.household_size).trim() === "") {
+      values.household_size = null;
+    } else {
+      const size = parseIntInRange(body.household_size, 1, 20);
+      if (size === null) errors.push("household size");
+      else values.household_size = size;
+    }
+  }
+
+  if (body.employment_status !== undefined) {
+    if (!EMPLOYMENT_STATUSES.includes(body.employment_status)) errors.push("working or student");
+    else values.employment_status = body.employment_status;
+  }
+
+  if (body.student !== undefined) {
+    const raw = typeof body.student === "object" && body.student !== null ? body.student : {};
+    const student = {
+      school_name: cleanLine(raw.school_name, 200),
+      major: cleanLine(raw.major, 120),
+      entry_year: cleanLine(raw.entry_year, 10),
+      graduation_year: cleanLine(raw.graduation_year, 10),
+      country: cleanLine(raw.country, 80)
+    };
+    // A correction only insists on the school itself; the rest is the
+    // applicant's to fill and the agent's to tidy.
+    if (!student.school_name) errors.push("school name");
+    values.student = student;
   }
 
   if (body.children_under_11 !== undefined) {
     if (body.children_under_11 !== true && body.children_under_11 !== false) {
-      errors.push("children under 11");
+      errors.push("children 10 or younger");
     } else {
       values.children_under_11 = body.children_under_11;
+    }
+  }
+
+  if (body.wants_window_guards !== undefined) {
+    // Null is a real state here: every application from before the checkbox
+    // existed never answered it, and saving such a row must not invent an
+    // answer or refuse the save.
+    if (body.wants_window_guards !== true && body.wants_window_guards !== false
+        && body.wants_window_guards !== null) {
+      errors.push("window guards");
+    } else {
+      values.wants_window_guards = body.wants_window_guards;
     }
   }
 
@@ -308,20 +397,27 @@ async function sendNotification(request, env, listing, name) {
 // where the supporting documents go — deliberately nothing else, because
 // inboxes are where private data leaks from, and the application's contents
 // stay in the admin console.
-async function sendReceipt(request, env, listing, email) {
+async function sendReceipt(request, env, listing, email, employmentStatus) {
   const home = [listing.building_name, listing.unit].filter(Boolean).join(" ");
   const label = home ? `${listing.title} (${home})` : listing.title;
   const portal = new URL("/portal/", request.url).toString();
+
+  // The checklist the portal will show them, in one sentence: it depends on
+  // whether they work or study, and the email should ask for the same things
+  // the page does.
+  const proofOfMeans = employmentStatus === "student"
+    ? "your school offer letter, your student visa or I-20"
+    : "your job offer letter or your last two paystubs";
 
   const sent = await sendEmail(request, env, {
     from: FROM_ADDRESS,
     to: [email],
     subject: `We received your application for ${label}`,
     text: `Thank you for applying for ${label}.\n\n`
-      + `Next step: upload your supporting documents in your applicant portal:\n\n    ${portal}\n\n`
-      + "We need your government ID (front and back), your job offer letter, your last two "
-      + "paystubs, and your last two months' bank statements. Tax returns for the last two "
-      + "years and a landlord's reference letter are optional but help.\n\n"
+      + `The next step is to upload your supporting documents in your applicant portal.\n\n    ${portal}\n\n`
+      + `We need your government ID (front and back), ${proofOfMeans}, and your last two `
+      + "months' bank statements. Tax returns for the last two years and a rental payment "
+      + "record are optional but help.\n\n"
       + "The Star Real Estate team will review your application and follow up shortly.\n"
   });
 
@@ -330,7 +426,32 @@ async function sendReceipt(request, env, listing, email) {
   }
 }
 
+// A PostgREST failure quotes the row it could not write, and that row carries
+// the applicant's details. The SSN itself is already ciphertext by the time it
+// reaches Supabase, but the last four digits are not, and neither is anything
+// else -- so the row never reaches a log line.
+function withoutRowValues(message) {
+  return String(message ?? "").replace(/Failing row contains[\s\S]*/i, "[row redacted]");
+}
+
 export async function handleApplication(request, env, ctx) {
+  // JSON and nothing else. A form-encoded body means the browser submitted the
+  // HTML form itself, which only happens when this page's JavaScript did not
+  // run -- and this step collects a Social Security Number, so it is answered
+  // with an explanation rather than parsed. It is also what keeps a cross-site
+  // form off this route: no HTML form can set this header, whatever it does
+  // with enctype, and the session cookie is SameSite=Lax besides.
+  const contentType = (request.headers.get("Content-Type") || "").trim();
+  if (!/^application\/json\b/i.test(contentType)) {
+    return renderPage(
+      "JavaScript is required",
+      "This application form needs JavaScript to submit securely. Please turn it on, "
+      + "go back to the property, and open the application again. Nothing you typed was read "
+      + "or saved.",
+      415
+    );
+  }
+
   let body;
   try {
     body = await request.json();
@@ -386,64 +507,109 @@ async function processApplication(request, env, ctx, body, email) {
   const moveIn = cleanLine(body.move_in, 10);
   const leaseTermMonths = parseIntInRange(body.lease_term_months, 1, 60);
   const dob = cleanLine(body.dob, 10);
-  const ssnDigits = String(body.ssn ?? "").replace(/\D/g, "");
-  const householdSize = parseIntInRange(body.household_size, 1, 20);
   const childrenUnder11 = body.children_under_11;
-  const incomeNote = cleanLine(body.income_note, 300);
+  // The third window guard answer, offered to applicants without young
+  // children. Anything but an explicit true is false.
+  const wantsWindowGuards = body.wants_window_guards === true;
+
+  // A payload with no id_type is an SSN: that is what every application was
+  // before the passport option existed.
+  const idType = body.id_type === undefined || ID_TYPES.includes(body.id_type)
+    ? (body.id_type ?? "ssn")
+    : null;
+  // No truncation on the way in: an over-length passport number fails the
+  // 5–20 character test below and is refused, the same way eleven digits of
+  // SSN are — never silently shortened into a plausible-looking wrong one.
+  const rawIdNumber = String(body.id_number ?? body.ssn ?? "");
+  const idNumber = idType === "passport"
+    ? rawIdNumber.replace(/\s+/g, "").toUpperCase()
+    : rawIdNumber.replace(/\D/g, "");
+
+  const employmentStatus = EMPLOYMENT_STATUSES.includes(body.employment_status)
+    ? body.employment_status
+    : null;
 
   if (!firstName) errors.push("first name");
   if (!lastName) errors.push("last name");
   if (!phone || !isValidPhone(phone)) errors.push("phone");
   if (!currentAddress) errors.push("current address");
-  if (!isRealDate(moveIn)) errors.push("move-in date");
+  if (!isRealDate(moveIn)) errors.push("lease start date");
   if (leaseTermMonths === null) errors.push("lease term");
   if (!isAdultDob(dob)) errors.push("date of birth (applicants must be 18+)");
-  if (!/^\d{9}$/.test(ssnDigits) || /^(\d)\1{8}$/.test(ssnDigits)) errors.push("SSN");
-  if (householdSize === null) errors.push("household size");
-  if (childrenUnder11 !== true && childrenUnder11 !== false) errors.push("children under 11");
-  if (!incomeNote) errors.push("annual income");
+  if (idType === null || !isValidIdNumber(idType, idNumber)) errors.push("SSN or passport number");
+  if (childrenUnder11 !== true && childrenUnder11 !== false) errors.push("children 10 or younger");
+  if (employmentStatus === null) errors.push("working or student");
 
-  const currentEmployerRaw = typeof body.current_employer === "object" && body.current_employer !== null
-    ? body.current_employer
-    : {};
-  const currentEmployer = {
-    employer: cleanLine(currentEmployerRaw.employer, 160),
-    position: cleanLine(currentEmployerRaw.position, 120),
-    start: cleanLine(currentEmployerRaw.start, 20),
-    supervisor_name: cleanLine(currentEmployerRaw.supervisor_name, 120),
-    supervisor_phone: phoneField()(currentEmployerRaw.supervisor_phone),
-    supervisor_email: emailField()(currentEmployerRaw.supervisor_email)
-  };
-  if (!currentEmployer.employer) errors.push("current employer");
-  if (currentEmployer.supervisor_phone === null || currentEmployer.supervisor_email === null) {
-    errors.push("current employer contact");
+  // Household size left the form when the branched version arrived, but an
+  // older payload may still carry it; a value that is present has to be sane.
+  let householdSize = null;
+  if (body.household_size !== undefined && body.household_size !== null
+      && String(body.household_size).trim() !== "") {
+    householdSize = parseIntInRange(body.household_size, 1, 20);
+    if (householdSize === null) errors.push("household size");
   }
 
-  const employmentHistory = shapeEntries(
-    body.employment_history, EMPLOYMENT_SPEC, ["employer"], "employment history", errors
-  );
+  // The work-or-school branch: an employer and an income for one answer, a
+  // school record for the other. Only the branch that was chosen is required,
+  // stored, or even read.
+  const incomeNote = cleanLine(body.income_note, 300);
+  let currentEmployer = null;
+  let employmentHistory = [];
+  let student = null;
+
+  if (employmentStatus === "employed") {
+    const currentEmployerRaw = typeof body.current_employer === "object" && body.current_employer !== null
+      ? body.current_employer
+      : {};
+    currentEmployer = {
+      employer: cleanLine(currentEmployerRaw.employer, 160),
+      position: cleanLine(currentEmployerRaw.position, 120),
+      start: cleanLine(currentEmployerRaw.start, 20),
+      supervisor_name: cleanLine(currentEmployerRaw.supervisor_name, 120),
+      supervisor_phone: phoneField()(currentEmployerRaw.supervisor_phone),
+      supervisor_email: emailField()(currentEmployerRaw.supervisor_email)
+    };
+    if (!currentEmployer.employer) errors.push("current employer");
+    if (!currentEmployer.position) errors.push("position");
+    if (!currentEmployer.start) errors.push("employed since");
+    if (!incomeNote) errors.push("annual income");
+    if (!currentEmployer.supervisor_name) errors.push("supervisor name");
+    if (!currentEmployer.supervisor_phone) errors.push("supervisor phone");
+    if (!currentEmployer.supervisor_email) errors.push("supervisor email");
+
+    employmentHistory = shapeEntries(
+      body.employment_history, EMPLOYMENT_SPEC,
+      ["employer", "position", "start", "income"], "previous employment", errors
+    );
+  } else if (employmentStatus === "student") {
+    student = shapeStudent(body.student, errors);
+  }
+
   const rentalHistory = shapeEntries(
-    body.rental_history, RENTAL_SPEC, ["address"], "rental history", errors
+    body.rental_history, RENTAL_SPEC,
+    ["landlord_name", "address", "landlord_phone", "landlord_email", "start", "monthly_rent"],
+    "rental history", errors
   );
   const referenceContacts = shapeEntries(
-    body.reference_contacts, PERSON_SPEC, ["name"], "references", errors
+    body.reference_contacts, PERSON_SPEC,
+    ["name", "relationship", "phone", "email"], "references", errors
   );
   const emergencyContacts = shapeEntries(
     body.emergency_contacts, PERSON_SPEC, ["name"], "emergency contact", errors
   );
-  const pets = shapeEntries(body.pets, PET_SPEC, ["type"], "pets", errors);
+  const roommates = shapeEntries(
+    body.roommates, ROOMMATE_SPEC,
+    ["first_name", "last_name", "phone", "email"], "roommates", errors
+  );
+  const pets = shapeEntries(body.pets, PET_SPEC, ["type", "species", "weight"], "pets", errors);
 
-  if (referenceContacts.length < 3) errors.push("references (3 are required)");
-  if (referenceContacts.some((ref) => !ref.phone && !ref.email)) {
-    errors.push("references (each needs a phone or email)");
-  }
-  if (emergencyContacts.length < 1) errors.push("emergency contact");
-  if (emergencyContacts.some((contact) => !contact.phone)) {
-    errors.push("emergency contact phone");
+  if (rentalHistory.length < 1) errors.push("rental history (your current home)");
+  if (referenceContacts.length < REFERENCES_REQUIRED) {
+    errors.push(`references (${REFERENCES_REQUIRED} are required)`);
   }
 
   if (errors.length > 0) {
-    return json({ error: `Please check these fields: ${[...new Set(errors)].join(", ")}.` }, 422);
+    return json({ error: `Please check ${[...new Set(errors)].join(", ")}.` }, 422);
   }
 
   // Human verification is enforced whenever the secret is configured; a
@@ -485,25 +651,30 @@ async function processApplication(request, env, ctx, body, email) {
       move_in: moveIn,
       lease_term_months: leaseTermMonths,
       dob,
-      ssn_encrypted: await encryptSsn(env, ssnDigits),
-      ssn_last4: ssnDigits.slice(-4),
+      id_type: idType,
+      ssn_encrypted: await encryptSsn(env, idNumber),
+      ssn_last4: idNumber.slice(-4),
       household_size: householdSize,
       children_under_11: childrenUnder11,
-      income_note: incomeNote,
+      wants_window_guards: wantsWindowGuards,
+      employment_status: employmentStatus,
+      income_note: incomeNote || null,
       current_employer: currentEmployer,
+      student,
       employment_history: employmentHistory.length > 0 ? employmentHistory : null,
       rental_history: rentalHistory.length > 0 ? rentalHistory : null,
       reference_contacts: referenceContacts,
-      emergency_contacts: emergencyContacts,
+      emergency_contacts: emergencyContacts.length > 0 ? emergencyContacts : null,
+      roommates: roommates.length > 0 ? roommates : null,
       pets: pets.length > 0 ? pets : null,
       message: cleanMultiline(body.message, 2000) || null
     });
   } catch (error) {
-    console.error("Application insert failed", error);
+    console.error("Application insert failed:", withoutRowValues(error?.message));
     return json({ error: "The application could not be saved. Please try again." }, 500);
   }
 
   ctx.waitUntil(sendNotification(request, env, listing, fullName));
-  ctx.waitUntil(sendReceipt(request, env, listing, email));
+  ctx.waitUntil(sendReceipt(request, env, listing, email, employmentStatus));
   return json({ ok: true }, 201);
 }

@@ -119,55 +119,49 @@ export function renderPage(title, message, statusCode = 200) {
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>${title} | Star Real Estate</title>
   <style>
-    * { box-sizing: border-box; }
-
     body {
       margin: 0;
       min-height: 100vh;
       display: grid;
       place-items: center;
-      font-family: "Inter", system-ui, -apple-system, sans-serif;
-      background: #f6f4ef;
-      color: #141834;
       padding: 24px;
+      background: #f7f6f1;
+      color: #1f2a33;
+      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
     }
 
     main {
       width: min(560px, 100%);
-      border: 1px solid #dcd8cd;
+      border: 1px solid rgba(31, 42, 51, 0.14);
+      border-radius: 18px;
       background: #ffffff;
-      padding: 34px;
+      padding: 28px;
+      box-shadow: 0 18px 36px rgba(13, 59, 82, 0.12);
     }
 
     h1 {
       margin: 0 0 10px;
-      font-family: "Inter Tight", "Inter", sans-serif;
-      color: #141834;
+      color: #0d3b52;
       font-size: 28px;
       line-height: 1.12;
-      letter-spacing: -0.02em;
     }
 
     p {
       margin: 0 0 18px;
-      color: #666d8a;
-      line-height: 1.7;
-      font-size: 14px;
+      color: #4c5963;
+      line-height: 1.55;
     }
 
     a {
       display: inline-flex;
-      background: #3E3EE5;
+      border-radius: 999px;
+      background: #0d3b52;
       color: #ffffff;
-      padding: 12px 22px;
+      padding: 10px 14px;
       text-decoration: none;
-      font-family: "IBM Plex Mono", monospace;
-      font-size: 11px;
-      letter-spacing: 0.14em;
-      text-transform: uppercase;
+      font-weight: 800;
+      font-size: 14px;
     }
-
-    a:hover { background: #141834; }
   </style>
 </head>
 <body>

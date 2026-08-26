@@ -78,11 +78,13 @@ const RESIDENCE_FIELDS = [
   { key: "current_address", label: "Current address", type: "text" },
   { key: "household_size", label: "Household size", type: "number", min: 1, max: 20 },
   { key: "children_under_11", label: "Children 10 or younger", type: "boolean",
-    note: "Answers the window guard notice on the lease." }
+    note: "Answers the window guard notice on the lease." },
+  { key: "wants_window_guards", label: "Wants window guards anyway", type: "boolean",
+    note: "The notice's third answer, for applicants without young children." }
 ];
 
 const TENANCY_FIELDS = [
-  { key: "move_in", label: "Desired move-in", type: "text", placeholder: "MM/DD/YYYY" },
+  { key: "move_in", label: "Lease start date", type: "text", placeholder: "MM/DD/YYYY" },
   { key: "lease_term_months", label: "Preferred term", type: "number", min: 1, max: 60,
     suffix: "months", note: "The agent confirms the term when the lease is made." }
 ];
@@ -100,27 +102,59 @@ const EMPLOYER_FIELDS = [
   { key: "supervisor_email", label: "Supervisor email" }
 ];
 
+// What a student fills in instead of an employer.
+const STUDENT_FIELDS = [
+  { key: "school_name", label: "School name" },
+  { key: "major", label: "Major" },
+  { key: "entry_year", label: "School entry year" },
+  { key: "graduation_year", label: "Graduation year" },
+  { key: "country", label: "Country of citizenship" }
+];
+
+// Whether an application is a student's, wherever it needs answering. Rows
+// from before the work-or-school question have no answer and read as
+// employed, which is what their form asked about.
+const isStudentApp = (app) => app?.employment_status === "student";
+
 const LISTS = {
-  employment_history: { label: "Previous employment", least: 0,
-    fields: EMPLOYER_FIELDS.concat([{ key: "end", label: "Until" }]) },
+  // The form asks four fields; `end` and the supervisor keys are older
+  // applications' answers. They stay in the editor because a save rewrites
+  // the whole list through the Worker's whitelist — a field the editor did
+  // not carry would be a field the save erased.
+  employment_history: { label: "Previous employment", least: 0, fields: [
+    { key: "employer", label: "Employer" },
+    { key: "position", label: "Position" },
+    { key: "start", label: "Employed since" },
+    { key: "end", label: "Until" },
+    { key: "income", label: "Annual income" },
+    { key: "supervisor_name", label: "Supervisor" },
+    { key: "supervisor_phone", label: "Supervisor phone" },
+    { key: "supervisor_email", label: "Supervisor email" }
+  ] },
   rental_history: { label: "Rental history", least: 0, fields: [
+    { key: "landlord_name", label: "Landlord or manager" },
     { key: "address", label: "Address" },
+    { key: "landlord_phone", label: "Landlord phone" },
+    { key: "landlord_email", label: "Landlord email" },
     { key: "start", label: "From" },
     { key: "end", label: "Until" },
-    { key: "monthly_rent", label: "Monthly rent" },
-    { key: "landlord_name", label: "Landlord or manager" },
-    { key: "landlord_phone", label: "Landlord phone" },
-    { key: "landlord_email", label: "Landlord email" }
+    { key: "monthly_rent", label: "Monthly rent" }
   ] },
-  reference_contacts: { label: "References", least: 3, fields: [
+  reference_contacts: { label: "References", least: 2, fields: [
     { key: "name", label: "Name" },
     { key: "relationship", label: "Relationship" },
     { key: "phone", label: "Phone" },
     { key: "email", label: "Email" }
   ] },
-  emergency_contacts: { label: "Emergency contacts", least: 1, fields: [
+  emergency_contacts: { label: "Emergency contacts", least: 0, fields: [
     { key: "name", label: "Name" },
     { key: "relationship", label: "Relationship" },
+    { key: "phone", label: "Phone" },
+    { key: "email", label: "Email" }
+  ] },
+  roommates: { label: "Roommates", least: 0, fields: [
+    { key: "first_name", label: "First name" },
+    { key: "last_name", label: "Last name" },
     { key: "phone", label: "Phone" },
     { key: "email", label: "Email" }
   ] },
@@ -132,10 +166,13 @@ const LISTS = {
 };
 
 // Which tab owns which fields, so an Edit button only ever collects its own.
+// `employer` and `student` are the two halves of the work-or-school branch;
+// collect() only ever finds the inputs of the half that was rendered, which
+// is the half this application answered.
 const EDITABLE = {
   applicant: { scalars: [...IDENTITY_FIELDS, ...RESIDENCE_FIELDS, ...TENANCY_FIELDS, ...MESSAGE_FIELDS],
-    lists: ["pets"], employer: false },
-  income: { scalars: INCOME_FIELDS, lists: ["employment_history"], employer: true },
+    lists: ["roommates", "pets"], employer: false },
+  income: { scalars: INCOME_FIELDS, lists: ["employment_history"], employer: true, student: true },
   rental: { scalars: [], lists: ["rental_history"], employer: false },
   references: { scalars: [], lists: ["reference_contacts", "emergency_contacts"], employer: false }
 };
@@ -338,31 +375,44 @@ function overviewTab(app) {
   const income = incomeSummary(app);
   const docs = documentSummary(app, documentTypesOf());
   const employer = app.current_employer || {};
+  const student = app.student || {};
+
+  const means = isStudentApp(app)
+    ? group("Study", [
+      fact("Supports rent as", "Student"),
+      fact("School", student.school_name),
+      fact("Major", student.major),
+      fact("Years", [student.entry_year, student.graduation_year].filter(Boolean).join(" – ")),
+      fact("Country of citizenship", student.country)
+    ].join(""))
+    : group("Income and employment", [
+      fact("Employer", employer.employer),
+      fact("Annual income", income.annual === null ? income.written : money(income.annual)),
+      fact("Monthly income", income.monthly === null ? "" : money(income.monthly)),
+      fact("Rent on this apartment", income.rent === null ? "" : money(income.rent)),
+      fact("Rent to income", income.ratio === null ? "" : ratioText(income.ratio),
+        income.ratio === null ? "" : "of monthly income")
+    ].join(""));
 
   const summary = group("Applicant", [
     fact("Email", app.email),
     fact("Phone", app.phone),
     fact("Current address", app.current_address),
     fact("Household size", app.household_size)
-  ].join("")) + group("Income and employment", [
-    fact("Employer", employer.employer),
-    fact("Annual income", income.annual === null ? income.written : money(income.annual)),
-    fact("Monthly income", income.monthly === null ? "" : money(income.monthly)),
-    fact("Rent on this apartment", income.rent === null ? "" : money(income.rent)),
-    fact("Rent to income", income.ratio === null ? "" : ratioText(income.ratio),
-      income.ratio === null ? "" : "of monthly income")
-  ].join(""));
+  ].join("")) + means;
 
   const startingValues = `<dl class="factlist">${[
     fact("Tenant legal name", app.name),
     fact("Also named", coApplicants(app)),
     fact("Contact email", app.email),
     fact("Contact phone", app.phone),
-    fact("Desired move-in", plainDate(app.move_in)),
+    fact("Lease start", plainDate(app.move_in)),
     fact("Preferred term", app.lease_term_months ? `${app.lease_term_months} months` : ""),
     fact("Children 10 or younger",
       app.children_under_11 === true ? "Yes" : app.children_under_11 === false ? "No" : "",
       "decides the window guard notice"),
+    fact("Wants window guards anyway", app.wants_window_guards === true ? "Yes" : ""),
+    fact("Roommates", roommatesLine(app)),
     fact("Pets", petsLine(app))
   ].join("")}</dl>`;
 
@@ -405,12 +455,30 @@ function petsLine(app) {
     .filter(Boolean).join(" · ")).join("; ");
 }
 
+// Who the applicant says will rent alongside them. They are not on the lease
+// until the agent puts them there, which is why they are named here.
+function roommatesLine(app) {
+  const mates = Array.isArray(app.roommates) ? app.roommates : [];
+  if (mates.length === 0) return "";
+  return mates.map((mate) => `${mate.first_name || ""} ${mate.last_name || ""}`.trim())
+    .filter(Boolean).join(", ");
+}
+
 function applicantTab(app) {
   const edit = editing === "applicant";
 
   const identity = group("Personal", fields(app, IDENTITY_FIELDS, edit) + (edit ? "" : ssnRow(app)));
   const residence = group("Residence and household", fields(app, RESIDENCE_FIELDS, edit));
   const tenancy = group("The tenancy applied for", fields(app, TENANCY_FIELDS, edit));
+
+  const roommates = edit
+    ? entryEditor(app, "roommates")
+    : entryCards(app, "roommates", (mate) => `<div class="card">
+        <b>${escapeHtml(`${mate.first_name || ""} ${mate.last_name || ""}`.trim() || "Not named")}</b>
+        <dl class="factlist">
+          ${fact("Phone", mate.phone)}
+          ${fact("Email", mate.email)}
+        </dl></div>`);
 
   const pets = edit
     ? entryEditor(app, "pets")
@@ -428,24 +496,35 @@ function applicantTab(app) {
 
   return panel("Applicant and household", "Who is applying, and who is moving in.",
     `<div class="facts">${identity}${residence}${tenancy}</div>
+     <div class="sub"><h3>Roommates</h3>${roommates}</div>
      <div class="sub"><h3>Pets</h3>${pets}</div>
      <div class="sub"><h3>Anything else the applicant wrote</h3>${message}</div>
      ${edit ? "" : `<p class="sensitive">Sensitive information is masked. ${
        isManager()
-         ? "Revealing the full Social Security number is a manager’s, and it is never shown in the lease workflow."
-         : "The full Social Security number is a manager’s to see, and it is never shown in the lease workflow."}</p>`}`,
+         ? "Revealing the full identity number is a manager’s, and it is never shown in the lease workflow."
+         : "The full identity number is a manager’s to see, and it is never shown in the lease workflow."}</p>`}`,
     { section: "applicant" });
+}
+
+// The identity number is an SSN or, for applicants without one, a passport
+// number; `id_type` says which this row holds and the mask follows.
+function idNumberMask(app) {
+  return app.id_type === "passport" ? `•••••${app.ssn_last4}` : `•••-••-${app.ssn_last4}`;
+}
+
+function idNumberLabel(app) {
+  return app.id_type === "passport" ? "Passport number" : "Social Security number";
 }
 
 // The full number is fetched one at a time, from an endpoint only a manager may
 // call, and it is never part of the applications payload. The control is a
 // small text button rather than a button beside the value, because reading
-// somebody's Social Security number should take a decision, not a reflex.
+// somebody's identity number should take a decision, not a reflex.
 function ssnRow(app) {
   if (!app.ssn_last4) return "";
-  const masked = `•••-••-${escapeHtml(app.ssn_last4)}`;
-  if (!isManager()) return fact("Social Security number", `•••-••-${app.ssn_last4}`);
-  return factHtml("Social Security number",
+  const masked = escapeHtml(idNumberMask(app));
+  if (!isManager()) return fact(idNumberLabel(app), idNumberMask(app));
+  return factHtml(idNumberLabel(app),
     `<span data-role="ssn-cell">${masked}</span>
      <button type="button" class="link reveal" data-role="ssn-reveal">Reveal in full</button>`);
 }
@@ -454,13 +533,23 @@ function incomeTab(app) {
   const edit = editing === "income";
   const income = incomeSummary(app);
   const employer = app.current_employer || {};
+  const student = app.student || {};
 
-  const current = group("Current employment", edit
-    ? EMPLOYER_FIELDS.map((field) => `<div class="fact is-edit">
-        <dt><label for="appl-emp-${field.key}">${escapeHtml(field.label)}</label></dt>
-        <dd><input type="text" id="appl-emp-${field.key}" data-appl-employer="${escapeHtml(field.key)}"
-          value="${escapeHtml(employer[field.key] ?? "")}"></dd></div>`).join("")
-    : EMPLOYER_FIELDS.map((field) => fact(field.label, employer[field.key])).join(""));
+  // The work-or-school branch: the tab shows — and an Edit collects — the
+  // half this application answered. The other half was never asked.
+  const current = isStudentApp(app)
+    ? group("Study", edit
+      ? STUDENT_FIELDS.map((field) => `<div class="fact is-edit">
+          <dt><label for="appl-stu-${field.key}">${escapeHtml(field.label)}</label></dt>
+          <dd><input type="text" id="appl-stu-${field.key}" data-appl-student="${escapeHtml(field.key)}"
+            value="${escapeHtml(student[field.key] ?? "")}"></dd></div>`).join("")
+      : STUDENT_FIELDS.map((field) => fact(field.label, student[field.key])).join(""))
+    : group("Current employment", edit
+      ? EMPLOYER_FIELDS.map((field) => `<div class="fact is-edit">
+          <dt><label for="appl-emp-${field.key}">${escapeHtml(field.label)}</label></dt>
+          <dd><input type="text" id="appl-emp-${field.key}" data-appl-employer="${escapeHtml(field.key)}"
+            value="${escapeHtml(employer[field.key] ?? "")}"></dd></div>`).join("")
+      : EMPLOYER_FIELDS.map((field) => fact(field.label, employer[field.key])).join(""));
 
   const summary = group("Income", (edit ? fields(app, INCOME_FIELDS, true)
     : fact("Annual income", income.annual === null ? income.written : money(income.annual))) + [
@@ -471,23 +560,30 @@ function incomeTab(app) {
       income.ratio === null ? "" : "of monthly income")
   ].join(""));
 
+  // Older records carry keys the form no longer asks about — an end date, a
+  // supervisor — and what was answered then should still be readable now.
   const history = edit
     ? entryEditor(app, "employment_history")
     : entryCards(app, "employment_history", (entry) => `<div class="card">
         <b>${escapeHtml(entry.employer || "Employer")}</b>
         <dl class="factlist">
           ${fact("Position", entry.position)}
-          ${fact("From", entry.start)}
-          ${fact("Until", entry.end)}
-          ${fact("Supervisor", entry.supervisor_name)}
-          ${fact("Supervisor phone", entry.supervisor_phone)}
-          ${fact("Supervisor email", entry.supervisor_email)}
+          ${fact("Employed since", entry.start)}
+          ${entry.end ? fact("Until", entry.end) : ""}
+          ${fact("Annual income", entry.income)}
+          ${entry.supervisor_name ? fact("Supervisor", entry.supervisor_name) : ""}
+          ${entry.supervisor_phone ? fact("Supervisor phone", entry.supervisor_phone) : ""}
+          ${entry.supervisor_email ? fact("Supervisor email", entry.supervisor_email) : ""}
         </dl></div>`);
 
-  return panel("Employment and income",
+  const historyBlock = isStudentApp(app) && !edit
+    && (!Array.isArray(app.employment_history) || app.employment_history.length === 0)
+    ? ""
+    : `<div class="sub"><h3>Previous employment</h3>${history}</div>`;
+
+  return panel(isStudentApp(app) ? "Study and income" : "Employment and income",
     "Screening information. None of it is transferred to the lease.",
-    `<div class="facts">${current}${summary}</div>
-     <div class="sub"><h3>Previous employment</h3>${history}</div>`,
+    `<div class="facts">${current}${summary}</div>${historyBlock}`,
     { section: "income" });
 }
 
@@ -540,6 +636,8 @@ function referencesTab(app) {
 
 const DOC_STATES = {
   received: { label: "Received", tone: "good" },
+  // Satisfied by an alternative — an offer letter standing in for paystubs.
+  covered: { label: "Covered", tone: "good" },
   partial: { label: "Partly received", tone: "busy" },
   missing: { label: "Missing", tone: "bad" },
   optional: { label: "Optional", tone: "off" }
@@ -790,9 +888,12 @@ export function renderApplicationScreen(host, app) {
         </div>
       </div>
       <div class="stat"><span class="k">Applied</span><b>${escapeHtml(shortDay(app.created_at))}</b></div>
-      <div class="stat"><span class="k">Desired move-in</span><b>${escapeHtml(plainDate(app.move_in))}</b></div>
-      <div class="stat"><span class="k">Annual income</span><b>${
-        escapeHtml(income.annual === null ? (income.written || "—") : money(income.annual))}</b></div>
+      <div class="stat"><span class="k">Lease start</span><b>${escapeHtml(plainDate(app.move_in))}</b></div>
+      ${isStudentApp(app)
+        ? `<div class="stat"><span class="k">Student at</span><b>${
+            escapeHtml(app.student?.school_name || "—")}</b></div>`
+        : `<div class="stat"><span class="k">Annual income</span><b>${
+            escapeHtml(income.annual === null ? (income.written || "—") : money(income.annual))}</b></div>`}
       <div class="stat"><span class="k">Documents</span><b class="${
         docs && docs.complete ? "is-good" : docs && docs.missing ? "is-bad" : ""}">${escapeHtml(docFact)}</b></div>
     </div>
@@ -800,7 +901,8 @@ export function renderApplicationScreen(host, app) {
     <div class="tabs" role="tablist" aria-label="Application sections">
       ${TABS.map(([key, label]) => `<button type="button" class="tab" role="tab"
         id="appl-tab-${key}" data-appl-tab="${key}" aria-selected="${key === tab}"
-        aria-controls="appl-panel">${escapeHtml(label)}</button>`).join("")}
+        aria-controls="appl-panel">${escapeHtml(
+          key === "income" && isStudentApp(app) ? "Student" : label)}</button>`).join("")}
     </div>
 
     <div class="appl-cols">
@@ -836,6 +938,16 @@ function collect(host, section) {
       employer[input.dataset.applEmployer] = input.value.trim();
     }
     if (Object.keys(employer).length > 0) values.current_employer = employer;
+  }
+
+  // Only rendered for a student's application, so an employed applicant's
+  // save never carries a student record and the other way round.
+  if (rules.student) {
+    const student = {};
+    for (const input of host.querySelectorAll("[data-appl-student]")) {
+      student[input.dataset.applStudent] = input.value.trim();
+    }
+    if (Object.keys(student).length > 0) values.student = student;
   }
 
   for (const key of rules.lists) {
@@ -1035,7 +1147,7 @@ async function revealSsn(host, app, button) {
   const cell = host.querySelector('[data-role="ssn-cell"]');
 
   if (button.dataset.shown === "true") {
-    if (cell) cell.textContent = `•••-••-${app.ssn_last4}`;
+    if (cell) cell.textContent = idNumberMask(app);
     button.dataset.shown = "false";
     button.textContent = "Reveal in full";
     return;

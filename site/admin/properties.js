@@ -14,7 +14,9 @@
 // Nothing on this screen writes a per-lease value, and nothing on the lease
 // screen writes a building layer. One value, one place it is written.
 
+import { DOCUMENTS } from "../shared/lease-documents.js";
 import { formatSettingValue, isAnswered } from "../shared/lease-values.js";
+import { isOptionalSection, readiness, sectionsFor } from "./property-sections.js";
 
 let api;
 let setStatus;
@@ -79,32 +81,6 @@ function fieldsForScope(scope) {
   return registry.fields.filter((field) => field.source === "manager" && field.scope === scope);
 }
 
-function groupLabel(id) {
-  const found = (registry.groups || []).find((group) => group.id === id);
-  return found ? found.label : id.replace(/_/g, " ");
-}
-
-function groupNote(id) {
-  const found = (registry.groups || []).find((group) => group.id === id);
-  return found ? found.description : "";
-}
-
-// Groups in the order the registry lists them, carrying only the fields this
-// page owns. A group with none of them does not appear at all.
-function groupsOf(fields) {
-  const byGroup = new Map();
-  for (const field of fields) {
-    if (!byGroup.has(field.group)) byGroup.set(field.group, []);
-    byGroup.get(field.group).push(field);
-  }
-  const order = (registry.groups || []).map((group) => group.id);
-  return [...byGroup.entries()].sort((a, b) => {
-    const ai = order.indexOf(a[0]);
-    const bi = order.indexOf(b[0]);
-    return (ai === -1 ? 999 : ai) - (bi === -1 ? 999 : bi);
-  });
-}
-
 // Which layer answered, and with what. `null` in a layer is how the database
 // records "this layer no longer answers that field", so it is not an answer.
 function resolve(field, layers) {
@@ -113,10 +89,6 @@ function resolve(field, layers) {
     if (isAnswered(field, value)) return { value, layer: name };
   }
   return { value: field.type === "checkbox" ? false : "", layer: "" };
-}
-
-function gapsIn(fields, layers) {
-  return fields.filter((field) => field.required && !resolve(field, layers).layer);
 }
 
 // ----------------------------------------------------------------- markup
@@ -129,9 +101,14 @@ function valueCell(field, resolved) {
   return `<b>${escapeHtml(formatSettingValue(field, resolved.value))}</b>`;
 }
 
+// Only when it is worth saying. A value set on this layer is the ordinary
+// case, and marking ninety-three rows "Set here" is ninety-three chips that
+// carry no information — the noise this screen exists to remove. What a reader
+// needs flagged is the exception: an answer that came from somewhere else, or
+// no answer at all.
 function provenanceChip(resolved, here) {
-  if (!resolved.layer) return '<span class="src src-manager">Unanswered</span>';
-  if (resolved.layer === here) return '<span class="src src-manager">Set here</span>';
+  if (!resolved.layer) return '<span class="src src-computed">Unanswered</span>';
+  if (resolved.layer === here) return "";
   return `<span class="src src-computed">From ${escapeHtml(resolved.layer)}</span>`;
 }
 
@@ -170,7 +147,7 @@ function settingRow(field, layers, here, editing) {
   const needed = field.required && !resolved.layer;
 
   return `<div class="line${needed && !editing ? " is-needed" : ""}" data-setting-row="${escapeHtml(field.id)}">
-    <span class="k">${escapeHtml(field.label)}</span>
+    <span class="lbl">${escapeHtml(field.label)}</span>
     <div>
       ${editing ? control(field, resolved) : valueCell(field, resolved)}
       ${field.note ? `<span class="panel-hint">${escapeHtml(field.note)}</span>` : ""}
@@ -182,35 +159,12 @@ function settingRow(field, layers, here, editing) {
   </div>`;
 }
 
-function groupPanel(group, fields, layers, here, editingGroup) {
-  const editing = editingGroup === group;
-  const gaps = gapsIn(fields, layers).length;
-
-  return `<article class="panel" data-group-panel="${escapeHtml(group)}">
-    <div class="phead">
-      <div>
-        <h2>${escapeHtml(groupLabel(group))}</h2>
-        <p>${escapeHtml(groupNote(group) || "")}${gaps > 0
-          ? ` · <span style="color:var(--bad);font-weight:600">${gaps} still needed</span>` : ""}</p>
-      </div>
-      ${isManager() ? (editing
-        ? `<span class="actions">
-             <button type="button" data-settings-cancel>Cancel</button>
-             <button type="button" class="primary" data-settings-save="${escapeHtml(group)}">Save</button>
-           </span>`
-        : `<button type="button" class="link" data-settings-edit="${escapeHtml(group)}">Edit</button>`)
-      : '<span class="locked">Manager only</span>'}
-    </div>
-    <div class="pbody">
-      <div class="lines">
-        ${fields.map((field) => settingRow(field, layers, here, editing)).join("")}
-      </div>
-    </div>
-  </article>`;
-}
-
 // ------------------------------------------------------------------ list
 
+// What a manager needs to see about a property before opening it: who the
+// landlord is, who signs, and whether an agent can send a lease for it today.
+// Not a count of blanks — 27 unanswered values with no priority between them
+// tells nobody what to do next.
 export async function renderPropertyList(host) {
   host.innerHTML = '<p class="status">Loading properties…</p>';
 
@@ -222,9 +176,9 @@ export async function renderPropertyList(host) {
     // that ever stops being true this is the loop to replace with one call.
     const layers = await Promise.all(rows.map((building) => loadBuildingLayer(building.id)));
 
-    const companyFields = fieldsForScope("company");
     const buildingFields = fieldsForScope("building");
-    const companyGaps = gapsIn(companyFields, [["company", companyLayer]]).length;
+    const companyReady = readinessFor({ fields: fieldsForScope("company"),
+      layers: [["company", companyLayer]], signerApplies: false });
 
     const units = new Map();
     for (const listing of listingsOf()) {
@@ -233,73 +187,66 @@ export async function renderPropertyList(host) {
     }
     const unlinked = listingsOf().filter((listing) => !listing.building_id).length;
 
+    const rowsMarkup = rows.map((building, index) => {
+      const scoped = [["building", layers[index]], ["company", companyLayer]];
+      const ready = readinessFor({ fields: buildingFields, layers: scoped, building });
+      const entity = resolve(byId("landlord.entity_name"), scoped);
+      const signer = resolve(byId("landlord.print_name"), scoped);
+      const count = units.get(building.id) || 0;
+
+      return `<a class="prop-row" href="#/properties/${escapeHtml(building.id)}">
+        <span>
+          <b>${escapeHtml(building.name)}</b>
+          <small>${escapeHtml([building.street, building.city, building.state_abbr, building.zip]
+            .filter(Boolean).join(", ")) || "No address recorded"}</small>
+        </span>
+        <span class="num">${count}</span>
+        <span>${entity.layer ? escapeHtml(entity.value) : '<span class="soft">Not set</span>'}</span>
+        <span>${signer.layer
+          ? escapeHtml(signer.value)
+          : '<span class="prop-need">Not set</span>'}</span>
+        <span><span class="pill is-${ready.state === "ready" ? "good" : ready.state === "one" ? "warn" : "bad"}">${
+          escapeHtml(ready.label)}</span></span>
+        <span class="prop-go">Manage →</span>
+      </a>`;
+    }).join("");
+
     host.innerHTML = `
       <div class="pagehead">
         <div>
           <span class="k">Configuration</span>
           <h1>Properties</h1>
-          <p>The landlord's own terms, set once at the layer they belong to. Every lease
-             produced for an apartment reads them through its building, and through the company.</p>
+          <p>The landlord's own terms, set once per property. Every lease an agent produces for
+             an apartment reads them.</p>
+        </div>
+        <div class="actions">
+          <a href="#/properties/company"><button type="button">Company defaults</button></a>
         </div>
       </div>
 
-      <article class="panel">
-        <div class="phead">
-          <div>
-            <h2>Company defaults</h2>
-            <p>${companyFields.length} values that are the same for every building.</p>
-          </div>
-          <a href="#/properties/company"><button type="button">Open</button></a>
-        </div>
-        <div class="pbody">
-          <div class="line">
-            <span class="k">Status</span>
-            <div>${companyGaps > 0
-              ? `<b style="color:var(--bad)">${companyGaps} required value${companyGaps === 1 ? "" : "s"} still needed</b>`
-              : "<b>Every required value answered</b>"}</div>
-            <span class="src ${companyGaps > 0 ? "src-computed" : "src-manager"}">Company</span>
-          </div>
-        </div>
-      </article>
+      ${companyReady.state !== "ready" ? `<p class="status" data-tone="error">${
+        escapeHtml(companyReady.detail)} They apply to every property —
+        <a href="#/properties/company">open company defaults</a>.</p>` : ""}
 
-      <article class="panel">
-        <div class="phead">
-          <div>
-            <h2>Buildings</h2>
-            <p>${buildingFields.length} values differ per building. A lease cannot be produced
-               until the ones marked required are answered.</p>
-          </div>
-        </div>
-        <div class="pbody">
-          ${rows.length === 0
-            ? `<p class="panel-hint">No building has been created yet. Settings still work without
-                 one — they land on the company layer, or on a single apartment — but a building
-                 is what lets several apartments share one answer.</p>`
-            : `<div class="lines">${rows.map((building, index) => {
-                const gaps = gapsIn(buildingFields, [["building", layers[index]], ["company", companyLayer]]).length;
-                const count = units.get(building.id) || 0;
-                return `<div class="line">
-                  <span class="k">${escapeHtml(building.name)}</span>
-                  <div>
-                    <b>${count} apartment${count === 1 ? "" : "s"}</b>
-                    <span class="panel-hint">${escapeHtml([building.street, building.city, building.state_abbr, building.zip]
-                      .filter(Boolean).join(", ")) || "No address recorded"}</span>
-                  </div>
-                  <span class="actions">
-                    ${gaps > 0
-                      ? `<span class="src src-computed">${gaps} needed</span>`
-                      : '<span class="src src-manager">Complete</span>'}
-                    <a href="#/properties/${escapeHtml(building.id)}"><button type="button" class="small">Open</button></a>
-                  </span>
-                </div>`;
-              }).join("")}</div>`}
-          ${unlinked > 0
-            ? `<p class="panel-hint" style="margin-top:12px">${unlinked} apartment${unlinked === 1 ? " is" : "s are"}
-                 not linked to a building, so ${unlinked === 1 ? "it reads" : "they read"} the company layer only.
-                 Link ${unlinked === 1 ? "it" : "them"} on the listing to share this building's answers.</p>`
-            : ""}
-        </div>
-      </article>`;
+      ${rows.length === 0
+        ? `<div class="empty">
+             <h2>No properties yet</h2>
+             <p>A property is what lets several apartments share one set of landlord terms.
+                Create one from a listing's building field.</p>
+           </div>`
+        : `<div class="rows">
+             <div class="prop-row is-head">
+               <span>Property</span><span>Apartments</span><span>Landlord entity</span>
+               <span>Landlord signer</span><span>Lease readiness</span><span></span>
+             </div>
+             ${rowsMarkup}
+           </div>`}
+
+      ${unlinked > 0
+        ? `<p class="note">${unlinked} apartment${unlinked === 1 ? " is" : "s are"} not linked to a
+             property, so ${unlinked === 1 ? "it reads" : "they read"} the company defaults only.
+             Link ${unlinked === 1 ? "it" : "them"} on the listing.</p>`
+        : ""}`;
 
     setStatus("");
   } catch (error) {
@@ -315,6 +262,10 @@ export async function renderPropertyList(host) {
 let editingGroup = "";
 let currentTarget = "";
 let currentTab = "defaults";
+// The uncommon terms stay folded away until somebody asks for them. A blank
+// one never blocks a lease, so it never earns space above the fold.
+let showOptional = false;
+let signerOpen = false;
 
 // `keepStatus` is for the one caller that has something to say afterwards: a
 // save re-renders the page and then reports what it wrote, and clearing the
@@ -324,6 +275,8 @@ export async function renderProperty(host, target, { keepStatus = false } = {}) 
     currentTarget = target;
     currentTab = "defaults";
     editingGroup = "";
+    showOptional = false;
+    signerOpen = false;
   }
 
   host.innerHTML = '<p class="status">Loading…</p>';
@@ -357,60 +310,90 @@ export async function renderProperty(host, target, { keepStatus = false } = {}) 
   }
 }
 
+function byId(id) {
+  return registry.fields.find((field) => field.id === id);
+}
+
+// The screens ask this file for readiness so the list and the page cannot
+// disagree about whether a property is ready.
+// PostgREST leaves a column it does not have out of the row entirely, which is
+// how the screen tells "nobody has set a signature address" apart from "this
+// database cannot record one". The difference matters: blocking every property
+// on a value a manager has no way to supply would stop every agent sending,
+// and the fix is a migration, not a click.
+function signerEmailKnown(building) {
+  return Boolean(building) && Object.prototype.hasOwnProperty.call(building, "landlord_signer_email");
+}
+
+function readinessFor({ fields, layers, building = null, signerApplies = true }) {
+  return readiness({
+    fields,
+    answered: (field) => Boolean(resolve(field, layers).layer),
+    hasSigner: signerEmailKnown(building) ? Boolean(building.landlord_signer_email) : true,
+    signerApplies
+  });
+}
+
 function renderPropertyShell({ company, building, fields, layers, here, target }) {
   const name = company ? "Company defaults" : building.name;
   const address = company
-    ? "Applies to every building and every apartment."
+    ? "Applies to every property and every apartment."
     : [building.street, building.city, building.state, building.zip].filter(Boolean).join(", ")
       || "No address recorded";
 
   const units = company ? [] : listingsOf().filter((listing) => listing.building_id === target);
-  const gaps = gapsIn(fields, layers);
-  const companyGaps = company ? [] : gapsIn(fieldsForScope("company"), [["company", companyLayer]]);
-
+  const ready = readinessFor({ fields, layers, building, signerApplies: !company });
   const entity = resolve(byId("landlord.entity_name"), layers);
   const signer = resolve(byId("landlord.print_name"), layers);
+  const signerEmail = building?.landlord_signer_email || "";
+  const emailKnown = signerEmailKnown(building);
 
   const tabs = [
-    ["defaults", "Landlord defaults"],
-    ["document", "Document"],
-    ["permissions", "Who may change what"],
-    ["mapping", "Application → lease"]
+    ["defaults", company ? "Company defaults" : "Property defaults"],
+    ["setup", "Lease setup"],
+    ["preview", "Document preview"]
   ];
 
   return `
+    <button type="button" class="link back" data-property-back>← All properties</button>
+
     <div class="pagehead">
       <div>
         <span class="k">${company ? "Company-wide configuration" : "Property configuration"}</span>
         <h1>${escapeHtml(name)}</h1>
-        <p>${escapeHtml(address)}</p>
+        <p>${escapeHtml(address)}${company ? "" : ` · ${units.length} apartment${units.length === 1 ? "" : "s"}`}</p>
+      </div>
+      <div class="actions">
+        ${company || units.length === 0 ? "" :
+          '<button type="button" id="property-test-lease">Generate test lease</button>'}
       </div>
     </div>
 
-    <section class="statbar">
+    <section class="statbar is-wide">
       <div class="stat is-lead">
-        <span class="dot${gaps.length === 0 ? "" : " is-bad"}"></span>
+        <span class="dot${ready.state === "ready" ? "" : ready.state === "one" ? " is-warn" : " is-bad"}"></span>
         <div>
-          <b>${gaps.length === 0 ? "Ready for leases" : `${gaps.length} value${gaps.length === 1 ? "" : "s"} still needed`}</b>
-          <small>${gaps.length === 0
-            ? "Every required value at this layer is answered."
-            : "Any apartment here that does not answer them itself cannot produce a lease."}${
-            companyGaps.length > 0 ? ` ${companyGaps.length} more unanswered on the company layer.` : ""}</small>
+          <b>${escapeHtml(ready.label)}</b>
+          <small>${escapeHtml(ready.detail)}</small>
         </div>
       </div>
       <div class="stat">
-        <span class="k">${company ? "Buildings" : "Apartments"}</span>
-        <b>${company ? buildings.length : units.length}</b>
-      </div>
-      <div class="stat">
         <span class="k">Landlord entity</span>
-        <b>${entity.layer ? escapeHtml(entity.value) : "—"}</b>
-        <small>${entity.layer ? `from ${escapeHtml(entity.layer)}` : "not answered"}</small>
+        <b>${entity.layer ? escapeHtml(entity.value) : '<span class="soft">Not set</span>'}</b>
       </div>
       <div class="stat">
-        <span class="k">Signer</span>
-        <b>${signer.layer ? escapeHtml(signer.value) : "—"}</b>
-        <small>${signer.layer ? `from ${escapeHtml(signer.layer)}` : "not answered"}</small>
+        <span class="k">Landlord signer</span>
+        ${company
+          ? '<b class="soft">Set per property</b>'
+          : `<b${signer.layer && (signerEmail || !emailKnown) ? "" : ' class="prop-need"'}>${
+              signer.layer ? escapeHtml(signer.value) : "Not set"}</b>
+             <small>${signerEmail ? escapeHtml(signerEmail)
+               : emailKnown ? "No signature address"
+                 : "Signature address not recorded on this database"}</small>`}
+      </div>
+      <div class="stat">
+        <span class="k">${company ? "Properties" : "Apartment coverage"}</span>
+        <b>${company ? buildings.length : `${units.length} of ${units.length}`}</b>
       </div>
     </section>
 
@@ -420,184 +403,371 @@ function renderPropertyShell({ company, building, fields, layers, here, target }
                  aria-selected="${currentTab === id}">${label}</button>`).join("")}
     </div>
 
-    ${currentTab === "defaults" ? defaultsTab(fields, layers, here) : ""}
-    ${currentTab === "document" ? documentTab(company, units) : ""}
-    ${currentTab === "permissions" ? permissionsTab() : ""}
-    ${currentTab === "mapping" ? mappingTab() : ""}`;
+    ${currentTab === "defaults" ? defaultsTab({ fields, layers, here, ready, building, signer, signerEmail, emailKnown, company }) : ""}
+    ${currentTab === "setup" ? setupTab() : ""}
+    ${currentTab === "preview" ? previewTab(company, units, target) : ""}
+
+    ${signerOpen ? signerDialog(signer, signerEmail, emailKnown) : ""}`;
 }
 
-function byId(id) {
-  return registry.fields.find((field) => field.id === id);
-}
+// ------------------------------------------------------------ tab: defaults
 
-function defaultsTab(fields, layers, here) {
+function defaultsTab({ fields, layers, here, ready, building, signer, signerEmail, emailKnown, company }) {
+  const sections = sectionsFor(fields);
+  const visible = sections.filter((section) => !isOptionalSection(section));
+  const optional = sections.filter((section) => isOptionalSection(section));
+  const optionalCount = optional.reduce((total, section) => total + section.fields.length, 0);
+
   return `
-    <div class="legend">
-      <span class="k">Where the answer comes from</span>
-      <span class="src src-manager">Set here</span>
-      <span class="src src-computed">From company</span>
-      <span class="src src-manager">Unanswered</span>
-    </div>
     ${isManager()
       ? ""
       : `<p class="status">These are a manager's to set. You can read every one of them, and
            they are what a lease you produce will print.</p>`}
-    ${groupsOf(fields).map(([group, groupFields]) =>
-      groupPanel(group, groupFields, layers, here, editingGroup)).join("")}`;
-}
 
-function documentTab(company, units) {
-  if (company) {
-    return `<article class="panel"><div class="phead"><div>
-        <h2>The document</h2>
-        <p>Company values print on every lease, so the document is read through a building.</p>
-      </div></div>
-      <div class="pbody"><p class="panel-hint">Open a building and use its Document tab to see
-        where each of these values lands on the page.</p></div></article>`;
-  }
-
-  return `<article class="panel">
-    <div class="phead">
+    <div class="toolbar">
       <div>
-        <h2>The document</h2>
-        <p>The lease as this building's settings fill it, page by page. Read-only —
-           values are changed on the Landlord defaults tab, so they are written to the
-           building rather than to one apartment.</p>
+        <h2 class="section-title">Defaults used on every lease</h2>
+        <p class="note" style="margin:2px 0 0">Agents can see these values. Only a manager can change them.</p>
       </div>
+      ${optionalCount > 0
+        ? `<button type="button" class="small" id="property-optional">${
+            showOptional ? "Hide" : "Show"} ${optionalCount} optional field${optionalCount === 1 ? "" : "s"}</button>`
+        : ""}
     </div>
-    <div class="pbody">
-      ${units.length === 0
-        ? `<p class="panel-hint">No apartment is linked to this building yet. The document is
-             rendered for an apartment, because the address and the rent come from one.</p>`
-        : `<div class="line">
-             <span class="k">Read it for</span>
-             <div><select id="property-doc-unit">
-               ${units.map((listing) => `<option value="${escapeHtml(listing.id)}">${
-                 escapeHtml([listing.building_name, listing.unit ? `Unit ${listing.unit}` : "", listing.title]
-                   .filter(Boolean).join(" · "))}</option>`).join("")}
-             </select></div>
-             <button type="button" class="primary" id="property-doc-open">Open the document</button>
-           </div>`}
-    </div>
-  </article>`;
-}
 
-// A statement of the rule the Worker actually enforces, read off the registry
-// rather than written down again. It is not a set of switches: the split is in
-// the code and in `worker/staff.js`, not in a per-property setting.
-function permissionsTab() {
-  const manager = registry.fields.filter((field) => field.source === "manager");
-  const deal = registry.fields.filter((field) => field.source === "deal");
-  const agent = registry.fields.filter((field) => field.source === "agent");
-
-  return `
-    <div class="cols">
-      <article class="panel">
-        <div class="phead"><div>
-          <h2>What an agent sets on each lease</h2>
-          <p>${deal.length + agent.length} values about this one tenancy.</p>
-        </div><span class="src src-agent">Agent</span></div>
-        <div class="pbody"><div class="lines">
-          ${[...deal, ...agent].map((field) => `<div class="line">
-            <span class="k">${escapeHtml(field.label)}</span>
-            <div><span class="panel-hint">${escapeHtml(field.from || "Typed for this lease.")}</span></div>
-            <span class="src ${field.from && field.from.startsWith("applications.") ? "src-application"
-              : field.from && field.from.startsWith("listings") ? "src-listing"
-              : field.from ? "src-computed" : "src-agent"}">${
-              field.from && field.from.startsWith("applications.") ? "Application"
-                : field.from && field.from.startsWith("listings") ? "Listing"
-                : field.from ? "Computed" : "Agent"}</span>
-          </div>`).join("")}
-        </div></div>
-      </article>
-
+    <div class="prop-cols">
+      <div>
+        ${visible.map((section) => (section.id === "signing" && !company
+          ? signingPanel(section, signer, signerEmail, emailKnown, layers, here)
+          : sectionPanel(section, layers, here))).join("")}
+        ${showOptional ? optional.map((section) => sectionPanel(section, layers, here)).join("") : ""}
+      </div>
       <aside>
-        <article class="panel">
-          <div class="phead"><div>
-            <h2>Never an agent's</h2>
-            <p>${manager.length} landlord values.</p>
-          </div><span class="src src-manager">Manager</span></div>
-          <div class="pbody">
-            <div class="lines">
-              <div class="line"><span class="k">Read them</span><div><b>Manager and agent</b></div></div>
-              <div class="line"><span class="k">Change a building default</span><div><b>Manager only</b></div></div>
-              <div class="line"><span class="k">Change one for a single lease</span><div><b>Manager only</b></div></div>
-              <div class="line"><span class="k">Move an apartment to another building</span><div><b>Manager only</b></div></div>
-              <div class="line"><span class="k">Add or remove an account</span><div><b>Manager only</b></div></div>
+        <article class="panel decide">
+          <div class="decide-head">
+            <h2>Lease readiness</h2>
+            <p>Only what genuinely stops a lease from being sent.</p>
+          </div>
+          <div class="decide-body">
+            <div class="checklist">
+              ${ready.checks.map((check) => `<div class="check${check.complete ? "" : " is-short"}">
+                <span class="check-mark">${check.complete ? "✓" : "!"}</span>
+                <div>
+                  <b>${escapeHtml(check.label)}</b>
+                  <span>${check.complete ? "Complete"
+                    : check.missing === 1 ? "1 value needed" : `${check.missing} values needed`}</span>
+                </div>
+              </div>`).join("")}
             </div>
-            <p class="panel-hint" style="margin-top:12px">The Worker refuses each of these for an
-              agent whatever this screen shows. Roles come from the staff table, and an account with
-              no row there is refused outright rather than treated as an agent.</p>
+            <p class="note">Agents do not submit each lease for approval. Once these are complete
+               they create and send leases on their own.</p>
           </div>
         </article>
       </aside>
     </div>`;
 }
 
-// Not every application answer belongs in the lease. This reads the answer off
-// the registry — a lease field's `from` is the only record of what is carried
-// across — and names the screening material that deliberately is not.
-function mappingTab() {
-  const carried = registry.fields.filter((field) => field.from);
+// The one panel that is not simply a list of registry fields. The signer is
+// half a lease value — the printed name, which the document carries — and half
+// an operational one: the address the signature request goes to, which appears
+// nowhere in the lease. It is also the single thing whose absence stops an
+// agent sending, so it gets its own affordance rather than being row 47 of a
+// table of ninety-three.
+function signingPanel(section, signer, signerEmail, emailKnown, layers, here) {
+  const editing = editingGroup === section.id;
+  const set = Boolean(signer.layer) && (Boolean(signerEmail) || !emailKnown);
+  // The printed name is the dialog's to write. Everything else in the section
+  // edits inline, through the same save path as every other panel.
+  const inline = section.fields.filter((field) => field.id !== "landlord.print_name");
 
-  const NEVER = [
-    ["Date of birth", "Screening"],
-    ["Social security number", "Screening — encrypted, revealed one at a time"],
-    ["Current address", "Screening"],
-    ["Household size", "Screening"],
-    ["Income note", "Screening"],
-    ["Current employer and employment history", "Screening"],
-    ["Rental history", "Screening"],
-    ["Reference contacts", "Screening"],
-    ["Emergency contacts", "Application record"],
-    ["Phone number", "Contact — the lease names an email, not a phone"],
-    ["Pets", "Application record — this template has no pet clause"],
-    ["Anything else you would like us to know", "Application record"]
-  ];
+  return `<article class="panel" data-group-panel="${escapeHtml(section.id)}">
+    <div class="phead">
+      <div>
+        <h2>${escapeHtml(section.label)}</h2>
+        <p>${escapeHtml(section.note)}</p>
+      </div>
+      <div class="phead-tools">
+        ${set ? '<span class="pill is-good">Complete</span>' : '<span class="pill is-bad">1 required</span>'}
+        ${isManager() ? (editing
+          ? `<button type="button" data-settings-cancel>Cancel</button>
+             <button type="button" class="primary" data-settings-save="${escapeHtml(section.id)}">Save</button>`
+          : `<button type="button" class="link" data-settings-edit="${escapeHtml(section.id)}">Edit</button>`)
+        : ""}
+      </div>
+    </div>
+    <div class="pbody">
+      <div class="lines">
+        <div class="line${set ? "" : " is-needed"}">
+          <span class="lbl">Landlord signer</span>
+          <div>
+            ${signer.layer
+              ? `<b>${escapeHtml(signer.value)}</b>`
+              : '<span class="empty is-needed">Required — choose a signer</span>'}
+            <span class="panel-hint">${signerEmail ? escapeHtml(signerEmail)
+              : emailKnown ? "Receives and signs every lease for this property"
+                : "This database has no column for a signature address. Run supabase/schema.sql "
+                  + "on it to record one."}</span>
+          </div>
+          ${isManager()
+            ? `<button type="button" class="small${set ? "" : " primary"}" id="property-signer">${
+                set ? "Change signer" : "Set signer"}</button>`
+            : '<span class="locked">Manager only</span>'}
+        </div>
+        ${inline.map((field) => settingRow(field, layers, here, editing)).join("")}
+      </div>
+    </div>
+  </article>`;
+}
+
+function sectionPanel(section, layers, here) {
+  const editing = editingGroup === section.id
+    || (section.id === "signing" && editingGroup === "signing-fields");
+  const short = section.fields.filter((field) => field.required && !resolve(field, layers).layer).length;
+  const optional = isOptionalSection(section);
+
+  return `<article class="panel" data-group-panel="${escapeHtml(section.id)}">
+    <div class="phead">
+      <div>
+        <h2>${escapeHtml(section.label)}</h2>
+        <p>${escapeHtml(section.note)}</p>
+      </div>
+      <div class="phead-tools">
+        ${optional
+          ? `<span class="pill is-off">${section.fields.length} optional</span>`
+          : short > 0
+            ? `<span class="pill is-bad">${short} required</span>`
+            : '<span class="pill is-good">Complete</span>'}
+        ${isManager() ? (editing
+          ? `<button type="button" data-settings-cancel>Cancel</button>
+             <button type="button" class="primary" data-settings-save="${escapeHtml(section.id)}">Save</button>`
+          : `<button type="button" class="link" data-settings-edit="${escapeHtml(section.id)}">Edit</button>`)
+        : ""}
+      </div>
+    </div>
+    <div class="pbody">
+      <div class="lines">
+        ${section.fields.map((field) => settingRow(field, layers, here, editing)).join("")}
+      </div>
+    </div>
+  </article>`;
+}
+
+function signerDialog(signer, signerEmail, emailKnown) {
+  return `<div class="sheet" data-signer-sheet>
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="signer-title">
+      <div class="sheet-head">
+        <h2 id="signer-title">Set landlord signer</h2>
+        <button type="button" class="small" data-signer-close aria-label="Close">Close</button>
+      </div>
+      <div class="sheet-body">
+        <label for="signer-name">Authorised signer</label>
+        <input type="text" id="signer-name" value="${escapeHtml(signer.value || "")}"
+               placeholder="The name printed above the signature line">
+        <label for="signer-email" style="margin-top:12px">Signature address</label>
+        <input type="email" id="signer-email" value="${escapeHtml(signerEmail)}"
+               placeholder="where the signature request is sent"${emailKnown ? "" : " disabled"}>
+        ${emailKnown ? "" : `<p class="note" style="color:var(--warn)">This database cannot store a
+          signature address yet. Run supabase/schema.sql on it and the field opens.</p>`}
+        <p class="note">The name is printed on every lease for this property. The address never
+           appears in the document — it is where the request goes. Both are fixed here: an agent
+           can read them and cannot change them.</p>
+      </div>
+      <div class="sheet-foot">
+        <button type="button" data-signer-close>Cancel</button>
+        <button type="button" class="primary" id="signer-save">Save signer</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+// --------------------------------------------------------------- tab: setup
+
+// What goes into a lease and who decides it. Four owners, in the order the
+// values arrive — not a field map, not a table of database columns, and not a
+// statement of which Worker route refuses what.
+const OWNERS = [
+  {
+    id: "application", label: "From the application", who: "Applicant",
+    note: "The approved application starts the lease off: who the tenant is, how to reach "
+      + "them, when they asked to move in, and the household answers the statutory notices need.",
+    items: ["Tenant name", "Tenant email", "Desired move-in date", "Whether a child of 10 or "
+      + "younger will live there"]
+  },
+  {
+    id: "agent", label: "Confirmed by the agent", who: "Agent",
+    note: "Everything particular to this tenancy. The agent confirms or changes each one when "
+      + "the lease is made, and does not submit it for approval afterwards.",
+    items: ["Apartment", "Monthly rent", "Security deposit", "Lease start date", "Lease term",
+      "Rent concession"]
+  },
+  {
+    id: "manager", label: "Fixed by the manager", who: "Manager",
+    note: "This property's standing terms. They are the same on every lease produced here "
+      + "until a manager changes them, and an agent cannot.",
+    items: ["Landlord entity", "Landlord signer", "Management and notice contacts",
+      "Deposit bank and payment address", "Standing fees", "Property disclosures"]
+  },
+  {
+    id: "system", label: "Worked out by the system", who: "Automatic",
+    note: "Nobody types these. They follow from the values above, so they cannot disagree with "
+      + "them.",
+    items: ["Lease end date", "The full premises address", "Which riders are included",
+      "What the document package contains"]
+  }
+];
+
+function setupTab() {
+  return `
+    <div class="toolbar">
+      <div>
+        <h2 class="section-title">How this property produces a lease</h2>
+        <p class="note" style="margin:2px 0 0">Four sets of values, and who each belongs to.</p>
+      </div>
+    </div>
+
+    <div class="owners">
+      ${OWNERS.map((owner) => `<article class="owner">
+        <div class="owner-head">
+          <h3>${escapeHtml(owner.label)}</h3>
+          <span class="owner-who is-${owner.id}">${escapeHtml(owner.who)}</span>
+        </div>
+        <p>${escapeHtml(owner.note)}</p>
+        <ul>${owner.items.map((item) => `<li>${escapeHtml(item)}</li>`).join("")}</ul>
+      </article>`).join("")}
+    </div>
+
+    <article class="panel" style="margin-top:14px">
+      <div class="phead">
+        <div>
+          <h2>Documents generated</h2>
+          <p>Every lease produced for this property is this package. Open any of them to see
+             where this property's values land.</p>
+        </div>
+        <span class="pill is-good">${DOCUMENTS.length} documents</span>
+      </div>
+      <div class="pbody">
+        <div class="ws-docs">
+          ${DOCUMENTS.map((document) => `<button type="button" class="ws-doc"
+              data-property-doc="${escapeHtml(document.id)}">
+            <span class="ws-doc-name">${escapeHtml(document.name)}</span>
+            <span class="ws-doc-why">${escapeHtml(document.conditionalOn
+              ? `${document.note} Included only when it applies.`
+              : document.note)}</span>
+          </button>`).join("")}
+        </div>
+      </div>
+    </article>`;
+}
+
+// ------------------------------------------------------------- tab: preview
+
+function previewTab(company, units, target) {
+  if (company) {
+    return `<article class="panel">
+      <div class="phead"><div>
+        <h2>The document</h2>
+        <p>Company values print on every lease, so the document is read through a property.</p>
+      </div></div>
+      <div class="pbody"><p class="note">Open a property and use its Document preview tab to see
+        where each of these values lands on the page.</p></div>
+    </article>`;
+  }
+
+  if (units.length === 0) {
+    return `<div class="empty">
+      <h2>No apartment to read it for</h2>
+      <p>A lease is rendered for one apartment, because the address and the rent come from one.
+         Link an apartment to this property on its listing.</p>
+    </div>`;
+  }
 
   return `
-    <article class="panel">
-      <div class="phead"><div>
-        <h2>What the application puts on the lease</h2>
-        <p>${carried.length} of the lease's values are prefilled. An agent confirms or corrects
-           each one before the lease is produced.</p>
-      </div></div>
-      <div class="pbody"><div class="lines">
-        ${carried.map((field) => `<div class="line">
-          <span class="k">${escapeHtml(field.label)}</span>
-          <div><span class="panel-hint">${escapeHtml(field.from)}</span></div>
-          <span class="src ${field.from.startsWith("applications.") ? "src-application"
-            : field.from.startsWith("listings") ? "src-listing" : "src-computed"}">${
-            field.from.startsWith("applications.") ? "Application"
-              : field.from.startsWith("listings") ? "Listing" : "Computed"}</span>
-        </div>`).join("")}
-      </div></div>
-    </article>
+    <div class="toolbar">
+      <div>
+        <h2 class="section-title">A sample lease using this property's defaults</h2>
+        <p class="note" style="margin:2px 0 0">The landlord side is real — it is what this page
+          sets. The tenant and the transaction are sample values an agent would confirm.</p>
+      </div>
+      <div class="toolbar-actions">
+        <select id="property-doc-unit" aria-label="Apartment">
+          ${units.map((listing) => `<option value="${escapeHtml(listing.id)}">${
+            escapeHtml([listing.unit ? `Unit ${listing.unit}` : "", listing.title]
+              .filter(Boolean).join(" · "))}</option>`).join("")}
+        </select>
+        <button type="button" class="primary" id="property-doc-open">Open full document</button>
+      </div>
+    </div>
 
-    <article class="panel">
-      <div class="phead"><div>
-        <h2>What it never puts on the lease</h2>
-        <p>Collected to decide on a tenant, and not repeated in a document that gets signed
-           and emailed.</p>
-      </div></div>
-      <div class="pbody"><div class="lines">
-        ${NEVER.map(([label, why]) => `<div class="line">
-          <span class="k">${escapeHtml(label)}</span>
-          <div><span class="panel-hint">${escapeHtml(why)}</span></div>
-          <span class="src src-manager">Not on the lease</span>
-        </div>`).join("")}
-      </div></div>
-    </article>`;
+    <div class="prop-cols">
+      <article class="panel">
+        <div class="phead"><div>
+          <h2>Generated package</h2>
+          <p>Each document opens in the same reader the lease workspace uses, filled with this
+             property's values.</p>
+        </div></div>
+        <div class="pbody">
+          <div class="ws-docs">
+            ${DOCUMENTS.map((document) => `<button type="button" class="ws-doc"
+                data-property-doc="${escapeHtml(document.id)}">
+              <span class="ws-doc-name">${escapeHtml(document.name)}</span>
+              <span class="ws-doc-why">${escapeHtml(document.note)}</span>
+            </button>`).join("")}
+          </div>
+        </div>
+      </article>
+
+      <aside>
+        <article class="panel">
+          <div class="phead"><div><h2>Where each value comes from</h2></div></div>
+          <div class="pbody">
+            <div class="lines">
+              <div class="line"><span class="k">Landlord side</span>
+                <div><b>This property</b><span class="panel-hint">Set on the defaults tab</span></div></div>
+              <div class="line"><span class="k">Tenant side</span>
+                <div><b>The application</b><span class="panel-hint">Sample values in this preview</span></div></div>
+              <div class="line"><span class="k">The deal</span>
+                <div><b>The agent</b><span class="panel-hint">Confirmed per lease</span></div></div>
+              <div class="line"><span class="k">Dates and riders</span>
+                <div><b>Worked out</b><span class="panel-hint">From the values above</span></div></div>
+            </div>
+            <p class="note">None of this marking appears in the document itself.</p>
+          </div>
+        </article>
+      </aside>
+    </div>`;
 }
 
 // ---------------------------------------------------------------- behaviour
 
+// An editor left open holds typing nobody has saved. Leaving it by clicking a
+// tab is easy to do by accident, so it asks — once, and only when something is
+// actually open.
+function mayLeaveEditor(host) {
+  if (!editingGroup) return true;
+  const panel = host.querySelector(`[data-group-panel="${CSS.escape(editingGroup)}"]`);
+  if (!panel) return true;
+  return confirm("Leave without saving the values you changed?");
+}
+
 // Delegated from the route host, so a re-render never leaves a listener behind.
 export async function handlePropertyClick(event, host, target) {
+  if (event.target.closest("[data-property-back]")) {
+    if (!mayLeaveEditor(host)) return true;
+    location.hash = "#/properties";
+    return true;
+  }
+
   const tab = event.target.closest("[data-property-tab]");
   if (tab) {
+    if (!mayLeaveEditor(host)) return true;
     currentTab = tab.dataset.propertyTab;
     editingGroup = "";
+    await renderProperty(host, target);
+    return true;
+  }
+
+  if (event.target.closest("#property-optional")) {
+    showOptional = !showOptional;
     await renderProperty(host, target);
     return true;
   }
@@ -621,19 +791,118 @@ export async function handlePropertyClick(event, host, target) {
     return true;
   }
 
-  if (event.target.closest("#property-doc-open")) {
-    const select = host.querySelector("#property-doc-unit");
-    if (select?.value) {
-      openDocument({
-        listingId: select.value,
-        readOnly: true,
-        returnTo: `#/properties/${encodeURIComponent(target)}`
-      });
+  // ---- the signer
+
+  if (event.target.closest("#property-signer")) {
+    signerOpen = true;
+    await renderProperty(host, target);
+    host.querySelector("#signer-name")?.focus();
+    return true;
+  }
+
+  if (event.target.closest("[data-signer-close]")
+      || (event.target.matches("[data-signer-sheet]"))) {
+    signerOpen = false;
+    await renderProperty(host, target);
+    return true;
+  }
+
+  if (event.target.closest("#signer-save")) {
+    await saveSigner(host, target);
+    return true;
+  }
+
+  // ---- the document
+
+  const openDoc = event.target.closest("[data-property-doc]");
+  if (openDoc) {
+    const units = listingsOf().filter((listing) => listing.building_id === target);
+    const chosen = host.querySelector("#property-doc-unit")?.value || units[0]?.id || "";
+    if (!chosen) {
+      setStatus("Link an apartment to this property to read its lease.", "error");
+      return true;
     }
+    openDocument({
+      listingId: chosen,
+      readOnly: true,
+      document: openDoc.dataset.propertyDoc,
+      returnTo: `#/properties/${encodeURIComponent(target)}`
+    });
+    return true;
+  }
+
+  if (event.target.closest("#property-doc-open") || event.target.closest("#property-test-lease")) {
+    const units = listingsOf().filter((listing) => listing.building_id === target);
+    const chosen = host.querySelector("#property-doc-unit")?.value || units[0]?.id || "";
+    if (!chosen) {
+      setStatus("Link an apartment to this property to read its lease.", "error");
+      return true;
+    }
+    openDocument({
+      listingId: chosen,
+      readOnly: true,
+      returnTo: `#/properties/${encodeURIComponent(target)}`
+    });
     return true;
   }
 
   return false;
+}
+
+// Two writes, because the signer is two things stored in two places for a
+// reason: the printed name is a lease value and lives in the settings layer
+// with the other 92; the address the request goes to is not in the document at
+// all and lives on the property row. Both are refused for an agent by the
+// Worker, not by this screen.
+async function saveSigner(host, target) {
+  const name = host.querySelector("#signer-name")?.value.trim() || "";
+  const email = host.querySelector("#signer-email")?.value.trim() || "";
+
+  if (!name) {
+    setStatus("The signer needs the name that is printed above the signature line.", "error");
+    return;
+  }
+  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    setStatus("That signature address does not look like an email address.", "error");
+    return;
+  }
+
+  // Two writes, or one on a database that has no column for the second. The
+  // name is the half the document prints, so it is saved either way.
+  const canStoreEmail = !host.querySelector("#signer-email")?.disabled;
+
+  setStatus("Saving the signer…");
+  try {
+    await api("/lease/settings", {
+      method: "PUT",
+      body: JSON.stringify({
+        scope: "building",
+        building_id: target,
+        field_values: { "landlord.print_name": name }
+      })
+    });
+    const { building } = canStoreEmail
+      ? await api(`/buildings/${encodeURIComponent(target)}`, {
+        method: "PATCH",
+        body: JSON.stringify({ landlord_signer_email: email })
+      })
+      : { building: null };
+
+    // Both caches: the layer holds the name, the building row holds the address.
+    await loadBuildingLayer(target, true);
+    const index = buildings.findIndex((row) => row.id === target);
+    if (index !== -1 && building) buildings[index] = building;
+
+    signerOpen = false;
+    await renderProperty(host, target, { keepStatus: true });
+    setStatus(!canStoreEmail
+      ? `Signer set to ${name}. This database cannot record a signature address yet.`
+      : email
+        ? `Signer set. ${name} will receive every landlord signature request for this property.`
+        : "Signer name saved. Add a signature address before agents can send leases.");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
 }
 
 async function saveGroup(host, target, group) {
@@ -693,7 +962,7 @@ async function saveGroup(host, target, group) {
     // After the re-render, not before: renderProperty clears the line on its
     // way out, so a message set here first was written and then wiped.
     await renderProperty(host, target, { keepStatus: true });
-    setStatus(`Saved ${count} value${count === 1 ? "" : "s"} to ${company ? "the company" : "this building"}.`);
+    setStatus(`Saved ${count} value${count === 1 ? "" : "s"} to ${company ? "the company" : "this property"}.`);
   } catch (error) {
     setStatus(error.message, "error");
   }

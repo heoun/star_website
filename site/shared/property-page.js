@@ -104,11 +104,11 @@
 
           ${property.description ? `<h2>About this home</h2><p class="description">${escapeHtml(property.description)}</p>` : ""}
 
-          ${floorPlan ? `<h2>Floor plan</h2><div class="media-block">
+          ${floorPlan && !videoUrl ? `<h2>Floor plan</h2><div class="media-block">
             <img src="${escapeHtml(floorPlan.url)}" alt="${escapeHtml(floorPlan.caption)}" loading="lazy">
           </div>` : ""}
 
-          ${videoUrl ? `<h2>Video tour</h2><div class="media-block">${isHostedVideo
+          ${videoUrl && !floorPlan ? `<h2>Video tour</h2><div class="media-block">${isHostedVideo
             ? `<video src="${escapeHtml(videoUrl)}" controls preload="metadata" playsinline></video>`
             : `<a href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener noreferrer">Watch the video tour</a>`
           }</div>` : ""}
@@ -123,6 +123,22 @@
             : `<a class="cta" href="../contact-us/?intent=inquiry">Ask about this property</a>`}
           ${externalDetails ? `<a class="cta secondary" href="${escapeHtml(externalDetails)}" target="_blank" rel="noopener noreferrer">External listing</a>` : ""}
         </aside>
+
+        ${floorPlan && videoUrl ? `<div class="media-row">
+          <div class="media-cell">
+            <h2>Floor plan</h2>
+            <div class="media-block">
+              <img src="${escapeHtml(floorPlan.url)}" alt="${escapeHtml(floorPlan.caption)}" loading="lazy">
+            </div>
+          </div>
+          <div class="media-cell is-video">
+            <h2>Video tour</h2>
+            <div class="media-block">${isHostedVideo
+              ? `<video src="${escapeHtml(videoUrl)}" controls preload="metadata" playsinline></video>`
+              : `<a href="${escapeHtml(videoUrl)}" target="_blank" rel="noopener noreferrer">Watch the video tour</a>`
+            }</div>
+          </div>
+        </div>` : ""}
       </div>
     `;
 

@@ -38,6 +38,8 @@ const BUILDING_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
 // where the migration has not been run.
 let staffRows = [];
 let missingStaffTable = false;
+// Merged into the stub application row, so one test can give it a snapshot.
+let applicationExtras = {};
 const calls = [];
 
 globalThis.fetch = async (url, init = {}) => {
@@ -61,6 +63,7 @@ globalThis.fetch = async (url, init = {}) => {
 
   if (target.includes("/rest/v1/applications")) {
     return reply([{
+      ...applicationExtras,
       id: APPLICATION_ID,
       listing_id: LISTING_ID,
       name: "Marisol Okonkwo",
@@ -461,6 +464,90 @@ const invented = await call(`/api/admin/applications/${APPLICATION_ID}`, {
   method: "PATCH", role: "manager", body: { status: "maybe" }
 });
 check("a status nobody defined is refused", invented.status === 422, String(invented.status));
+
+// ------------------------------------------------- the property's own values
+
+// The landlord signer is the one setting whose absence stops an agent sending
+// a lease, which makes it exactly the setting an agent must not be able to
+// supply for themselves.
+const agentSigner = await call("/api/admin/lease/settings", {
+  method: "PUT", role: "agent",
+  body: { scope: "building", building_id: BUILDING_ID,
+    field_values: { "landlord.print_name": "Whoever I like" } }
+});
+check("an agent cannot name the landlord signer",
+  agentSigner.status === 403, JSON.stringify(agentSigner.body).slice(0, 90));
+
+const managerSigner = await call("/api/admin/lease/settings", {
+  method: "PUT", role: "manager",
+  body: { scope: "building", building_id: BUILDING_ID,
+    field_values: { "landlord.print_name": "Helena Marchetti" } }
+});
+check("a manager can", managerSigner.status === 200, String(managerSigner.status));
+
+// The address the request is sent to lives on the building row, so it is
+// covered by the building gate rather than the settings gate. Both doors, or
+// the agent walks through the one nobody checked.
+const agentEmail = await call(`/api/admin/buildings/${BUILDING_ID}`, {
+  method: "PATCH", role: "agent", body: { landlord_signer_email: "me@example.com" }
+});
+check("an agent cannot redirect the signature request",
+  agentEmail.status === 403, String(agentEmail.status));
+
+const managerEmail = await call(`/api/admin/buildings/${BUILDING_ID}`, {
+  method: "PATCH", role: "manager", body: { landlord_signer_email: "signer@example.com" }
+});
+check("a manager can set the signature address",
+  managerEmail.status === 200, String(managerEmail.status));
+
+// The registry is what a settings write is checked against, and it is checked
+// in the Worker — the database only checks the shape of the key.
+const notRegistered = await call("/api/admin/lease/settings", {
+  method: "PUT", role: "manager",
+  body: { scope: "building", building_id: BUILDING_ID, field_values: { "not.aregistryfield": "x" } }
+});
+check("a value that is not in the registry is refused",
+  notRegistered.status === 422, String(notRegistered.status));
+
+// A tenancy value must never be storable as a building default: a stale rent
+// sitting in a settings layer would override the application on a signed lease.
+const dealValue = await call("/api/admin/lease/settings", {
+  method: "PUT", role: "manager",
+  body: { scope: "building", building_id: BUILDING_ID, field_values: { "rent.monthly": "$1.00" } }
+});
+check("a tenancy value cannot be stored as a property default",
+  dealValue.status === 422, String(dealValue.status));
+
+// ------------------------------------------- a lease that has already gone out
+
+// The whole point of freezing the values: a manager correcting a building
+// default must not change what somebody has already been asked to sign.
+const leaseValues = async () => {
+  const response = await call(`/api/admin/lease/document/${APPLICATION_ID}`, {
+    method: "POST", role: "agent", body: { mode: "values" }
+  });
+  return response.body;
+};
+
+applicationExtras = {};
+const liveLease = await leaseValues();
+check("a lease not yet sent reads today's settings",
+  liveLease.values?.["landlord.entity_name"] === "", JSON.stringify(liveLease.values?.["landlord.entity_name"]));
+
+applicationExtras = {
+  status: "lease_sent",
+  lease_snapshot: {
+    "landlord.entity_name": "As it stood when the lease was sent",
+    "rent.monthly": "$4,500.00"
+  }
+};
+const frozenLease = await leaseValues();
+check("a sent lease reads the values it was generated from",
+  frozenLease.values?.["landlord.entity_name"] === "As it stood when the lease was sent",
+  JSON.stringify(frozenLease.values?.["landlord.entity_name"]));
+check("and the screen is told it is looking at frozen values",
+  frozenLease.frozen === true, JSON.stringify(frozenLease.frozen));
+applicationExtras = {};
 
 // ---------------------------------------------------------------- reporting
 

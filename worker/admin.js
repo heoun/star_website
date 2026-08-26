@@ -17,6 +17,7 @@ import {
   fetchApplicationDocument,
   fetchApplicationForLease,
   fetchApplication,
+  keepsLeaseSnapshots,
   keepsSubmitted,
   recordsDecisions,
   fetchApplications,
@@ -50,6 +51,7 @@ import {
   fillTemplate,
   isManagerField,
   leaseFilename,
+  missingIn,
   resolveValues
 } from "./lease.js";
 import { normalizeApplicationEdit } from "./apply.js";
@@ -382,10 +384,14 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
     const row = await fetchApplicationSsn(env, id);
     if (!row) return json({ error: "Application not found." }, 404);
 
-    const digits = await decryptSsn(env, row.ssn_encrypted);
-    if (!digits) return json({ error: "No SSN is stored for this application." }, 404);
+    const value = await decryptSsn(env, row.ssn_encrypted);
+    if (!value) return json({ error: "No identity number is stored for this application." }, 404);
 
-    return json({ ssn: formatSsn(digits) });
+    // The stored type decides the formatting, not the shape of the digits:
+    // some passport numbers are nine digits too, and hyphenating one would
+    // hand a manager an SSN that does not exist. Rows from before the choice
+    // (id_type null) are all SSNs and keep their dashes.
+    return json({ ssn: row.id_type === "passport" ? value : (formatSsn(value) || value) });
   }
 
   if (subresource) {
@@ -414,6 +420,21 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
       const status = cleanLine(body.status, 20).toLowerCase();
       if (!APPLICATION_STATUSES.includes(status)) return json({ error: "Invalid status." }, 422);
       values.status = status;
+
+      // A lease that goes out for signature stops following the settings
+      // screen. Everything it was filled from is frozen onto the application
+      // now, so a manager correcting a building default next week cannot
+      // change what somebody has already been asked to sign.
+      //
+      // Only the first time: a lease that is already out was generated from
+      // the values recorded then, not from today's.
+      if (status === "lease_sent" && keepsLeaseSnapshots()) {
+        const current = await fetchApplication(env, id);
+        if (current && !current.lease_snapshot) {
+          const snapshot = await freezeLease(env, id);
+          if (snapshot) values.lease_snapshot = snapshot;
+        }
+      }
 
       // Who moved it, when, and why. Stamped here rather than sent by the
       // browser: the console can say what it is doing, but it does not get to
@@ -450,7 +471,7 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
 
       const edit = normalizeApplicationEdit(body, current);
       if (edit.errors.length > 0) {
-        return json({ error: `Please check these fields: ${edit.errors.join(", ")}.` }, 422);
+        return json({ error: `Please check ${edit.errors.join(", ")}.` }, 422);
       }
       Object.assign(values, edit.values, submittedRecord(current, edit.values));
     }
@@ -723,7 +744,9 @@ function deniedPage(message, status = 403) {
 // ---- Lease generation ----
 
 const LEASE_SCOPES = ["company", "building", "unit"];
-const BUILDING_FIELDS = ["name", "street", "city", "state", "state_abbr", "zip"];
+const BUILDING_FIELDS = [
+  "name", "street", "city", "state", "state_abbr", "zip", "landlord_signer_email"
+];
 
 // A building is not just a label. worker/lease.js reads its street, city, state
 // and ZIP as the premises address printed on the lease, so renaming one or
@@ -1015,7 +1038,19 @@ async function handleLeaseDocument(request, env, identity, applicationId) {
 
   const today = todayParts(body.today);
   const deal = dealValues({ application, listing, building, today });
-  const { values, missing } = resolveValues({ layers, deal, overrides });
+  const live = resolveValues({ layers, deal, overrides });
+
+  // A lease that has gone out is no longer a view of the settings screen. It
+  // was generated from particular values, somebody has it in front of them,
+  // and a manager correcting a payee address next week must not change what it
+  // says. So once a snapshot exists it is what the document is filled from —
+  // and what the screen shows, because a preview that disagrees with the file
+  // is worse than no preview.
+  const frozen = application.lease_snapshot && typeof application.lease_snapshot === "object"
+    ? application.lease_snapshot
+    : null;
+  const values = frozen ? { ...frozen, ...overrides } : live.values;
+  const missing = frozen ? missingIn(values) : live.missing;
 
   return respondWithLease(request, env, {
     mode: cleanLine(body.mode, 10) || "values",
@@ -1024,10 +1059,35 @@ async function handleLeaseDocument(request, env, identity, applicationId) {
     extras: {
       deal,
       provenance: fieldProvenance(layers),
-      building_linked: Boolean(building)
+      building_linked: Boolean(building),
+      // The screen says so out loud rather than quietly showing older values
+      // than the settings page it links to.
+      frozen: Boolean(frozen)
     },
     filename: leaseFilename({ application, listing })
   });
+}
+
+// The values one application's lease would be generated from right now.
+//
+// The same walk handleLeaseDocument does, without the document: the listing,
+// its building, the settings layers that apply, and the deal the application
+// carries. Returns null rather than throwing when the listing has been
+// removed — a status change should not fail because a snapshot could not be
+// taken, it should just not take one.
+async function freezeLease(env, applicationId) {
+  try {
+    const application = await fetchApplicationForLease(env, applicationId);
+    const listing = application?.listings;
+    if (!listing) return null;
+
+    const building = listing.building_id ? await fetchBuilding(env, listing.building_id) : null;
+    const layers = await fetchLeaseLayers(env, listing.id);
+    const deal = dealValues({ application, listing, building, today: todayParts() });
+    return resolveValues({ layers, deal }).values;
+  } catch {
+    return null;
+  }
 }
 
 // What the lease screen changed but did not save. It may correct the deal — a

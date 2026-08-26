@@ -196,6 +196,36 @@ const { rows: [record] } = await db.query(
 t('the decision record keeps who decided and why',
   record.who === 'a@x.com' && record.why === 'income checks out');
 
+// 10. what a property fixes, and what a sent lease keeps
+//
+// The signer's printed name is a lease value and lives in the settings layer
+// with the other ninety-two. The address the signature request goes to is not
+// in the document at all, so it has no placeholder and no registry entry, and
+// it lives on the building it signs for.
+await db.query(`update buildings set landlord_signer_email = 'signer@example.com' where id = $1`, [b.id]);
+const { rows: [signer] } = await db.query(
+  `select landlord_signer_email from buildings where id = $1`, [b.id]);
+t('a property records where its signature request goes',
+  signer.landlord_signer_email === 'signer@example.com');
+
+// A lease that has gone out stops following the settings screen.
+const { rows: [sent] } = await db.query(
+  `insert into applications (listing_id, name, email, status) values ($1,'T','t@x.com','lease_sent')
+   returning id`, [l.id]);
+await db.query(`update applications set lease_snapshot = $2::jsonb where id = $1`, [sent.id,
+  JSON.stringify({ 'landlord.entity_name': 'As it was when sent', 'rent.monthly': '$4,500.00' })]);
+const { rows: [frozen] } = await db.query(
+  `select lease_snapshot->>'landlord.entity_name' as entity from applications where id = $1`, [sent.id]);
+t('a sent lease keeps the values it was generated from',
+  frozen.entity === 'As it was when sent');
+
+// The database checks the shape of a settings key, not its meaning — the
+// registry is the Worker's to enforce (see test-permissions.mjs). Worth
+// pinning down, because a reader who assumes otherwise would leave the only
+// real check off a new route.
+t('the database checks a settings key\'s shape, not the registry',
+  await shape('{"not.aregistryfield":"x"}'));
+
 console.log(`PASS ${ok.length}`);
 for (const o of ok) console.log('  ok   ' + o);
 if (bad.length) { console.log(`\nFAIL ${bad.length}`); for (const x of bad) console.log('  FAIL ' + x); process.exit(1); }

@@ -66,6 +66,13 @@ export function hasLease(app) {
 // arrives with the applications list, so the console cannot hold a different
 // list of required documents than the applicant was shown.
 //
+// Two rules ride along from the registry. `when` limits a type to one
+// work-or-school answer — a student is asked for a visa, not paystubs — and
+// applications from before the question read as employed, which is what their
+// form asked about. Types sharing an `either` value are alternatives: a
+// satisfied sibling marks the others "covered", and the group counts as one
+// requirement rather than two.
+//
 // Returns null when the database predates the portal tables: no documents to
 // count is different from none uploaded, and a screen that reports "0 of 7"
 // for a database that has never had a checklist is lying.
@@ -73,29 +80,58 @@ export function documentSummary(app, types) {
   const docs = app?.application_documents;
   if (!Array.isArray(docs) || !Array.isArray(types) || types.length === 0) return null;
 
-  const rows = types.map((type) => {
+  const status = app?.employment_status === "student" ? "student" : "employed";
+  const applicable = types.filter((type) => !type.when || type.when === status);
+
+  const enough = (type) => docs.filter((doc) => doc.doc_type === type.id).length >= type.required;
+  const satisfied = (type) => (type.either
+    ? applicable.some((other) => other.either === type.either && enough(other))
+    : enough(type));
+
+  const rows = applicable.map((type) => {
     const files = docs.filter((doc) => doc.doc_type === type.id);
     const needed = type.required > 0;
     let state;
     if (!needed) state = files.length > 0 ? "received" : "optional";
+    else if (enough(type)) state = "received";
+    else if (satisfied(type)) state = "covered";
     else if (files.length === 0) state = "missing";
-    else if (files.length < type.required) state = "partial";
-    else state = "received";
+    else state = "partial";
     return { type, files, state, needed };
   });
 
-  const required = rows.filter((row) => row.needed);
+  // A file of a type this application is not asked for — uploaded before the
+  // work-or-school answer was corrected, say — must not become invisible.
+  for (const type of types) {
+    if (applicable.includes(type)) continue;
+    const files = docs.filter((doc) => doc.doc_type === type.id);
+    if (files.length > 0) rows.push({ type, files, state: "received", needed: false });
+  }
+
+  // Counted in units: an either-group is one requirement however many types
+  // it holds, so "2 of 3" cannot mean "finished, but twice over".
+  const counted = new Set();
+  let required = 0;
+  let met = 0;
+  for (const type of applicable) {
+    if (type.required === 0) continue;
+    const unit = type.either || type.id;
+    if (counted.has(unit)) continue;
+    counted.add(unit);
+    required += 1;
+    if (satisfied(type)) met += 1;
+  }
+
   const optional = rows.filter((row) => !row.needed);
-  const met = required.filter((row) => row.state === "received").length;
 
   return {
     rows,
-    required: required.length,
+    required,
     requiredMet: met,
     optional: optional.length,
     optionalReceived: optional.filter((row) => row.files.length > 0).length,
-    missing: required.filter((row) => row.state !== "received").length,
-    complete: met === required.length
+    missing: required - met,
+    complete: met === required
   };
 }
 
@@ -186,10 +222,9 @@ export function plainDate(value) {
 // not arrived plus the required answers that are blank, and a second copy in
 // the database would be a second thing to keep in step.
 const NEEDED_ANSWERS = [
-  { key: "income_note", label: "Annual income" },
   { key: "current_address", label: "Current address" },
   { key: "phone", label: "Phone number" },
-  { key: "move_in", label: "Desired move-in date" },
+  { key: "move_in", label: "Lease start date" },
   { key: "dob", label: "Date of birth" }
 ];
 
@@ -203,17 +238,44 @@ export function requestedItems(app, types) {
     }
   }
 
+  // What proves the rent can be paid depends on the work-or-school answer: an
+  // income for the employed, a school for a student. Applications from before
+  // the question read as employed.
+  if (app?.employment_status === "student") {
+    if (!String(app?.student?.school_name ?? "").trim()) {
+      items.push({ kind: "answer", label: "School name" });
+    }
+  } else if (String(app?.income_note ?? "").trim() === "") {
+    items.push({ kind: "answer", label: "Annual income" });
+  }
+
   if (!Array.isArray(app?.rental_history) || app.rental_history.length === 0) {
     items.push({ kind: "answer", label: "Rental history" });
   }
-  if (!Array.isArray(app?.reference_contacts) || app.reference_contacts.length < 3) {
-    items.push({ kind: "answer", label: "Three references" });
+  if (!Array.isArray(app?.reference_contacts) || app.reference_contacts.length < 2) {
+    items.push({ kind: "answer", label: "Two references" });
   }
 
   const summary = documentSummary(app, types);
   if (summary) {
+    // An unmet either-group is one ask, named in one line — "Job offer letter
+    // or Last two paystubs" — not two separate demands for alternatives.
+    const named = new Set();
     for (const row of summary.rows) {
-      if (!row.needed || row.state === "received") continue;
+      if (!row.needed || row.state === "received" || row.state === "covered") continue;
+      if (row.type.either) {
+        if (named.has(row.type.either)) continue;
+        named.add(row.type.either);
+        const siblings = summary.rows.filter((other) => other.type.either === row.type.either);
+        items.push({
+          kind: "document",
+          label: siblings.map((other) => other.type.label).join(" or "),
+          detail: siblings.some((other) => other.files.length > 0)
+            ? "partly received"
+            : "nothing received"
+        });
+        continue;
+      }
       items.push({
         kind: "document",
         label: row.type.label,
