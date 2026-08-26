@@ -482,6 +482,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         }
 
         required("address_street", "Enter your street address.", problems);
+        required("address_unit", "Enter your apartment or unit.", problems);
         required("address_city", "Enter your city.", problems);
         required("address_state", "Enter your state.", problems);
         if (!/^\d{5}(-\d{4})?$/.test(value("address_zip"))) {
@@ -523,10 +524,13 @@ import { endDateFor } from "../shared/lease-dates.js";
               ["employer", "Enter the employer's name, or remove this record."],
               ["position", "Enter the position you held there."],
               ["start", "Enter when this job began."],
-              ["income", "Enter the annual income for this job."]
+              ["income", "Enter the annual income for this job."],
+              ["supervisor_name", "Enter your supervisor's name at this job."]
             ]) {
               if (!entry.values[key]) problems.push(problem(entry.control(key), message));
             }
+            requiredPhone(entry.control("supervisor_phone"), "this supervisor's", problems);
+            requiredEmail(entry.control("supervisor_email"), "this supervisor's", problems);
           }
           return problems;
         }

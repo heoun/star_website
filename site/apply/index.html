@@ -188,9 +188,9 @@
                        autocomplete="address-line1" placeholder="81-07 Kew Gardens Road" required>
               </div>
               <div class="field">
-                <label for="address_unit">Apartment or unit <span class="optional">Optional</span></label>
+                <label for="address_unit">Apartment or unit</label>
                 <input id="address_unit" name="address_unit" maxlength="30"
-                       autocomplete="address-line2" placeholder="Apt 2F">
+                       autocomplete="address-line2" placeholder="Apt 2F" required>
               </div>
               <div class="field">
                 <label for="address_city">City</label>
@@ -455,11 +455,15 @@
     <fieldset class="repeat-card">
       <legend tabindex="-1"></legend>
       <div class="repeat-head"></div>
-      <div class="field-grid">
-        <div class="field"><label data-label="employer">Employer</label><input data-field="employer" maxlength="160"></div>
+      <div class="field-grid thirds">
+        <div class="field span2"><label data-label="employer">Employer</label><input data-field="employer" maxlength="160"></div>
         <div class="field"><label data-label="position">Position</label><input data-field="position" maxlength="120"></div>
-        <div class="field"><label data-label="start">Employed since</label><input data-field="start" maxlength="20" inputmode="numeric" placeholder="01/2019"></div>
+        <div class="field"><label data-label="start">From</label><input data-field="start" maxlength="20" inputmode="numeric" placeholder="01/2019"></div>
+        <div class="field"><label data-label="end">Until <span class="optional">Optional</span></label><input data-field="end" maxlength="20" inputmode="numeric" placeholder="MM/YYYY"></div>
         <div class="field"><label data-label="income">Annual income</label><input data-field="income" maxlength="30" inputmode="decimal" placeholder="$90,000"></div>
+        <div class="field"><label data-label="supervisor_name">Supervisor name</label><input data-field="supervisor_name" maxlength="120"></div>
+        <div class="field"><label data-label="supervisor_phone">Supervisor phone</label><input data-field="supervisor_phone" type="tel" inputmode="tel" maxlength="30"></div>
+        <div class="field"><label data-label="supervisor_email">Supervisor email</label><input data-field="supervisor_email" type="email" maxlength="180"></div>
       </div>
     </fieldset>
   </template>
