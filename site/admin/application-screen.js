@@ -18,9 +18,10 @@
 //                          workspace is where it is written
 //   the lease end date     it follows from a term the agent confirms later
 //
-// Everything an agent may correct is still correctable — the same columns,
-// through the same PATCH /applications/:id, keeping the same record of what
-// the applicant originally wrote.
+// What may be corrected here is deliberately narrow — the lease dates for
+// anybody, the tenant's identity for a manager — through the same
+// PATCH /applications/:id, keeping the same record of what the applicant
+// originally wrote. The screening tab is the application record, read only.
 
 import { openDocViewer } from "./doc-viewer.js";
 import {
@@ -31,8 +32,6 @@ import {
   incomeSummary,
   money,
   plainDate,
-  propertyLine,
-  ratioText,
   reference,
   requestedItems,
   shortDay,
@@ -60,8 +59,8 @@ export function initApplicationScreen(deps) {
 // lease/schema/fields.json's `applications.*` sources — is on the first tab,
 // and everything the applicant answered for screening is on the second.
 const TABS = [
-  ["lease", "Info On Lease"],
-  ["screening", "Info NOT On Lease"]
+  ["lease", "INFO ON LEASE"],
+  ["screening", "INFO NOT ON LEASE"]
 ];
 
 const IDENTITY_FIELDS = [
@@ -94,10 +93,6 @@ const TENANCY_FIELDS = [
     suffix: "months", note: "The agent confirms the term when the lease is made." }
 ];
 
-const MESSAGE_FIELDS = [{ key: "message", label: "Anything else", type: "multiline" }];
-
-const INCOME_FIELDS = [{ key: "income_note", label: "Annual income", type: "text" }];
-
 const EMPLOYER_FIELDS = [
   { key: "employer", label: "Employer" },
   { key: "position", label: "Position" },
@@ -121,11 +116,9 @@ const STUDENT_FIELDS = [
 // employed, which is what their form asked about.
 const isStudentApp = (app) => app?.employment_status === "student";
 
+// Only roommates and pets ever open in an editor here; the other lists are
+// the applicant's screening answers, read but never rewritten on this page.
 const LISTS = {
-  // The form asks four fields; `end` and the supervisor keys are older
-  // applications' answers. They stay in the editor because a save rewrites
-  // the whole list through the Worker's whitelist — a field the editor did
-  // not carry would be a field the save erased.
   employment_history: { label: "Previous employment", least: 0, fields: [
     { key: "employer", label: "Employer" },
     { key: "position", label: "Position" },
@@ -170,18 +163,17 @@ const LISTS = {
   ] }
 };
 
-// Which section owns which fields, so an Edit button only ever collects its
-// own. `employer` and `student` are the two halves of the work-or-school
-// branch; collect() only ever finds the inputs of the half that was rendered,
-// which is the half this application answered.
-const EDITABLE = {
-  lease: { scalars: [...IDENTITY_FIELDS, ...TENANCY_FIELDS, ...GUARD_FIELDS],
-    lists: ["roommates"], employer: false },
-  household: { scalars: [...HOUSEHOLD_FIELDS, ...MESSAGE_FIELDS], lists: ["pets"], employer: false },
-  income: { scalars: INCOME_FIELDS, lists: ["employment_history"], employer: true, student: true },
-  rental: { scalars: [], lists: ["rental_history"], employer: false },
-  references: { scalars: [], lists: ["reference_contacts", "emergency_contacts"], employer: false }
-};
+// What may be corrected on this page, and by whom. The lease dates are
+// anybody's typo to fix; the tenant's identity — names, contact, the guard
+// answers, roommates, pets — is a manager's, behind a confirmation, because
+// these rewrite what the applicant answered. Everything on the screening tab
+// is the application record and is not edited here at all. Rent, due date,
+// deposit and riders are the lease workspace's.
+function editRules() {
+  return isManager()
+    ? { scalars: [...IDENTITY_FIELDS, ...TENANCY_FIELDS, ...GUARD_FIELDS], lists: ["roommates", "pets"] }
+    : { scalars: TENANCY_FIELDS, lists: [] };
+}
 
 // ------------------------------------------------------------------- state
 
@@ -382,30 +374,46 @@ function panel(title, note, body, { section = "", extra = "" } = {}) {
 // ------------------------------------------------------------------ tabs
 
 // A screening section: closed, one line saying what it holds; open, the same
-// panel it always was. Nothing but its own Edit tools lives in the body head,
-// because the summary row is a toggle, not a toolbar.
-function fold(key, title, note, body, { section = "" } = {}) {
+// panel it always was. The record is read here, not rewritten, so a fold
+// carries no tools.
+function fold(key, title, note, body) {
   return `<details class="appl-fold"${expanded.has(key) ? " open" : ""} data-appl-fold="${escapeHtml(key)}">
     <summary>
       <span class="appl-fold-title">${escapeHtml(title)}</span>
       ${note ? `<span class="appl-fold-note">${escapeHtml(note)}</span>` : ""}
     </summary>
-    <div class="appl-fold-body">
-      ${section ? `<div class="appl-fold-tools">${editTools(section)}</div>` : ""}
-      ${body}
-    </div>
+    <div class="appl-fold-body">${body}</div>
   </details>`;
+}
+
+// In edit mode only the fields this reader may correct become inputs; the
+// rest stay read rows, so what a save can touch is what the screen showed
+// as touchable.
+function gatedFields(app, list, edit) {
+  const allowed = new Set(editRules().scalars.map((field) => field.key));
+  return list.map((field) =>
+    (edit && allowed.has(field.key) ? editField(app, field) : readField(app, field))).join("");
 }
 
 function leaseTab(app) {
   const edit = editing === "lease";
+  const listing = app.listings || null;
+  const canEditLists = edit && isManager();
 
-  const tenant = group("Tenant", fields(app, IDENTITY_FIELDS, edit)
+  const tenant = group("Tenant", gatedFields(app, IDENTITY_FIELDS, edit)
     + (edit ? "" : fact("Also named", coApplicants(app))));
-  const tenancy = group("The tenancy applied for", fields(app, TENANCY_FIELDS, edit));
-  const guards = group("Window guard notice", fields(app, GUARD_FIELDS, edit));
 
-  const roommates = edit
+  const where = [
+    fact("Property", listing?.title, listing
+      ? "" : "The listing this application was made against has been removed."),
+    listing?.building_name ? fact("Building", listing.building_name) : "",
+    fact("Unit", listing?.unit)
+  ].join("");
+  const tenancy = group("The tenancy applied for", where + gatedFields(app, TENANCY_FIELDS, edit));
+
+  const guards = group("Window guard notice", gatedFields(app, GUARD_FIELDS, edit));
+
+  const roommates = canEditLists
     ? entryEditor(app, "roommates")
     : entryCards(app, "roommates", (mate) => `<div class="card">
         <b>${escapeHtml(`${mate.first_name || ""} ${mate.last_name || ""}`.trim() || "Not named")}</b>
@@ -414,11 +422,21 @@ function leaseTab(app) {
           ${fact("Email", mate.email)}
         </dl></div>`);
 
-  return panel("Lease starting values",
-    "These are starting values from the application. The agent confirms final lease terms when creating the lease.",
+  const pets = canEditLists
+    ? entryEditor(app, "pets")
+    : entryCards(app, "pets", (pet) => `<div class="card">
+        <b>${escapeHtml(pet.type || "Pet")}</b>
+        <dl class="factlist">
+          ${fact("Breed or species", pet.species)}
+          ${fact("Weight", pet.weight ? `${pet.weight} lb` : "")}
+        </dl></div>`);
+
+  return panel("Lease Values",
+    "These are starting values from the application. Agent should confirm final lease terms when creating the lease.",
     `<div class="facts">${tenant}${tenancy}${guards}</div>
      <div class="sub"><h3>Roommates</h3>${roommates}
        <p class="note">A roommate is on the lease once the agent adds them to the tenant legal names.</p></div>
+     <div class="sub"><h3>Pets</h3>${pets}</div>
      <p class="note">Rent, deposit, concession, prorated rent and every other transaction term are
         settled in the lease workspace, not here.</p>`,
     { section: "lease", extra: "is-start" });
@@ -442,34 +460,20 @@ function coApplicants(app) {
 }
 
 function householdSection(app) {
-  const edit = editing === "household";
-
   const residence = group("Residence and household",
-    fields(app, HOUSEHOLD_FIELDS, edit) + (edit ? "" : ssnRow(app)));
+    fields(app, HOUSEHOLD_FIELDS, false) + ssnRow(app));
 
-  const pets = edit
-    ? entryEditor(app, "pets")
-    : entryCards(app, "pets", (pet) => `<div class="card">
-        <b>${escapeHtml(pet.type || "Pet")}</b>
-        <dl class="factlist">
-          ${fact("Breed or species", pet.species)}
-          ${fact("Weight", pet.weight ? `${pet.weight} lb` : "")}
-        </dl></div>`);
-
-  const message = edit
-    ? `<dl class="factlist">${fields(app, MESSAGE_FIELDS, true)}</dl>`
-    : (app.message ? `<p class="longtext">${escapeHtml(app.message)}</p>`
-      : '<p class="none">The applicant did not add a message.</p>');
+  const message = app.message
+    ? `<p class="longtext">${escapeHtml(app.message)}</p>`
+    : '<p class="none">The applicant did not add a message.</p>';
 
   return fold("household", "Household and residence", "Who is moving in, and from where.",
     `<div class="facts">${residence}</div>
-     <div class="sub"><h3>Pets</h3>${pets}</div>
      <div class="sub"><h3>Anything else the applicant wrote</h3>${message}</div>
-     ${edit ? "" : `<p class="sensitive">Sensitive information is masked. ${
+     <p class="sensitive">Sensitive information is masked. ${
        isManager()
          ? "Revealing the full identity number is a manager’s, and it is never shown in the lease workflow."
-         : "The full identity number is a manager’s to see, and it is never shown in the lease workflow."}</p>`}`,
-    { section: "household" });
+         : "The full identity number is a manager’s to see, and it is never shown in the lease workflow."}</p>`);
 }
 
 // The identity number is an SSN or, for applicants without one, a passport
@@ -496,41 +500,23 @@ function ssnRow(app) {
 }
 
 function incomeSection(app) {
-  const edit = editing === "income";
   const income = incomeSummary(app);
   const employer = app.current_employer || {};
   const student = app.student || {};
 
-  // The work-or-school branch: the tab shows — and an Edit collects — the
-  // half this application answered. The other half was never asked.
+  // The work-or-school branch: the section shows the half this application
+  // answered. The other half was never asked.
   const current = isStudentApp(app)
-    ? group("Study", edit
-      ? STUDENT_FIELDS.map((field) => `<div class="fact is-edit">
-          <dt><label for="appl-stu-${field.key}">${escapeHtml(field.label)}</label></dt>
-          <dd><input type="text" id="appl-stu-${field.key}" data-appl-student="${escapeHtml(field.key)}"
-            value="${escapeHtml(student[field.key] ?? "")}"></dd></div>`).join("")
-      : STUDENT_FIELDS.map((field) => fact(field.label, student[field.key])).join(""))
-    : group("Current employment", edit
-      ? EMPLOYER_FIELDS.map((field) => `<div class="fact is-edit">
-          <dt><label for="appl-emp-${field.key}">${escapeHtml(field.label)}</label></dt>
-          <dd><input type="text" id="appl-emp-${field.key}" data-appl-employer="${escapeHtml(field.key)}"
-            value="${escapeHtml(employer[field.key] ?? "")}"></dd></div>`).join("")
-      : EMPLOYER_FIELDS.map((field) => fact(field.label, employer[field.key])).join(""));
+    ? group("Study", STUDENT_FIELDS.map((field) => fact(field.label, student[field.key])).join(""))
+    : group("Current employment",
+      EMPLOYER_FIELDS.map((field) => fact(field.label, employer[field.key])).join(""));
 
-  const summary = group("Income", (edit ? fields(app, INCOME_FIELDS, true)
-    : fact("Annual income", income.annual === null ? income.written : money(income.annual))) + [
-    fact("Monthly income", income.monthly === null ? "" : money(income.monthly),
-      income.monthly === null ? "" : "annual ÷ 12"),
-    fact("Rent on this apartment", income.rent === null ? "" : money(income.rent)),
-    fact("Rent to income", income.ratio === null ? "" : ratioText(income.ratio),
-      income.ratio === null ? "" : "of monthly income")
-  ].join(""));
+  const summary = group("Income",
+    fact("Annual income", income.annual === null ? income.written : money(income.annual)));
 
   // Older records carry keys the form no longer asks about — an end date, a
   // supervisor — and what was answered then should still be readable now.
-  const history = edit
-    ? entryEditor(app, "employment_history")
-    : entryCards(app, "employment_history", (entry) => `<div class="card">
+  const history = entryCards(app, "employment_history", (entry) => `<div class="card">
         <b>${escapeHtml(entry.employer || "Employer")}</b>
         <dl class="factlist">
           ${fact("Position", entry.position)}
@@ -542,23 +528,18 @@ function incomeSection(app) {
           ${entry.supervisor_email ? fact("Supervisor email", entry.supervisor_email) : ""}
         </dl></div>`);
 
-  const historyBlock = isStudentApp(app) && !edit
+  const historyBlock = isStudentApp(app)
     && (!Array.isArray(app.employment_history) || app.employment_history.length === 0)
     ? ""
     : `<div class="sub"><h3>Previous employment</h3>${history}</div>`;
 
   return fold("income", isStudentApp(app) ? "Study and income" : "Employment and income",
     "How the rent is supported.",
-    `<div class="facts">${current}${summary}</div>${historyBlock}`,
-    { section: "income" });
+    `<div class="facts">${current}${summary}</div>${historyBlock}`);
 }
 
 function rentalSection(app) {
-  const edit = editing === "rental";
-
-  const body = edit
-    ? entryEditor(app, "rental_history")
-    : entryCards(app, "rental_history", (entry) => `<div class="card">
+  const body = entryCards(app, "rental_history", (entry) => `<div class="card">
         <b>${escapeHtml(entry.address || "Address not given")}</b>
         <dl class="factlist">
           ${fact("From", entry.start)}
@@ -569,13 +550,10 @@ function rentalSection(app) {
           ${fact("Landlord email", entry.landlord_email)}
         </dl></div>`);
 
-  return fold("rental", "Rental history", "Most recent residence first.",
-    body, { section: "rental" });
+  return fold("rental", "Rental history", "Most recent residence first.", body);
 }
 
 function referencesSection(app) {
-  const edit = editing === "references";
-
   const contactCard = (entry) => `<div class="card">
     <b>${escapeHtml(entry.name || "Not named")}</b>
     <dl class="factlist">
@@ -584,18 +562,10 @@ function referencesSection(app) {
       ${fact("Email", entry.email)}
     </dl></div>`;
 
-  const references = edit
-    ? entryEditor(app, "reference_contacts")
-    : entryCards(app, "reference_contacts", contactCard);
-  const emergency = edit
-    ? entryEditor(app, "emergency_contacts")
-    : entryCards(app, "emergency_contacts", contactCard);
-
   return fold("references", "References and contacts",
     "References the applicant named, and who to reach in an emergency.",
-    `<div class="sub"><h3>References</h3>${references}</div>
-     <div class="sub"><h3>Emergency contacts</h3>${emergency}</div>`,
-    { section: "references" });
+    `<div class="sub"><h3>References</h3>${entryCards(app, "reference_contacts", contactCard)}</div>
+     <div class="sub"><h3>Emergency contacts</h3>${entryCards(app, "emergency_contacts", contactCard)}</div>`);
 }
 
 // ------------------------------------------------------------- documents
@@ -838,7 +808,6 @@ export function renderApplicationScreen(host, app) {
       <div>
         <span class="appl-id">Application ${escapeHtml(reference(app))}</span>
         <h1>${escapeHtml(app.name || "Applicant")}</h1>
-        <p>${escapeHtml(propertyLine(app))}</p>
       </div>
       <span class="pill is-${stage.tone} is-large">${escapeHtml(stage.label)}</span>
     </div>
@@ -879,8 +848,8 @@ export function renderApplicationScreen(host, app) {
 
 // ---------------------------------------------------------------- writing
 
-function collect(host, section) {
-  const rules = EDITABLE[section];
+function collect(host) {
+  const rules = editRules();
   const values = {};
 
   for (const input of host.querySelectorAll("[data-appl-input]")) {
@@ -894,24 +863,6 @@ function collect(host, section) {
     } else {
       values[key] = input.value.trim();
     }
-  }
-
-  if (rules.employer) {
-    const employer = {};
-    for (const input of host.querySelectorAll("[data-appl-employer]")) {
-      employer[input.dataset.applEmployer] = input.value.trim();
-    }
-    if (Object.keys(employer).length > 0) values.current_employer = employer;
-  }
-
-  // Only rendered for a student's application, so an employed applicant's
-  // save never carries a student record and the other way round.
-  if (rules.student) {
-    const student = {};
-    for (const input of host.querySelectorAll("[data-appl-student]")) {
-      student[input.dataset.applStudent] = input.value.trim();
-    }
-    if (Object.keys(student).length > 0) values.student = student;
   }
 
   for (const key of rules.lists) {
@@ -973,12 +924,8 @@ export async function handleApplicationClick(event, host, app) {
     const key = summary.closest("details")?.dataset.applFold;
     if (key) {
       event.preventDefault();
-      if (expanded.has(key)) {
-        expanded.delete(key);
-        if (editing === key) editing = "";
-      } else {
-        expanded.add(key);
-      }
+      if (expanded.has(key)) expanded.delete(key);
+      else expanded.add(key);
       renderApplicationScreen(host, app);
       host.querySelector(`[data-appl-fold="${CSS.escape(key)}"] > summary`)?.focus();
       return true;
@@ -997,8 +944,13 @@ export async function handleApplicationClick(event, host, app) {
 
   const startEdit = event.target.closest("[data-appl-edit]");
   if (startEdit) {
+    // A manager's edit reaches the tenant's identity, so it is a decision,
+    // not a reflex: the applicant's original answers stay on the record.
+    if (isManager() && !confirm(
+      "Editing here corrects what the applicant answered. The original answers stay on the record. Continue?")) {
+      return true;
+    }
     editing = startEdit.dataset.applEdit;
-    expanded.add(editing);
     renderApplicationScreen(host, app);
     return true;
   }
@@ -1010,9 +962,8 @@ export async function handleApplicationClick(event, host, app) {
   }
 
   if (event.target.closest("[data-appl-save]")) {
-    const section = editing;
-    if (!section) return true;
-    const saved = await patch(app, collect(host, section), "Saved.");
+    if (!editing) return true;
+    const saved = await patch(app, collect(host), "Saved.");
     if (saved) editing = "";
     renderApplicationScreen(host, app);
     return true;
