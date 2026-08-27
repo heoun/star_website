@@ -1,5 +1,5 @@
 import { guardAdminPage, handleAdminRequest } from "./admin.js";
-import { handleApplication } from "./apply.js";
+import { handleApplication, handleRoommateInvites } from "./apply.js";
 import { handleInquiry, renderPage } from "./contact.js";
 import { serveListingsFeed, servePropertyDetail } from "./listings.js";
 import { serveMedia } from "./media.js";
@@ -35,6 +35,17 @@ export default {
     // uploads for people who have already applied.
     if (pathname === "/api/portal" || pathname.startsWith("/api/portal/")) {
       return handlePortalRequest(request, env, ctx, pathname);
+    }
+
+    // Roommate invitations, sent from the apply page's roommate step.
+    if (pathname === "/api/apply/invite") {
+      if (request.method !== "POST") {
+        return new Response(JSON.stringify({ error: "Method not allowed." }), {
+          status: 405,
+          headers: { "Content-Type": "application/json; charset=utf-8" }
+        });
+      }
+      return handleRoommateInvites(request, env);
     }
 
     // Rental applications submitted from the apply page.

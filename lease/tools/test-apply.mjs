@@ -22,7 +22,7 @@
 // The SSNs here are the canonical never-issued test numbers. No real one
 // belongs in a test file, a fixture, or a log.
 
-import { handleApplication } from "../../worker/apply.js";
+import { handleApplication, handleRoommateInvites } from "../../worker/apply.js";
 import { decryptSsn } from "../../worker/ssn.js";
 
 const passed = [];
@@ -43,6 +43,8 @@ let inserted = [];
 let sentEmails = [];
 let insertFails = false;
 let published = true;
+let bedroomsValue = null;
+let failEmailTo = null;
 const logs = [];
 
 const realError = console.error;
@@ -63,7 +65,8 @@ globalThis.fetch = async (url, init = {}) => {
         id: LISTING_ID, category: "residential", transaction_type: "rental",
         title: "Evergarden 7A", building_name: "Evergarden", unit: "7A",
         location: "81-07 Kew Gardens Road, Kew Gardens, NY", price_amount: 4500,
-        published: true, position: 0, building_id: null, listing_media: []
+        published: true, position: 0, building_id: null, listing_media: [],
+        ...(bedroomsValue === null ? {} : { bedrooms: bedroomsValue })
       }]
       : []);
   }
@@ -82,7 +85,11 @@ globalThis.fetch = async (url, init = {}) => {
   }
 
   if (target.includes("api.resend.com")) {
-    sentEmails.push(JSON.parse(init.body));
+    const message = JSON.parse(init.body);
+    if (failEmailTo && [].concat(message.to).includes(failEmailTo)) {
+      return reply({ error: "delivery refused" }, 500);
+    }
+    sentEmails.push(message);
     return reply({ id: "email-1" });
   }
 
@@ -155,6 +162,7 @@ function application(overrides = {}) {
     employment_history: [],
     rental_history: [{
       landlord_name: "Lana Landlord",
+      contact: "Lana Landlord",
       address: "9 Old Street, Brooklyn, NY 11201",
       landlord_phone: "(212) 555-0190",
       landlord_email: "lana@example.invalid",
@@ -191,7 +199,10 @@ function studentApplication(overrides = {}) {
   });
 }
 
-const reset = () => { inserted = []; sentEmails = []; logs.length = 0; insertFails = false; published = true; };
+const reset = () => {
+  inserted = []; sentEmails = []; logs.length = 0;
+  insertFails = false; published = true; bedroomsValue = null; failEmailTo = null;
+};
 
 // ------------------------------------------------- a body that is not JSON
 //
@@ -259,10 +270,28 @@ await refused("a reference without a relationship or email is refused", {
   { name: "Ben Tester", phone: "(212) 555-0101" }]
 }, "references");
 await refused("no rental history at all is refused", { rental_history: [] }, "rental history");
-await refused("a landlord without an email or rent is refused", {
+await refused("a landlord without a contact or rent is refused", {
   rental_history: [{ landlord_name: "Lana Landlord",
     address: "9 Old Street, Brooklyn, NY 11201", landlord_phone: "(212) 555-0190" }]
 }, "rental history");
+await refused("a landlord with no phone and no email is refused", {
+  rental_history: [{ landlord_name: "Lana Landlord", contact: "Lana Landlord",
+    address: "9 Old Street, Brooklyn, NY 11201", start: "08/2022", monthly_rent: "$2,500" }]
+}, "a phone or an email");
+
+// One way to reach the landlord is enough; the record below carries a phone
+// and no email, and is accepted.
+reset();
+const phoneOnly = await post(application({
+  rental_history: [{ landlord_name: "Lana Landlord", contact: "Lana Landlord",
+    address: "9 Old Street, Brooklyn, NY 11201", landlord_phone: "(212) 555-0190",
+    start: "08/2022", monthly_rent: "$2,500" }]
+}));
+check("a landlord with a phone and no email is accepted",
+  phoneOnly.status === 201, `${phoneOnly.status} ${phoneOnly.body.error || ""}`);
+check("and the contact person is stored",
+  inserted[0]?.rental_history?.[0]?.contact === "Lana Landlord",
+  JSON.stringify(inserted[0]?.rental_history?.[0] || null));
 await refused("an employed applicant with no employer is refused",
   { current_employer: { employer: "" } }, "current employer");
 await refused("an employed applicant with no supervisor is refused", {
@@ -406,6 +435,100 @@ reset();
 const bot = await post(application({ website: "https://buy-followers.example" }));
 check("a filled honeypot is told nothing", bot.status === 200 && bot.body.ok === true);
 check("and stores nothing", inserted.length === 0, String(inserted.length));
+
+// ------------------------------------------------------ roommate invitations
+//
+// Sent from the roommate step before any application exists, so the route
+// stands on its own: it needs a signed-in applicant, a real published
+// listing, addresses that parse, and no more roommates than the bedrooms
+// allow.
+
+async function postInvite(body, { session = true } = {}) {
+  const headers = { "Content-Type": "application/json" };
+  if (session) headers.Cookie = `star_portal=${cookie()}`;
+  const request = new Request("https://star.example.com/api/apply/invite", {
+    method: "POST", headers, body: JSON.stringify(body)
+  });
+  const response = await handleRoommateInvites(request, ENV);
+  const text = await response.text();
+  let parsed = null;
+  try { parsed = JSON.parse(text); } catch { parsed = { raw: text }; }
+  return { status: response.status, body: parsed };
+}
+
+reset();
+const inviteAnon = await postInvite({ listing_id: LISTING_ID,
+  roommates: [{ first_name: "Roo", last_name: "Mate", email: "roo@example.invalid" }] },
+{ session: false });
+check("inviting without an account is refused", inviteAnon.status === 401, String(inviteAnon.status));
+check("and no invitation goes out", sentEmails.length === 0, String(sentEmails.length));
+
+reset();
+bedroomsValue = "3";
+const invited = await postInvite({ listing_id: LISTING_ID, roommates: [
+  { first_name: "Roo", last_name: "Mate", email: "roo@example.invalid" },
+  { first_name: "Coo", last_name: "Mate", email: "coo@example.invalid" }
+] });
+check("two roommates are invited",
+  invited.status === 200 && invited.body.sent?.length === 2 && invited.body.failed?.length === 0,
+  `${invited.status} ${JSON.stringify(invited.body)}`);
+check("one email per roommate goes out", sentEmails.length === 2, String(sentEmails.length));
+check("addressed to the roommate", sentEmails[0]?.to?.[0] === "roo@example.invalid",
+  JSON.stringify(sentEmails[0]?.to));
+check("naming the inviter's account", (sentEmails[0]?.text || "").includes(ACCOUNT),
+  (sentEmails[0]?.text || "").slice(0, 80));
+check("and pointing at the apply page",
+  (sentEmails[0]?.text || "").includes(`/apply/?id=${LISTING_ID}`),
+  (sentEmails[0]?.text || "").slice(0, 200));
+
+reset();
+bedroomsValue = "3";
+const doubled = await postInvite({ listing_id: LISTING_ID, roommates: [
+  { first_name: "Roo", last_name: "Mate", email: "roo@example.invalid" },
+  { first_name: "Roo", last_name: "Again", email: "ROO@example.invalid" }
+] });
+check("the same address is invited once", doubled.status === 200 && sentEmails.length === 1,
+  `${doubled.status} ${sentEmails.length}`);
+
+reset();
+bedroomsValue = "3";
+failEmailTo = "coo@example.invalid";
+const partial = await postInvite({ listing_id: LISTING_ID, roommates: [
+  { first_name: "Roo", last_name: "Mate", email: "roo@example.invalid" },
+  { first_name: "Coo", last_name: "Mate", email: "coo@example.invalid" }
+] });
+check("a partial failure names who was reached",
+  partial.status === 200 && partial.body.sent?.[0] === "roo@example.invalid"
+    && partial.body.failed?.[0] === "coo@example.invalid" && partial.body.ok === false,
+  `${partial.status} ${JSON.stringify(partial.body)}`);
+check("and only the delivered one went out", sentEmails.length === 1, String(sentEmails.length));
+
+reset();
+bedroomsValue = "0";
+const studio = await postInvite({ listing_id: LISTING_ID,
+  roommates: [{ first_name: "Roo", last_name: "Mate", email: "roo@example.invalid" }] });
+check("a studio has no room for a roommate", studio.status === 422, String(studio.status));
+
+reset();
+const badEmail = await postInvite({ listing_id: LISTING_ID,
+  roommates: [{ first_name: "Roo", last_name: "Mate", email: "not-an-email" }] });
+check("a bad roommate email is refused", badEmail.status === 422, String(badEmail.status));
+check("and nothing goes out for it", sentEmails.length === 0, String(sentEmails.length));
+
+reset();
+bedroomsValue = "2";
+const tooMany = await postInvite({ listing_id: LISTING_ID, roommates: [
+  { first_name: "Roo", last_name: "Mate", email: "roo@example.invalid" },
+  { first_name: "Coo", last_name: "Mate", email: "coo@example.invalid" }
+] });
+check("more roommates than the bedrooms allow is refused", tooMany.status === 422, String(tooMany.status));
+check("and no invitation is delivered", sentEmails.length === 0, String(sentEmails.length));
+
+reset();
+published = false;
+const inviteGone = await postInvite({ listing_id: LISTING_ID,
+  roommates: [{ first_name: "Roo", last_name: "Mate", email: "roo@example.invalid" }] });
+check("an unpublished listing invites nobody", inviteGone.status === 404, String(inviteGone.status));
 
 // ---------------------------------------------------------------- reporting
 

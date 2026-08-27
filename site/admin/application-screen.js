@@ -130,8 +130,9 @@ const LISTS = {
     { key: "supervisor_email", label: "Supervisor email" }
   ] },
   rental_history: { label: "Rental history", least: 0, fields: [
-    { key: "landlord_name", label: "Landlord or manager" },
+    { key: "landlord_name", label: "Landlord" },
     { key: "address", label: "Address" },
+    { key: "contact", label: "Contact" },
     { key: "landlord_phone", label: "Landlord phone" },
     { key: "landlord_email", label: "Landlord email" },
     { key: "start", label: "From" },
@@ -545,7 +546,8 @@ function rentalSection(app) {
           ${fact("From", entry.start)}
           ${fact("Until", entry.end)}
           ${fact("Monthly rent", entry.monthly_rent)}
-          ${fact("Landlord or manager", entry.landlord_name)}
+          ${fact("Landlord", entry.landlord_name)}
+          ${fact("Contact", entry.contact)}
           ${fact("Landlord phone", entry.landlord_phone)}
           ${fact("Landlord email", entry.landlord_email)}
         </dl></div>`);

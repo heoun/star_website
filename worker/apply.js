@@ -183,6 +183,7 @@ const RENTAL_SPEC = {
   end: line(20),
   monthly_rent: line(30),
   landlord_name: line(120),
+  contact: line(120),
   landlord_phone: phoneField(),
   landlord_email: emailField()
 };
@@ -434,6 +435,131 @@ function withoutRowValues(message) {
   return String(message ?? "").replace(/Failing row contains[\s\S]*/i, "[row redacted]");
 }
 
+// ------------------------------------------------------ roommate invitations
+//
+// Sent from the roommate step of the form, before the application itself is
+// submitted, so a roommate can create their account and start their own
+// application while the inviter is still filling theirs in. The route needs a
+// signed-in applicant, a real published listing, and valid addresses; the
+// inviter is named by their account email, because at this point in the form
+// their name has not been asked yet.
+
+export async function handleRoommateInvites(request, env) {
+  const contentType = (request.headers.get("Content-Type") || "").trim();
+  if (!/^application\/json\b/i.test(contentType)) {
+    return json({ error: "Invitations could not be read. Please try again." }, 415);
+  }
+
+  let body;
+  try {
+    body = await request.json();
+  } catch {
+    return json({ error: "Invitations could not be read. Please try again." }, 400);
+  }
+
+  const session = await readSession(request, env);
+  if (!session) {
+    return json({ error: "Please sign in to your applicant account first." }, 401);
+  }
+
+  // Supabase rotates refresh tokens, so the rolled cookie has to ride every
+  // response from here on — an error that dropped it would quietly sign the
+  // applicant out mid-form.
+  const withSession = (response) => {
+    if (session.setCookie) response.headers.append("Set-Cookie", session.setCookie);
+    return response;
+  };
+
+  const listingId = String(body.listing_id ?? "").trim();
+  if (!UUID_PATTERN.test(listingId)) {
+    return withSession(json({ error: "Unknown property." }, 400));
+  }
+
+  let listing;
+  try {
+    listing = await fetchListing(env, listingId, { publishedOnly: true });
+  } catch (error) {
+    console.error("Invite listing lookup failed", error);
+    return withSession(json({ error: "The invitations could not be sent. Please try again shortly." }, 502));
+  }
+  if (!listing) {
+    return withSession(json({ error: "Unknown property." }, 404));
+  }
+
+  // The form caps roommates at one per bedroom beyond the applicant, and a
+  // studio takes nobody. A listing whose bedroom count cannot be read gets
+  // the form's own fallback of one.
+  const bedrooms = parseInt(String(listing.bedrooms ?? "").trim(), 10);
+  const cap = Number.isFinite(bedrooms) ? Math.max(0, Math.min(4, bedrooms - 1)) : 1;
+
+  const rawRoommates = Array.isArray(body.roommates) ? body.roommates : [];
+  const roommates = [];
+  const seenAddresses = new Set();
+  for (const item of rawRoommates) {
+    if (typeof item !== "object" || item === null) continue;
+    const invitee = {
+      first_name: cleanLine(item.first_name, 80),
+      last_name: cleanLine(item.last_name, 80),
+      email: emailField()(item.email)
+    };
+    if (!invitee.email) {
+      return withSession(json({ error: "Please check the roommate email addresses." }, 422));
+    }
+    const address = invitee.email.toLowerCase();
+    if (seenAddresses.has(address)) continue;
+    seenAddresses.add(address);
+    roommates.push(invitee);
+  }
+  if (roommates.length === 0) {
+    return withSession(json({ error: "There is nobody to invite yet." }, 422));
+  }
+  if (roommates.length > cap) {
+    return withSession(json({ error: "This home does not have room for that many roommates." }, 422));
+  }
+
+  const home = [listing.building_name, listing.unit].filter(Boolean).join(" ");
+  const label = home ? `${listing.title} (${home})` : listing.title;
+  const applyUrl = new URL(`/apply/?id=${encodeURIComponent(listingId)}`, request.url).toString();
+
+  // The greeting uses the typed first name only when it looks like a name:
+  // this mail goes to an address its owner never gave us directly, so free
+  // text has no business riding in it.
+  const greetName = (value) => (/^[\p{L}][\p{L}' .-]{0,39}$/u.test(value) ? value : "");
+
+  const outcomes = await Promise.all(roommates.map(async (mate) => ({
+    email: mate.email,
+    delivered: await sendEmail(request, env, {
+      from: FROM_ADDRESS,
+      to: [mate.email],
+      subject: `You are invited to apply for ${label}`,
+      text: `${greetName(mate.first_name) ? `Hi ${greetName(mate.first_name)},\n\n` : ""}`
+        + `${session.email} is applying to rent ${label} with Star Real Estate and named you `
+        + "as a roommate. Everyone who signs the lease completes an application of their own.\n\n"
+        + `Start yours here\n\n    ${applyUrl}\n\n`
+        + "Sign in with this email address to create your applicant account, and your "
+        + "application will be filed alongside theirs.\n\n"
+        + "The Star Real Estate team\n"
+    })
+  })));
+
+  // Per address, not all or nothing: the ones that went out stay sent, and
+  // the answer says which are which, so nobody is mailed twice on a retry.
+  const sent = outcomes.filter((outcome) => outcome.delivered).map((outcome) => outcome.email);
+  const failedInvites = outcomes.filter((outcome) => !outcome.delivered).map((outcome) => outcome.email);
+
+  if (sent.length === 0) {
+    console.error("Roommate invitation delivery failed for", label);
+    return withSession(json({
+      error: "The invitations could not be sent. Please try again shortly.",
+      sent, failed: failedInvites
+    }, 502));
+  }
+  if (failedInvites.length > 0) {
+    console.error("Some roommate invitations failed for", label);
+  }
+  return withSession(json({ ok: failedInvites.length === 0, sent, failed: failedInvites }));
+}
+
 export async function handleApplication(request, env, ctx) {
   // JSON and nothing else. A form-encoded body means the browser submitted the
   // HTML form itself, which only happens when this page's JavaScript did not
@@ -585,11 +711,16 @@ async function processApplication(request, env, ctx, body, email) {
     student = shapeStudent(body.student, errors);
   }
 
+  // A landlord record needs a way to be reached, but one way is enough:
+  // a phone or an email, whichever the applicant has.
   const rentalHistory = shapeEntries(
     body.rental_history, RENTAL_SPEC,
-    ["landlord_name", "address", "landlord_phone", "landlord_email", "start", "monthly_rent"],
+    ["landlord_name", "contact", "address", "start", "monthly_rent"],
     "rental history", errors
   );
+  if (rentalHistory.some((entry) => !entry.landlord_phone && !entry.landlord_email)) {
+    errors.push("rental history (a phone or an email for each landlord)");
+  }
   const referenceContacts = shapeEntries(
     body.reference_contacts, PERSON_SPEC,
     ["name", "relationship", "phone", "email"], "references", errors

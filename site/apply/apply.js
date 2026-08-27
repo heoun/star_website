@@ -6,7 +6,7 @@ import { endDateFor } from "../shared/lease-dates.js";
   // verification once its TURNSTILE_SECRET_KEY secret is configured.
   const TURNSTILE_SITE_KEY = "";
 
-  const TOTAL_STEPS = 6;
+  const TOTAL_STEPS = 7;
   const REFERENCES_REQUIRED = 2;
 
   const container = document.getElementById("apply");
@@ -127,6 +127,16 @@ import { endDateFor } from "../shared/lease-dates.js";
         control.name = `${name}_${field}_${key}`;
         const label = control.closest(".field")?.querySelector("[data-label]");
         if (label) label.htmlFor = control.id;
+      });
+      // A help line one rule shares between fields — the rental card's "a
+      // phone or an email is enough" — is stamped like the controls and
+      // attached to each field it names, so a screen reader hears the rule
+      // on the very inputs it loosens.
+      card.querySelectorAll("[data-card-help]").forEach((note, index) => {
+        note.id = `${name}-cardhelp-${key}-${index}`;
+        String(note.dataset.cardHelp).split(/\s+/).forEach((fieldName) => {
+          card.querySelector(`[data-field="${fieldName}"]`)?.setAttribute("aria-describedby", note.id);
+        });
       });
     };
 
@@ -292,7 +302,7 @@ import { endDateFor } from "../shared/lease-dates.js";
 
     // ------------------------------------------------- the work-or-school branch
     //
-    // Step 2 opens on a question: are you working, or a student? The answer
+    // Step 3 opens on a question: are you working, or a student? The answer
     // decides which half of the step is on screen, which fields are required,
     // and which documents the portal will ask for. The branch not chosen is
     // hidden rather than emptied, so changing the answer brings back whatever
@@ -304,8 +314,8 @@ import { endDateFor } from "../shared/lease-dates.js";
       "supervisor_name", "supervisor_phone", "supervisor_email"];
     const STUDENT_REQUIRED = ["school_name", "major", "country", "entry_year", "graduation_year"];
 
-    const stepName = (step) => ["About You", "Occupation", "Rental History", "References",
-      "Additional Information", "Review & Submit"][step - 1];
+    const stepName = (step) => ["Roommates", "About You", "Income", "Rental History",
+      "References", "Additional Information", "Review & Submit"][step - 1];
 
     const applyBranch = () => {
       const status = employmentStatus();
@@ -346,7 +356,7 @@ import { endDateFor } from "../shared/lease-dates.js";
       input.maxLength = passport ? 20 : 11;
       document.getElementById("id-number-help").textContent = passport
         ? "Letters and digits only, as printed on your passport."
-        : "Nine digits with or without dashes. If you do not have an SSN yet, you can use your passport number instead.";
+        : "If you do not have an SSN yet, you can use your passport number instead.";
     };
 
     // ---------------------------------------------------------- the lease dates
@@ -397,7 +407,7 @@ import { endDateFor } from "../shared/lease-dates.js";
       name: "rental", legend: "Previous Landlord",
       legendFor: (index) => (index === 0 ? "Current Landlord" : `Previous Landlord ${index}`),
       min: 1, max: 6, initial: 1,
-      required: ["landlord_name", "address", "landlord_phone", "landlord_email", "start", "monthly_rent"],
+      required: ["landlord_name", "contact", "address", "start", "monthly_rent"],
       requiredScope: "all"
     });
     const references = makeRepeater({
@@ -407,23 +417,61 @@ import { endDateFor } from "../shared/lease-dates.js";
       required: ["name", "relationship", "phone", "email"], requiredScope: "all",
       onChange: () => paintReferenceCount()
     });
-    // No required list here: a roommate card only has to be complete once
-    // something is typed into it, and static required markup would tell a
-    // screen reader the blank card is blocking when it is not. The employment
-    // repeater follows the same rule for the same reason.
+    // One lease signer per bedroom: a two-bedroom home takes the applicant
+    // plus one roommate, a three-bedroom two. A listing whose bedroom count
+    // cannot be read falls back to allowing one.
+    const bedroomCount = parseInt(String(property.bedrooms ?? "").trim(), 10);
+    const roommateCap = Number.isFinite(bedroomCount)
+      ? Math.max(0, Math.min(4, bedroomCount - 1))
+      : 1;
+
     const roommates = makeRepeater({
       listId: "rep-roommates", templateId: "tpl-roommate", addId: "add-roommate",
-      name: "roommate", legend: "Roommate", max: 4
+      name: "roommate", legend: "Roommate", max: Math.max(roommateCap, 1),
+      required: ["first_name", "last_name", "phone", "email"], requiredScope: "all"
     });
     const pets = makeRepeater({
       listId: "rep-pets", templateId: "tpl-pet", addId: "add-pet", name: "pet", legend: "Pet", max: 10,
       required: ["species", "weight"], requiredScope: "all"
     });
 
+    const hasRoommates = () => String(form.elements.has_roommates?.value ?? "");
+    const hasPets = () => String(form.elements.has_pets?.value ?? "");
+
+    // The two yes-or-no gates work like the work-or-school branch: the hidden
+    // half keeps whatever was typed, and saying yes to an empty list starts it
+    // off with one card to fill.
+    const applyRoommates = () => {
+      document.getElementById("branch-roommates").hidden = hasRoommates() !== "yes";
+      if (hasRoommates() === "yes" && roommates.count() === 0) roommates.add();
+    };
+    const applyPets = () => {
+      document.getElementById("branch-pets").hidden = hasPets() !== "yes";
+      if (hasPets() === "yes" && pets.count() === 0) pets.add();
+    };
+
+    // A studio or one-bedroom home has no lease line for a roommate, so the
+    // question is answered by the listing rather than asked.
+    if (roommateCap === 0) {
+      form.querySelector('[data-group="has_roommates"]')?.closest("fieldset")?.setAttribute("hidden", "");
+      form.querySelectorAll('input[name="has_roommates"]').forEach((radio) => radio.removeAttribute("required"));
+      const solo = document.getElementById("roommates-solo");
+      solo.hidden = false;
+      solo.textContent = `This home is listed as a ${bedroomCount === 0 ? "studio" : "one bedroom home"}, `
+        + "so the lease covers a single applicant and there is no roommate to add.";
+    } else {
+      const capNote = document.getElementById("roommate-cap-note");
+      capNote.hidden = false;
+      capNote.textContent = Number.isFinite(bedroomCount)
+        ? `With ${bedroomCount} bedrooms, this home takes you and up to ${roommateCap} `
+          + `${roommateCap === 1 ? "roommate" : "roommates"}.`
+        : `You can add up to ${roommateCap} ${roommateCap === 1 ? "roommate" : "roommates"} for this home.`;
+    }
+
     // ----------------------------------------------------------- validation
     //
     // The rules are the ones the Worker enforces; what changed is when they
-    // run. Continue checks the step in front of you. Submit checks all six,
+    // run. Continue checks the step in front of you. Submit checks all seven,
     // because the Worker will.
 
     const problem = (el, message) => ({ focus: el, mark: [el], message });
@@ -466,6 +514,36 @@ import { endDateFor } from "../shared/lease-dates.js";
     const VALIDATORS = {
       1() {
         const problems = [];
+        if (roommateCap === 0) return problems;
+
+        if (hasRoommates() === "") {
+          const group = form.querySelector('[data-group="has_roommates"]');
+          problems.push(groupProblem(group, "Say whether any roommates are moving in with you."));
+          return problems;
+        }
+        if (hasRoommates() !== "yes") return problems;
+
+        const entries = roommates.entries();
+        if (entries.filter(({ filled }) => filled).length === 0) {
+          problems.push(pointer(document.getElementById("add-roommate"),
+            "Add at least one roommate, or answer No."));
+          return problems;
+        }
+        for (const entry of entries) {
+          if (!entry.values.first_name) {
+            problems.push(problem(entry.control("first_name"), "Enter this roommate's first name."));
+          }
+          if (!entry.values.last_name) {
+            problems.push(problem(entry.control("last_name"), "Enter this roommate's last name."));
+          }
+          requiredPhone(entry.control("phone"), "this roommate's", problems);
+          requiredEmail(entry.control("email"), "this roommate's", problems);
+        }
+        return problems;
+      },
+
+      2() {
+        const problems = [];
         required("first_name", "Enter your first name.", problems);
         required("last_name", "Enter your last name.", problems);
 
@@ -506,7 +584,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         return problems;
       },
 
-      2() {
+      3() {
         const problems = [];
         const status = employmentStatus();
 
@@ -561,7 +639,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         return problems;
       },
 
-      3() {
+      4() {
         const problems = [];
         rental.entries().forEach((entry, index) => {
           // The first record is where the applicant lives now; any later one
@@ -576,8 +654,28 @@ import { endDateFor } from "../shared/lease-dates.js";
               ? "Enter the address you live at now."
               : "Enter the address, or remove this record."));
           }
-          requiredPhone(entry.control("landlord_phone"), who, problems);
-          requiredEmail(entry.control("landlord_email"), who, problems);
+          if (!entry.values.contact) {
+            problems.push(problem(entry.control("contact"),
+              `Enter a contact person for ${index === 0 ? "your current home" : "this home"}.`));
+          }
+          // A phone or an email is enough to reach a landlord; whichever is
+          // given still has to be a real one.
+          if (!entry.values.landlord_phone && !entry.values.landlord_email) {
+            // Both boxes are the problem, so both wear the mark.
+            problems.push({
+              focus: entry.control("landlord_phone"),
+              mark: [entry.control("landlord_phone"), entry.control("landlord_email")],
+              message: `Enter ${who} phone number or email address. One of the two is enough.`
+            });
+          } else {
+            if (entry.values.landlord_phone && !isValidPhone(entry.values.landlord_phone)) {
+              problems.push(problem(entry.control("landlord_phone"),
+                `Check ${who} phone number. It needs ten digits, like (718) 555-0123.`));
+            }
+            if (entry.values.landlord_email && !isValidEmail(entry.values.landlord_email)) {
+              problems.push(problem(entry.control("landlord_email"), `Check ${who} email address.`));
+            }
+          }
           if (!entry.values.start) {
             problems.push(problem(entry.control("start"), "Enter when you moved in."));
           }
@@ -588,7 +686,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         return problems;
       },
 
-      4() {
+      5() {
         const problems = [];
         for (const entry of references.entries()) {
           if (!entry.values.name) {
@@ -603,37 +701,33 @@ import { endDateFor } from "../shared/lease-dates.js";
         return problems;
       },
 
-      5() {
+      6() {
         const problems = [];
         const children = form.querySelector('[data-group="children_under_11"]');
         if (!form.querySelector('input[name="children_under_11"]:checked')) {
           problems.push(groupProblem(children, "Say whether any children aged 10 or younger will live here."));
         }
 
-        for (const entry of roommates.entries()) {
-          if (!entry.filled) continue;
-          if (!entry.values.first_name) {
-            problems.push(problem(entry.control("first_name"), "Enter this roommate's first name."));
+        if (hasPets() === "") {
+          const group = form.querySelector('[data-group="has_pets"]');
+          problems.push(groupProblem(group, "Say whether you have pets."));
+        } else if (hasPets() === "yes") {
+          if (pets.count() === 0) {
+            problems.push(pointer(document.getElementById("add-pet"), "Add your pet, or answer No."));
           }
-          if (!entry.values.last_name) {
-            problems.push(problem(entry.control("last_name"), "Enter this roommate's last name."));
-          }
-          requiredPhone(entry.control("phone"), "this roommate's", problems);
-          requiredEmail(entry.control("email"), "this roommate's", problems);
-        }
-
-        for (const entry of pets.entries()) {
-          if (!entry.values.species) {
-            problems.push(problem(entry.control("species"), "Enter this pet's breed or species."));
-          }
-          if (!entry.values.weight) {
-            problems.push(problem(entry.control("weight"), "Enter this pet's weight in pounds."));
+          for (const entry of pets.entries()) {
+            if (!entry.values.species) {
+              problems.push(problem(entry.control("species"), "Enter this pet's breed or species."));
+            }
+            if (!entry.values.weight) {
+              problems.push(problem(entry.control("weight"), "Enter this pet's weight in pounds."));
+            }
           }
         }
         return problems;
       },
 
-      6() {
+      7() {
         const problems = [];
         if (!field("consent").checked) {
           problems.push(problem(field("consent"), "Confirm the information is accurate before submitting."));
@@ -752,10 +846,18 @@ import { endDateFor } from "../shared/lease-dates.js";
       if (event.target.name === "employment_status") {
         // The errors on this step belong to the branch that was chosen when
         // Continue was pressed; after a switch they point into a hidden half.
-        clearErrors(2);
+        clearErrors(3);
         applyBranch();
       }
       if (event.target.name === "id_type") applyIdType();
+      if (event.target.name === "has_roommates") {
+        clearErrors(1);
+        applyRoommates();
+      }
+      if (event.target.name === "has_pets") {
+        clearErrors(6);
+        applyPets();
+      }
       if (event.target.name === "move_in" || event.target.name === "lease_term_months") paintLeaseEnd();
       paintReferenceCount();
       paintSteps();
@@ -793,19 +895,31 @@ import { endDateFor } from "../shared/lease-dates.js";
           ? "children 10 or younger living here" : "no children 10 or younger")
         : "";
 
+      const roommateLine = roommateCap === 0 || hasRoommates() === "no"
+        ? "No roommates"
+        : hasRoommates() === "yes"
+          ? `${roommateCount} ${roommateCount === 1 ? "roommate" : "roommates"}`
+          : "Not answered yet";
+      const petsLine = hasPets() === "yes"
+        ? `${petCount} ${petCount === 1 ? "pet" : "pets"}`
+        : hasPets() === "no" ? "no pets" : "";
+
       const lines = [
-        [1, [`${value("first_name")} ${value("last_name")}`.trim(), value("phone"),
+        [1, [roommateLine,
+          hasRoommates() === "yes" && invitedEmails.size > 0
+            ? `${invitedEmails.size} ${invitedEmails.size === 1 ? "invitation" : "invitations"} sent` : "",
+          hasRoommates() === "yes" && failedInvites.size > 0 ? "some invitations not sent yet" : ""]],
+        [2, [`${value("first_name")} ${value("last_name")}`.trim(), value("phone"),
           value("id_number") ? idLabel : "",
           value("move_in") ? `lease starting ${toUsDate(value("move_in"))}` : "",
           value("lease_term_months") ? `${value("lease_term_months")}-month term` : "",
           leaseEndText() ? `ending ${leaseEndText()}` : ""]],
-        [2, workParts],
-        [3, [homes > 0 ? `${homes} ${homes === 1 ? "address" : "addresses"}` : "No addresses given"]],
-        [4, [`${refs} of ${REFERENCES_REQUIRED} references`]],
-        [5, [childrenAnswer,
+        [3, workParts],
+        [4, [homes > 0 ? `${homes} ${homes === 1 ? "address" : "addresses"}` : "No addresses given"]],
+        [5, [`${refs} of ${REFERENCES_REQUIRED} references`]],
+        [6, [childrenAnswer,
           field("window_guards")?.checked ? "window guards requested" : "",
-          roommateCount > 0 ? `${roommateCount} ${roommateCount === 1 ? "roommate" : "roommates"}` : "",
-          petCount > 0 ? `${petCount} ${petCount === 1 ? "pet" : "pets"}` : "no pets"]]
+          petsLine]]
       ];
 
       reviewList.innerHTML = lines.map(([step, parts]) => {
@@ -840,7 +954,7 @@ import { endDateFor } from "../shared/lease-dates.js";
 
       const rows = items.map((item) => `<li>${escapeHtml(item)}</li>`);
       if (status === "") {
-        rows.push('<li class="is-soft">Answer the question on step 2 to see the proof of income or study you\'ll need.</li>');
+        rows.push('<li class="is-soft">Answer the question on step 3 to see the proof of income or study you\'ll need.</li>');
       }
       rows.push('<li class="is-soft">Last Two Tax Returns and a Rental Payment Record are optional, but they help.</li>');
       docsNote.innerHTML = rows.join("");
@@ -881,7 +995,7 @@ import { endDateFor } from "../shared/lease-dates.js";
       nextButton.textContent = step === TOTAL_STEPS ? "Submit Application" : "Continue →";
       actionNote.textContent = step === TOTAL_STEPS
         ? "Your application is sent when you press Submit Application."
-        : `Step ${step} of ${TOTAL_STEPS} · nothing is sent until the last step`;
+        : `Step ${step} of ${TOTAL_STEPS} · your application is sent only from the last step`;
 
       if (step === TOTAL_STEPS) { paintReview(); paintDocsNote(); mountTurnstile(); }
       paintSteps();
@@ -907,6 +1021,10 @@ import { endDateFor } from "../shared/lease-dates.js";
     };
 
     const goTo = (step, options) => {
+      // Any way off a valid roommate step counts as continuing, so the step
+      // list and the review screen's Edit buttons send the invitations the
+      // Continue button would have.
+      if (state.step === 1 && step > 1 && validate(1).length === 0) maybeSendInvites();
       clearErrors(state.step);
       showStep(step, options);
     };
@@ -916,6 +1034,79 @@ import { endDateFor } from "../shared/lease-dates.js";
       if (problems.length > 0) { showErrors(state.step, problems); return; }
       clearErrors(state.step);
       goTo(state.step + 1);
+    };
+
+    // ------------------------------------------------- roommate invitations
+    //
+    // Sent whenever the applicant moves on from a valid roommate step with
+    // the invitation box ticked — the Continue button, the step list, or the
+    // final submit all count, so asking for the invitations means they go
+    // out. The Worker answers per address; only confirmed deliveries enter
+    // `invitedEmails`, addresses that failed wait in `failedInvites` for the
+    // next pass, and the status line is redrawn from these sets, so however
+    // many requests are in flight it always states the whole truth.
+    const invitedEmails = new Set();
+    const failedInvites = new Set();
+    const invitesInFlight = new Set();
+
+    const paintInviteStatus = () => {
+      const status = document.getElementById("invite-status");
+      if (!status) return;
+      const parts = [];
+      if (invitesInFlight.size > 0) parts.push("Sending the invitations…");
+      if (invitedEmails.size > 0) parts.push(`Invitations sent to ${[...invitedEmails].join(", ")}.`);
+      if (failedInvites.size > 0) {
+        parts.push(`The ${failedInvites.size === 1 ? "invitation" : "invitations"} to `
+          + `${[...failedInvites].join(", ")} could not be sent. Your application is not `
+          + "affected, and moving on from this step tries again.");
+      }
+      status.textContent = parts.join(" ");
+    };
+
+    const maybeSendInvites = () => {
+      if (hasRoommates() !== "yes" || field("invite_roommates")?.checked !== true) return;
+      const pending = roommates.entries().filter(({ filled }) => filled)
+        .map(({ values }) => ({
+          first_name: values.first_name, last_name: values.last_name, email: values.email
+        }))
+        .filter((mate) => {
+          const address = mate.email.toLowerCase();
+          return mate.email && !invitedEmails.has(address) && !invitesInFlight.has(address);
+        });
+      if (pending.length === 0) return;
+
+      pending.forEach((mate) => {
+        invitesInFlight.add(mate.email.toLowerCase());
+        failedInvites.delete(mate.email.toLowerCase());
+      });
+      paintInviteStatus();
+
+      const settle = (sent, failed) => {
+        pending.forEach((mate) => invitesInFlight.delete(mate.email.toLowerCase()));
+        sent.forEach((email) => invitedEmails.add(String(email).toLowerCase()));
+        failed.forEach((email) => failedInvites.add(String(email).toLowerCase()));
+        paintInviteStatus();
+        if (state.step === TOTAL_STEPS) paintReview();
+        announce(failed.length === 0
+          ? "Roommate invitations sent."
+          : "Some roommate invitations could not be sent. The Roommates step says which, and moving on from it tries again.");
+      };
+
+      fetch("/api/apply/invite", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ listing_id: id, roommates: pending })
+      }).then(async (response) => {
+        let data = null;
+        try { data = await response.json(); } catch { data = null; }
+        if (data && (Array.isArray(data.sent) || Array.isArray(data.failed))) {
+          settle(data.sent ?? [], data.failed ?? []);
+        } else if (response.ok) {
+          settle(pending.map((mate) => mate.email), []);
+        } else {
+          settle([], pending.map((mate) => mate.email));
+        }
+      }).catch(() => settle([], pending.map((mate) => mate.email)));
     };
 
     // ------------------------------------------------------------- submitting
@@ -943,8 +1134,12 @@ import { endDateFor } from "../shared/lease-dates.js";
         employment_status: status,
         rental_history: rental.entries().filter(({ filled }) => filled).map(({ values }) => values),
         reference_contacts: references.entries().map(({ values }) => values),
-        roommates: roommates.entries().filter(({ filled }) => filled).map(({ values }) => values),
-        pets: pets.entries().filter(({ values, filled }) => filled || values.type).map(({ values }) => values),
+        roommates: hasRoommates() === "yes"
+          ? roommates.entries().filter(({ filled }) => filled).map(({ values }) => values)
+          : [],
+        pets: hasPets() === "yes"
+          ? pets.entries().filter(({ values, filled }) => filled || values.type).map(({ values }) => values)
+          : [],
         message: value("message"),
         website: value("website"),
         turnstile_token: widgetId !== null && window.turnstile
@@ -1051,14 +1246,18 @@ import { endDateFor } from "../shared/lease-dates.js";
         showErrors(step, problems);
         return;
       }
+      // The safety net for an applicant who reached the end without ever
+      // leaving step 1 forwards: asked-for invitations go out with the
+      // application itself.
+      maybeSendInvites();
       submit();
     };
 
     // ------------------------------------------------------------- wiring up
 
     form.addEventListener("submit", (event) => {
-      // Continue on the first five steps, submit on the last. Pressing Enter in
-      // a text box lands here too, which is why step five cannot file an
+      // Continue on the first six steps, submit on the last. Pressing Enter in
+      // a text box lands here too, which is why step six cannot file an
       // application by accident.
       event.preventDefault();
       if (state.step < TOTAL_STEPS) advance();
@@ -1116,7 +1315,7 @@ import { endDateFor } from "../shared/lease-dates.js";
       // After a successful submit the form is gone from the page; the step
       // entries left in history have nothing to show any more.
       if (state.done) return;
-      const fromHash = /^#step-([1-6])$/.exec(window.location.hash);
+      const fromHash = /^#step-([1-7])$/.exec(window.location.hash);
       const step = event.state?.step || (fromHash ? Number(fromHash[1]) : 1);
       goTo(step, { push: false });
     });
@@ -1130,6 +1329,8 @@ import { endDateFor } from "../shared/lease-dates.js";
     });
 
     paintReferenceCount();
+    applyRoommates();
+    applyPets();
     applyBranch();
     applyIdType();
     paintLeaseEnd();

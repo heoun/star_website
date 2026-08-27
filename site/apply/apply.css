@@ -573,8 +573,9 @@
 
 /* ---------------------------------------------- the work-or-school fork */
 
-/* The one answer the rest of step 2 hangs on, so its two options are cards
-   rather than pills: room for a sentence saying what each answer leads to. */
+/* An answer the rest of a step hangs on — roommates on step 1, work or
+   school on step 3 — so its options are cards rather than pills: room for
+   a sentence saying what each answer leads to. */
 .choice-grid-branch { display: grid; grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); gap: 12px; }
 
 .choice-branch {

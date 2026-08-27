@@ -29,7 +29,7 @@
     </a>
 
     <p class="app-context">
-      <span class="app-context-kind" id="header-step">Rental Application · Step 1 of 6</span>
+      <span class="app-context-kind" id="header-step">Rental Application · Step 1 of 7</span>
       <span class="app-context-title" id="header-property">Loading…</span>
     </p>
 
@@ -44,7 +44,7 @@
   </header>
 
   <div class="app-progress" id="progress" role="progressbar" aria-label="Application progress"
-       aria-valuemin="1" aria-valuemax="6" aria-valuenow="1">
+       aria-valuemin="1" aria-valuemax="7" aria-valuenow="1">
     <div class="app-progress-fill" id="progress-fill"></div>
   </div>
 
@@ -71,8 +71,9 @@
       <h2 id="help-title">Need help applying?</h2>
       <p class="help-property">You are applying for <b id="help-property">this property</b>.</p>
       <ul>
-        <li>Your answers stay on this page while you move between steps. Nothing is sent
-            until you submit the last step.</li>
+        <li>Your answers stay on this page while you move between steps. Roommate
+            invitations you ask for are emailed as you go, and your application itself
+            is sent only when you submit the last step.</li>
         <li>Required fields are marked with <b>*</b>. If a step will not let you continue,
             the reason is listed at the top of that step.</li>
         <li>Your Social Security or passport number is encrypted before it is stored and is
@@ -109,20 +110,22 @@
       <nav class="app-steps" aria-label="Application steps">
         <h2>Application Steps</h2>
         <ol class="app-step-list">
-          <li><button class="step-link" type="button" data-step="1"><span class="step-index"><span>1</span></span><span>About You</span></button></li>
-          <li><button class="step-link" type="button" data-step="2"><span class="step-index"><span>2</span></span><span>Occupation</span></button></li>
-          <li><button class="step-link" type="button" data-step="3"><span class="step-index"><span>3</span></span><span>Rental History</span></button></li>
-          <li><button class="step-link" type="button" data-step="4"><span class="step-index"><span>4</span></span><span>References</span></button></li>
-          <li><button class="step-link" type="button" data-step="5"><span class="step-index"><span>5</span></span><span>Additional Information</span></button></li>
-          <li><button class="step-link" type="button" data-step="6"><span class="step-index"><span>6</span></span><span>Review &amp; Submit</span></button></li>
+          <li><button class="step-link" type="button" data-step="1"><span class="step-index"><span>1</span></span><span>Roommates</span></button></li>
+          <li><button class="step-link" type="button" data-step="2"><span class="step-index"><span>2</span></span><span>About You</span></button></li>
+          <li><button class="step-link" type="button" data-step="3"><span class="step-index"><span>3</span></span><span>Income</span></button></li>
+          <li><button class="step-link" type="button" data-step="4"><span class="step-index"><span>4</span></span><span>Rental History</span></button></li>
+          <li><button class="step-link" type="button" data-step="5"><span class="step-index"><span>5</span></span><span>References</span></button></li>
+          <li><button class="step-link" type="button" data-step="6"><span class="step-index"><span>6</span></span><span>Additional Information</span></button></li>
+          <li><button class="step-link" type="button" data-step="7"><span class="step-index"><span>7</span></span><span>Review &amp; Submit</span></button></li>
         </ol>
       </nav>
 
-      <!-- One form, six panels. The panels that are not on screen are hidden,
+      <!-- One form, seven panels. The panels that are not on screen are hidden,
            not unmounted: moving between steps cannot lose an answer because
            nothing is ever taken out of the document. The same goes for the
-           work-or-school branch inside step 2 — the branch not chosen is
-           hidden, so changing the answer brings back what was typed.
+           branches inside a step — roommates on step 1, work-or-school on
+           step 3 — where the branch not chosen is hidden, so changing the
+           answer brings back what was typed.
 
            POST and an action, even though neither should ever be used: the page
            always intercepts its own submit, and with JavaScript off this form is
@@ -135,8 +138,56 @@
       <form class="form-card" id="apply-form" method="post" action="/api/apply" novalidate>
         <section class="form-step is-active" data-step="1" aria-labelledby="step-1-title">
           <div class="app-error-summary" id="errors-1" role="alert" tabindex="-1"></div>
-          <h1 id="step-1-title" tabindex="-1">About You</h1>
-          <p class="step-intro">Tell us about yourself. Fields marked * are required.</p>
+          <h1 id="step-1-title" tabindex="-1">Roommates</h1>
+          <p class="step-intro">Everyone who moves in with you and signs the lease counts as a
+             roommate, and each of them completes an application of their own. Fields
+             marked * are required.</p>
+
+          <fieldset class="form-block">
+            <legend class="visually-hidden">Moving in with roommates</legend>
+            <div class="field">
+              <span class="field-label" id="roommates-label">Are you moving in with roommates?</span>
+              <div class="choice-grid choice-grid-branch" role="radiogroup" aria-labelledby="roommates-label"
+                   aria-describedby="roommate-cap-note" data-group="has_roommates">
+                <label class="choice choice-branch">
+                  <input type="radio" name="has_roommates" value="yes" required>
+                  <span class="choice-copy"><b>Yes, with roommates</b>
+                  <small>You will add each person and can email them an invitation to apply.</small></span>
+                </label>
+                <label class="choice choice-branch">
+                  <input type="radio" name="has_roommates" value="no">
+                  <span class="choice-copy"><b>No, just me</b>
+                  <small>You can come back to this step if that changes.</small></span>
+                </label>
+              </div>
+              <p class="field-help" id="roommate-cap-note" hidden></p>
+            </div>
+          </fieldset>
+
+          <div id="branch-roommates" hidden>
+            <div class="group form-block">
+              <div class="repeat-list" id="rep-roommates" data-repeat="roommate"></div>
+              <button class="repeat-add" type="button" id="add-roommate">+ Add another roommate</button>
+            </div>
+
+            <div class="form-block">
+              <div class="field">
+                <label class="consent">
+                  <input type="checkbox" id="invite_roommates" name="invite_roommates">
+                  <span>Email each roommate an invitation to apply when I continue.</span>
+                </label>
+                <p class="field-help" id="invite-status" role="status"></p>
+              </div>
+            </div>
+          </div>
+
+          <p class="step-intro" id="roommates-solo" hidden></p>
+        </section>
+
+        <section class="form-step" data-step="2" aria-labelledby="step-2-title" hidden>
+          <div class="app-error-summary" id="errors-2" role="alert" tabindex="-1"></div>
+          <h1 id="step-2-title" tabindex="-1">About You</h1>
+          <p class="step-intro">Tell us about yourself.</p>
 
           <div class="field-grid thirds form-block">
             <div class="field">
@@ -178,8 +229,7 @@
                         aria-label="Show identity number">Show</button>
               </div>
             </div>
-            <p class="field-help" id="id-number-help">Nine digits with or without dashes. If you
-               do not have an SSN yet, you can use your passport number instead.</p>
+            <p class="field-help" id="id-number-help">If you do not have an SSN yet, you can use your passport number instead.</p>
             <p class="privacy-note">
               <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M8 10V7a4 4 0 0 1 8 0v3" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/><rect x="5" y="10" width="14" height="10" rx="2.5" fill="none" stroke="currentColor" stroke-width="2"/></svg>
               Your information is encrypted and used only to process this rental application.
@@ -239,9 +289,9 @@
           </div>
         </section>
 
-        <section class="form-step" data-step="2" aria-labelledby="step-2-title" hidden>
-          <div class="app-error-summary" id="errors-2" role="alert" tabindex="-1"></div>
-          <h1 id="step-2-title" tabindex="-1">Occupation</h1>
+        <section class="form-step" data-step="3" aria-labelledby="step-3-title" hidden>
+          <div class="app-error-summary" id="errors-3" role="alert" tabindex="-1"></div>
+          <h1 id="step-3-title" tabindex="-1">Income</h1>
           <p class="step-intro">The questions and the documents we ask for depend on whether
              you are working or studying.</p>
 
@@ -267,7 +317,7 @@
 
           <div id="branch-employed" hidden>
             <div class="field-grid thirds form-block">
-              <div class="field span2">
+              <div class="field full">
                 <label for="employer">Current employer</label>
                 <input id="employer" name="employer" maxlength="160" autocomplete="organization">
               </div>
@@ -279,7 +329,7 @@
                 <label for="employer_start">Employed since</label>
                 <input id="employer_start" name="employer_start" maxlength="20" inputmode="numeric" placeholder="06/2021">
               </div>
-              <div class="field span2">
+              <div class="field">
                 <label for="income_note">Annual income</label>
                 <input id="income_note" name="income_note" maxlength="300" inputmode="decimal"
                        placeholder="$120,000">
@@ -336,11 +386,12 @@
           </div>
         </section>
 
-        <section class="form-step" data-step="3" aria-labelledby="step-3-title" hidden>
-          <div class="app-error-summary" id="errors-3" role="alert" tabindex="-1"></div>
-          <h1 id="step-3-title" tabindex="-1">Rental History</h1>
+        <section class="form-step" data-step="4" aria-labelledby="step-4-title" hidden>
+          <div class="app-error-summary" id="errors-4" role="alert" tabindex="-1"></div>
+          <h1 id="step-4-title" tabindex="-1">Rental History</h1>
           <p class="step-intro">Start with where you live now. Leave <b>Until</b> blank
-             if you still live there, and add a previous landlord if it helps your history.</p>
+             if you still live there, and add a previous landlord if it helps your history.
+             A phone or an email is enough to reach each landlord.</p>
 
           <div class="group form-block">
             <div class="repeat-list" id="rep-rental" data-repeat="rental"></div>
@@ -348,9 +399,9 @@
           </div>
         </section>
 
-        <section class="form-step" data-step="4" aria-labelledby="step-4-title" hidden>
-          <div class="app-error-summary" id="errors-4" role="alert" tabindex="-1"></div>
-          <h1 id="step-4-title" tabindex="-1">References</h1>
+        <section class="form-step" data-step="5" aria-labelledby="step-5-title" hidden>
+          <div class="app-error-summary" id="errors-5" role="alert" tabindex="-1"></div>
+          <h1 id="step-5-title" tabindex="-1">References</h1>
           <p class="step-intro">Two people the leasing team can speak to, such as an employer,
              a previous landlord, or a colleague.</p>
 
@@ -361,10 +412,10 @@
           </div>
         </section>
 
-        <section class="form-step" data-step="5" aria-labelledby="step-5-title" hidden>
-          <div class="app-error-summary" id="errors-5" role="alert" tabindex="-1"></div>
-          <h1 id="step-5-title" tabindex="-1">Additional Information</h1>
-          <p class="step-intro">Who else is moving in with you.</p>
+        <section class="form-step" data-step="6" aria-labelledby="step-6-title" hidden>
+          <div class="app-error-summary" id="errors-6" role="alert" tabindex="-1"></div>
+          <h1 id="step-6-title" tabindex="-1">Additional Information</h1>
+          <p class="step-intro">Children, window guards, and pets.</p>
 
           <div class="field-grid form-block">
             <div class="field full">
@@ -386,27 +437,28 @@
             </div>
           </div>
 
-          <div class="group form-block">
-            <h2 class="group-title">Roommates <span class="optional">Optional</span></h2>
-            <p class="group-help">Renting together with someone? Add each person who will live
-               here and sign the lease with you. Each roommate you add needs their full name,
-               phone, and email.</p>
-            <div class="repeat-list" id="rep-roommates" data-repeat="roommate"></div>
-            <button class="repeat-add" type="button" id="add-roommate">+ Add a roommate</button>
+          <div class="field-grid form-block">
+            <div class="field full">
+              <span class="field-label" id="pets-label">Do you have pets?</span>
+              <div class="choice-grid" role="radiogroup" aria-labelledby="pets-label"
+                   data-group="has_pets">
+                <label class="choice"><input type="radio" name="has_pets" value="yes" required> Yes</label>
+                <label class="choice"><input type="radio" name="has_pets" value="no"> No</label>
+              </div>
+            </div>
           </div>
 
-          <div class="group form-block">
-            <h2 class="group-title">Pets <span class="optional">Optional</span></h2>
-            <p class="group-help">Skip this if you have none.</p>
+          <div class="group form-block" id="branch-pets" hidden>
             <div class="repeat-list" id="rep-pets" data-repeat="pet"></div>
-            <button class="repeat-add" type="button" id="add-pet">+ Add a pet</button>
+            <button class="repeat-add" type="button" id="add-pet">+ Add another pet</button>
           </div>
         </section>
 
-        <section class="form-step" data-step="6" aria-labelledby="step-6-title" hidden>
-          <div class="app-error-summary" id="errors-6" role="alert" tabindex="-1"></div>
-          <h1 id="step-6-title" tabindex="-1">Review &amp; Submit</h1>
-          <p class="step-intro">Check your answers, then submit. Nothing has been sent yet.</p>
+        <section class="form-step" data-step="7" aria-labelledby="step-7-title" hidden>
+          <div class="app-error-summary" id="errors-7" role="alert" tabindex="-1"></div>
+          <h1 id="step-7-title" tabindex="-1">Review &amp; Submit</h1>
+          <p class="step-intro">Check your answers, then submit. Your application has not
+             been sent yet.</p>
 
           <div class="group form-block">
             <h2 class="group-title">Review Your Application</h2>
@@ -477,10 +529,13 @@
       <legend tabindex="-1"></legend>
       <div class="repeat-head"></div>
       <div class="field-grid thirds">
-        <div class="field"><label data-label="landlord_name">Landlord or manager</label><input data-field="landlord_name" maxlength="120"></div>
+        <div class="field"><label data-label="landlord_name">Landlord</label><input data-field="landlord_name" maxlength="120"></div>
         <div class="field span2"><label data-label="address">Address</label><input data-field="address" maxlength="300" autocomplete="off"></div>
+        <div class="field"><label data-label="contact">Contact</label><input data-field="contact" maxlength="120"></div>
         <div class="field"><label data-label="landlord_phone">Phone</label><input data-field="landlord_phone" type="tel" inputmode="tel" maxlength="30"></div>
-        <div class="field span2"><label data-label="landlord_email">Email</label><input data-field="landlord_email" type="email" maxlength="180"></div>
+        <div class="field"><label data-label="landlord_email">Email</label><input data-field="landlord_email" type="email" maxlength="180"></div>
+        <p class="field-help" data-card-help="landlord_phone landlord_email">A phone or an email
+           is enough. Give at least one of the two.</p>
         <div class="field"><label data-label="start">From</label><input data-field="start" maxlength="20" inputmode="numeric" placeholder="08/2022"></div>
         <div class="field"><label data-label="end">Until</label><input data-field="end" maxlength="20" inputmode="numeric" placeholder="MM/YYYY"></div>
         <div class="field"><label data-label="monthly_rent">Monthly rent</label><input data-field="monthly_rent" maxlength="30" inputmode="decimal" placeholder="$2,950"></div>
@@ -521,7 +576,7 @@
       <div class="field-grid thirds">
         <div class="field">
           <label data-label="type">Type</label>
-          <select data-field="type">
+          <select data-field="type" required>
             <option value="dog">Dog</option>
             <option value="cat">Cat</option>
             <option value="other">Other</option>
