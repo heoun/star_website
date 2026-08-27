@@ -191,11 +191,13 @@ export function ratioText(ratio) {
 
 // ------------------------------------------------------------------ dates
 
+// MM/DD/YYYY, matching the move-in date the applicant typed, so the two
+// dates on one row read as one format.
 export function shortDay(value) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+  return date.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", year: "numeric" });
 }
 
 export function dayAndTime(value) {
@@ -203,7 +205,7 @@ export function dayAndTime(value) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString("en-US", {
-    month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit"
+    month: "2-digit", day: "2-digit", year: "numeric", hour: "numeric", minute: "2-digit"
   });
 }
 

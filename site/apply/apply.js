@@ -323,7 +323,6 @@ import { endDateFor } from "../shared/lease-dates.js";
       document.getElementById("branch-student").hidden = status !== "student";
       EMPLOYED_REQUIRED.forEach((name) => field(name)?.toggleAttribute("required", status === "employed"));
       STUDENT_REQUIRED.forEach((name) => field(name)?.toggleAttribute("required", status === "student"));
-      paintDocsNote();
     };
 
     // ------------------------------------------------------- the identity field
@@ -956,10 +955,10 @@ import { endDateFor } from "../shared/lease-dates.js";
       }).join("");
     };
 
-    // The documents that will be asked for in the portal, so nobody finishes
-    // this form expecting to be done. The list follows the work-or-school
-    // answer, which is the whole reason the question is asked. Shared by the
-    // review step and the confirmation page.
+    // The documents that will be asked for in the portal, shown on the
+    // confirmation page so nobody leaves it expecting to be done. The list
+    // follows the work-or-school answer, which is the whole reason the
+    // question is asked — and by submit time that answer always exists.
     const docsChecklist = (status) => {
       const items = ["Government ID (front and back)"];
       if (status === "student") items.push("School Offer Letter", "Student Visa / I-20");
@@ -967,18 +966,9 @@ import { endDateFor } from "../shared/lease-dates.js";
       items.push("Last Two Bank Statements");
 
       const rows = items.map((item) => `<li>${escapeHtml(item)}</li>`);
-      if (status === "") {
-        rows.push('<li class="is-soft">Answer the question on step 3 to see the proof of income or study you\'ll need.</li>');
-      }
       rows.push('<li class="is-soft">Last Two Tax Returns and a Rental Payment Record are optional, but they help.</li>');
       return rows.join("");
     };
-
-    function paintDocsNote() {
-      const docsNote = document.getElementById("docs-note");
-      if (!docsNote) return;
-      docsNote.innerHTML = docsChecklist(employmentStatus());
-    }
 
     // Turnstile is mounted the first time the last step is on screen: a widget
     // rendered into a hidden panel is a widget that may never draw.
@@ -1017,7 +1007,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         ? "Your application is sent when you press Submit Application."
         : `Step ${step} of ${TOTAL_STEPS} · your application is sent only from the last step`;
 
-      if (step === TOTAL_STEPS) { paintReview(); paintDocsNote(); mountTurnstile(); }
+      if (step === TOTAL_STEPS) { paintReview(); mountTurnstile(); }
       paintSteps();
 
       const link = stepLinks[step - 1];

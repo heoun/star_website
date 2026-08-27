@@ -112,8 +112,7 @@
     .role b { font-size: 13px; color: #fff; text-transform: capitalize; }
     .role .who { font-size: 11.5px; color: rgba(238, 240, 248, 0.55); overflow-wrap: anywhere; }
 
-    .nav { display: grid; gap: 1px; }
-    .nav .k { padding: 14px 10px 6px; color: rgba(238, 240, 248, 0.38); }
+    .nav { display: grid; gap: 1px; margin-top: 14px; }
 
     .nav a {
       display: flex;
@@ -937,7 +936,7 @@
       :root { --rail: 64px; }
       .side { padding: 18px 8px 12px; align-items: stretch; }
       .brand { justify-content: center; padding: 0 0 18px; }
-      .brand b, .role, .nav .k, .nav a span, .side .sign-out { display: none; }
+      .brand b, .role, .nav a span, .side .sign-out { display: none; }
       .nav a { justify-content: center; padding: 11px 0; border-left: 0; border-right: 2px solid transparent; }
       .nav a[aria-current="page"] { border-right-color: #ffffff; }
       .nav a abbr { display: block; font-size: 11px; font-weight: 800; text-decoration: none; }
@@ -1495,12 +1494,10 @@
       </div>
 
       <nav class="nav">
-        <p class="k">Operations</p>
         <a href="#/listings" data-route="listings"><span>Listings</span><abbr title="Listings">LS</abbr></a>
+        <a href="#/properties" data-route="properties" data-manager-only><span>Properties</span><abbr title="Properties">PR</abbr></a>
         <a href="#/applications" data-route="applications"><span>Applications</span><abbr title="Applications">AP</abbr></a>
         <a href="#/leases" data-route="leases"><span>Leases</span><abbr title="Leases">LE</abbr></a>
-        <p class="k" data-manager-only>Configuration</p>
-        <a href="#/properties" data-route="properties" data-manager-only><span>Properties</span><abbr title="Properties">PR</abbr></a>
       </nav>
 
       <a class="sign-out" href="/cdn-cgi/access/logout">Sign out</a>
