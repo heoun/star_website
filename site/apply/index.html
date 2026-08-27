@@ -257,7 +257,8 @@
               <div class="field">
                 <label for="address_state">State</label>
                 <input id="address_state" name="address_state" maxlength="30"
-                       autocomplete="address-level1" placeholder="NY" required>
+                       autocomplete="address-level1" placeholder="NY" required
+                       list="state-options">
               </div>
               <div class="field">
                 <label for="address_zip">ZIP code</label>
@@ -415,7 +416,7 @@
         <section class="form-step" data-step="6" aria-labelledby="step-6-title" hidden>
           <div class="app-error-summary" id="errors-6" role="alert" tabindex="-1"></div>
           <h1 id="step-6-title" tabindex="-1">Additional Information</h1>
-          <p class="step-intro">Children, window guards, and pets.</p>
+          <p class="step-intro">Children, window guards, pets, and an emergency contact.</p>
 
           <div class="field-grid form-block">
             <div class="field full">
@@ -451,6 +452,13 @@
           <div class="group form-block" id="branch-pets" hidden>
             <div class="repeat-list" id="rep-pets" data-repeat="pet"></div>
             <button class="repeat-add" type="button" id="add-pet">+ Add another pet</button>
+          </div>
+
+          <div class="group form-block">
+            <h2 class="group-title">Emergency Contacts</h2>
+            <p class="group-help">Someone the leasing team can call if you cannot be reached.</p>
+            <div class="repeat-list" id="rep-emergency" data-repeat="emergency"></div>
+            <button class="repeat-add" type="button" id="add-emergency">+ Add another contact</button>
           </div>
         </section>
 
@@ -549,7 +557,20 @@
       <div class="repeat-head"></div>
       <div class="field-grid">
         <div class="field"><label data-label="name">Name</label><input data-field="name" maxlength="120"></div>
-        <div class="field"><label data-label="relationship">Relationship</label><input data-field="relationship" maxlength="80" placeholder="Employer or landlord"></div>
+        <div class="field"><label data-label="relationship">Relationship</label><input data-field="relationship" maxlength="80" placeholder="Employer or landlord" list="reference-relationship-options"></div>
+        <div class="field"><label data-label="phone">Phone</label><input data-field="phone" type="tel" inputmode="tel" maxlength="30"></div>
+        <div class="field"><label data-label="email">Email</label><input data-field="email" type="email" maxlength="180"></div>
+      </div>
+    </fieldset>
+  </template>
+
+  <template id="tpl-emergency">
+    <fieldset class="repeat-card">
+      <legend tabindex="-1"></legend>
+      <div class="repeat-head"></div>
+      <div class="field-grid">
+        <div class="field"><label data-label="name">Name</label><input data-field="name" maxlength="120"></div>
+        <div class="field"><label data-label="relationship">Relationship</label><input data-field="relationship" maxlength="80" placeholder="Parent or friend" list="emergency-relationship-options"></div>
         <div class="field"><label data-label="phone">Phone</label><input data-field="phone" type="tel" inputmode="tel" maxlength="30"></div>
         <div class="field"><label data-label="email">Email</label><input data-field="email" type="email" maxlength="180"></div>
       </div>
@@ -587,6 +608,83 @@
       </div>
     </fieldset>
   </template>
+
+  <!-- Suggestion lists for the fields that take a pick or free typing alike.
+       They live outside every <template> so a clone made at any moment finds
+       them in the document. Free text stays valid on purpose: a current
+       address can be abroad, and a relationship can be one nobody listed. -->
+  <datalist id="state-options">
+    <option value="AL">Alabama</option>
+    <option value="AK">Alaska</option>
+    <option value="AZ">Arizona</option>
+    <option value="AR">Arkansas</option>
+    <option value="CA">California</option>
+    <option value="CO">Colorado</option>
+    <option value="CT">Connecticut</option>
+    <option value="DE">Delaware</option>
+    <option value="DC">District of Columbia</option>
+    <option value="FL">Florida</option>
+    <option value="GA">Georgia</option>
+    <option value="HI">Hawaii</option>
+    <option value="ID">Idaho</option>
+    <option value="IL">Illinois</option>
+    <option value="IN">Indiana</option>
+    <option value="IA">Iowa</option>
+    <option value="KS">Kansas</option>
+    <option value="KY">Kentucky</option>
+    <option value="LA">Louisiana</option>
+    <option value="ME">Maine</option>
+    <option value="MD">Maryland</option>
+    <option value="MA">Massachusetts</option>
+    <option value="MI">Michigan</option>
+    <option value="MN">Minnesota</option>
+    <option value="MS">Mississippi</option>
+    <option value="MO">Missouri</option>
+    <option value="MT">Montana</option>
+    <option value="NE">Nebraska</option>
+    <option value="NV">Nevada</option>
+    <option value="NH">New Hampshire</option>
+    <option value="NJ">New Jersey</option>
+    <option value="NM">New Mexico</option>
+    <option value="NY">New York</option>
+    <option value="NC">North Carolina</option>
+    <option value="ND">North Dakota</option>
+    <option value="OH">Ohio</option>
+    <option value="OK">Oklahoma</option>
+    <option value="OR">Oregon</option>
+    <option value="PA">Pennsylvania</option>
+    <option value="RI">Rhode Island</option>
+    <option value="SC">South Carolina</option>
+    <option value="SD">South Dakota</option>
+    <option value="TN">Tennessee</option>
+    <option value="TX">Texas</option>
+    <option value="UT">Utah</option>
+    <option value="VT">Vermont</option>
+    <option value="VA">Virginia</option>
+    <option value="WA">Washington</option>
+    <option value="WV">West Virginia</option>
+    <option value="WI">Wisconsin</option>
+    <option value="WY">Wyoming</option>
+  </datalist>
+
+  <datalist id="reference-relationship-options">
+    <option value="Employer"></option>
+    <option value="Supervisor"></option>
+    <option value="Colleague"></option>
+    <option value="Previous landlord"></option>
+    <option value="Professor"></option>
+    <option value="Friend"></option>
+  </datalist>
+
+  <datalist id="emergency-relationship-options">
+    <option value="Parent"></option>
+    <option value="Spouse"></option>
+    <option value="Partner"></option>
+    <option value="Sibling"></option>
+    <option value="Relative"></option>
+    <option value="Guardian"></option>
+    <option value="Friend"></option>
+  </datalist>
 
   <footer class="app-foot">
     <p>Everything you enter is used only to process this rental application, and is deleted once

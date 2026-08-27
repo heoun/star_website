@@ -61,10 +61,15 @@ APP_ENCRYPTION_KEY=
 # the live site instead. Reading only — uploads and deletes stay local.
 DEV_MEDIA_ORIGIN=https://starreusa.com
 
-# Deliberately absent: RESEND_API_KEY. On a loopback request the Worker prints
-# notification emails to this terminal instead of sending them, so local form
-# submissions never reach a real inbox.
-#
-# Also absent: TURNSTILE_SECRET_KEY. Human verification is skipped when it is
-# unset, which is what you want locally. CF_ACCESS_TEAM_DOMAIN and CF_ACCESS_AUD
-# are production-only.
+# Emails. On a loopback request the Worker prints every email to this terminal
+# instead of sending it, so local form submissions never reach a real inbox.
+# For a delivery rehearsal before a launch, set DEV_REAL_EMAIL=true AND fill in
+# a RESEND_API_KEY — local emails then really send, to whatever address is in
+# the form. Make a separate key named "dev" in the Resend dashboard so it can
+# be revoked on its own, and set the flag back to empty when you are done.
+RESEND_API_KEY=
+DEV_REAL_EMAIL=
+
+# Deliberately absent: TURNSTILE_SECRET_KEY. Human verification is skipped when
+# it is unset, which is what you want locally. CF_ACCESS_TEAM_DOMAIN and
+# CF_ACCESS_AUD are production-only.

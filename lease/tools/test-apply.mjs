@@ -175,6 +175,10 @@ function application(overrides = {}) {
       { name: "Ben Tester", relationship: "Previous landlord", phone: "(212) 555-0101",
         email: "ben@example.invalid" }
     ],
+    emergency_contacts: [
+      { name: "Emma Tester", relationship: "Parent", phone: "(212) 555-0102",
+        email: "emma@example.invalid" }
+    ],
     roommates: [],
     pets: [],
     message: "",
@@ -301,6 +305,11 @@ await refused("an employed applicant with no income is refused",
   { income_note: "" }, "annual income");
 await refused("a pet without a breed and weight is refused",
   { pets: [{ type: "dog" }] }, "pets");
+await refused("no emergency contact at all is refused",
+  { emergency_contacts: [] }, "emergency contacts");
+await refused("an emergency contact without a phone or email is refused", {
+  emergency_contacts: [{ name: "Emma Tester", relationship: "Parent" }]
+}, "emergency contacts");
 await refused("a roommate without a phone or email is refused",
   { roommates: [{ first_name: "Roo", last_name: "Mate" }] }, "roommates");
 await refused("a lease term of nought months is refused", { lease_term_months: 0 }, "lease term");

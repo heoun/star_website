@@ -706,6 +706,10 @@
     .decide-buttons button.is-wide { grid-column: 1 / -1; }
     .decide-note { margin: 10px 0 0; font-size: 12px; color: var(--soft); }
     .decide-more { margin-top: 12px; }
+    /* The panel is sticky and More sits at its foot, so a sheet dropped
+       downward lands off screen where no amount of scrolling reaches it.
+       This one opens upward, over the panel. */
+    .decide-more > .menu-sheet { top: auto; bottom: calc(100% + 4px); }
 
     /* ---- the uploaded document, in a window ---- */
 

@@ -228,8 +228,9 @@ const LIST_EDITS = {
   employment_history: { spec: EMPLOYMENT_SPEC, required: ["employer"], label: "previous employment", least: 0 },
   rental_history: { spec: RENTAL_SPEC, required: ["address"], label: "rental history", least: 0 },
   reference_contacts: { spec: PERSON_SPEC, required: ["name"], label: "references", least: REFERENCES_REQUIRED },
-  // The form no longer asks for an emergency contact; the ones on older
-  // applications stay editable, and removing the last one is allowed.
+  // The form requires an emergency contact again, but applications from the
+  // years it did not ask may hold none — so a correction is allowed to leave
+  // the list empty, and only insists on a name and a phone per entry kept.
   emergency_contacts: { spec: PERSON_SPEC, required: ["name"], label: "emergency contact", least: 0 },
   roommates: { spec: ROOMMATE_SPEC, required: ["first_name", "last_name"], label: "roommates", least: 0 },
   pets: { spec: PET_SPEC, required: ["type"], label: "pets", least: 0 }
@@ -255,18 +256,6 @@ export function normalizeApplicationEdit(body, current = {}) {
     const months = parseIntInRange(body.lease_term_months, 1, 60);
     if (months === null) errors.push("lease term");
     else values.lease_term_months = months;
-  }
-
-  if (body.household_size !== undefined) {
-    // The branched form does not ask this, so a row may honestly have nothing
-    // here — blank stays blank instead of being refused.
-    if (body.household_size === null || String(body.household_size).trim() === "") {
-      values.household_size = null;
-    } else {
-      const size = parseIntInRange(body.household_size, 1, 20);
-      if (size === null) errors.push("household size");
-      else values.household_size = size;
-    }
   }
 
   if (body.employment_status !== undefined) {
@@ -666,15 +655,6 @@ async function processApplication(request, env, ctx, body, email) {
   if (childrenUnder11 !== true && childrenUnder11 !== false) errors.push("children 10 or younger");
   if (employmentStatus === null) errors.push("working or student");
 
-  // Household size left the form when the branched version arrived, but an
-  // older payload may still carry it; a value that is present has to be sane.
-  let householdSize = null;
-  if (body.household_size !== undefined && body.household_size !== null
-      && String(body.household_size).trim() !== "") {
-    householdSize = parseIntInRange(body.household_size, 1, 20);
-    if (householdSize === null) errors.push("household size");
-  }
-
   // The work-or-school branch: an employer and an income for one answer, a
   // school record for the other. Only the branch that was chosen is required,
   // stored, or even read.
@@ -726,7 +706,8 @@ async function processApplication(request, env, ctx, body, email) {
     ["name", "relationship", "phone", "email"], "references", errors
   );
   const emergencyContacts = shapeEntries(
-    body.emergency_contacts, PERSON_SPEC, ["name"], "emergency contact", errors
+    body.emergency_contacts, PERSON_SPEC,
+    ["name", "relationship", "phone", "email"], "emergency contacts", errors
   );
   const roommates = shapeEntries(
     body.roommates, ROOMMATE_SPEC,
@@ -738,6 +719,7 @@ async function processApplication(request, env, ctx, body, email) {
   if (referenceContacts.length < REFERENCES_REQUIRED) {
     errors.push(`references (${REFERENCES_REQUIRED} are required)`);
   }
+  if (emergencyContacts.length < 1) errors.push("emergency contacts (one is required)");
 
   if (errors.length > 0) {
     return json({ error: `Please check ${[...new Set(errors)].join(", ")}.` }, 422);
@@ -785,7 +767,6 @@ async function processApplication(request, env, ctx, body, email) {
       id_type: idType,
       ssn_encrypted: await encryptSsn(env, idNumber),
       ssn_last4: idNumber.slice(-4),
-      household_size: householdSize,
       children_under_11: childrenUnder11,
       wants_window_guards: wantsWindowGuards,
       employment_status: employmentStatus,

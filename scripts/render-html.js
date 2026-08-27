@@ -12,7 +12,8 @@ const NAV_ITEMS = [
   { key: "sell", label: "Sell", route: "contact-us/?intent=sell", className: "intent-nav", dataAttr: "data-sell-nav" },
   { key: "commercial", label: "Commercial", route: "commercial/", className: "intent-nav" },
   { key: "new-development", label: "New Development", route: "new-development/" },
-  { key: "contact", label: "Contact Us", route: "contact-us/", dataAttr: "data-contact-nav" }
+  { key: "contact", label: "Contact Us", route: "contact-us/", dataAttr: "data-contact-nav" },
+  { key: "portal", label: "Applicant Portal", route: "portal/" }
 ];
 
 const allowedCurrentNav = new Set([...NAV_ITEMS.map((item) => item.key), null]);

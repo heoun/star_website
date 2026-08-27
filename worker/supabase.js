@@ -140,7 +140,7 @@ export async function deleteMediaRow(env, id) {
 // database through fetchApplicationSsn for the admin reveal endpoint.
 const APPLICATION_COLUMNS =
   "id,listing_id,name,first_name,last_name,email,phone,current_address,move_in," +
-  "lease_term_months,dob,ssn_last4,household_size,children_under_11,income_note," +
+  "lease_term_months,dob,ssn_last4,children_under_11,income_note," +
   "current_employer,employment_history,rental_history,reference_contacts," +
   "emergency_contacts,pets,message,status,notes,created_at,updated_at";
 

@@ -5,6 +5,11 @@
 // loopback request the message is printed to the dev server's terminal
 // instead — which is more useful than sending it, since the whole body is
 // right there in the log.
+//
+// DEV_REAL_EMAIL=true in .dev.vars lifts that for a delivery rehearsal:
+// local requests then send through Resend like production does (which needs
+// RESEND_API_KEY set too). The flag is only ever read on a loopback request,
+// so it can do nothing in production.
 
 import { isLocalRequest } from "./env.js";
 
@@ -12,7 +17,9 @@ const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 // Returns whether the message was delivered — or, locally, shown.
 export async function sendEmail(request, env, message) {
-  if (isLocalRequest(request)) {
+  const local = isLocalRequest(request);
+
+  if (local && env.DEV_REAL_EMAIL !== "true") {
     console.log(
       [
         "",
@@ -31,6 +38,10 @@ export async function sendEmail(request, env, message) {
   if (!env.RESEND_API_KEY) {
     console.error("RESEND_API_KEY is not configured; the message was not sent.");
     return false;
+  }
+
+  if (local) {
+    console.log(`DEV_REAL_EMAIL is on: sending a real email to ${[].concat(message.to).join(", ")}.`);
   }
 
   try {

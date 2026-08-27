@@ -246,6 +246,45 @@
   font-size: 14px;
 }
 
+.app-main .success .success-docs {
+  max-width: 560px;
+  margin: 0 auto 24px;
+  padding: 18px 22px 20px;
+  text-align: left;
+  background: rgba(19, 86, 120, 0.05);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+}
+
+.app-main .success .success-docs h3 {
+  margin: 0 0 6px;
+  font-family: "Sora", system-ui, sans-serif;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: var(--primary);
+}
+
+.app-main .success .success-docs p {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+
+.app-main .success .success-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 0;
+}
+
+.app-main .success .success-links a + a {
+  background: transparent;
+  color: var(--primary);
+  border: 1.5px solid var(--primary);
+}
+
 /* The property would not load. Says so, and offers the way back to the
    listings rather than leaving the reader on an empty page. */
 .app-failure {

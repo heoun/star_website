@@ -20,7 +20,7 @@ const COLUMN = /^applications\.([a-z0-9_]+)$/;
 // with the fields worker/apply.js accepts a correction for.
 const WRITABLE = new Set([
   "name", "email", "phone", "move_in", "lease_term_months", "dob",
-  "current_address", "household_size", "income_note", "children_under_11",
+  "current_address", "income_note", "children_under_11",
   "wants_window_guards", "message", "concession_terms"
 ]);
 

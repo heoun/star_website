@@ -430,6 +430,11 @@ import { endDateFor } from "../shared/lease-dates.js";
       name: "roommate", legend: "Roommate", max: Math.max(roommateCap, 1),
       required: ["first_name", "last_name", "phone", "email"], requiredScope: "all"
     });
+    const emergency = makeRepeater({
+      listId: "rep-emergency", templateId: "tpl-emergency", addId: "add-emergency",
+      name: "emergency", legend: "Emergency Contact", min: 1, max: 4, initial: 1,
+      required: ["name", "relationship", "phone", "email"], requiredScope: "all"
+    });
     const pets = makeRepeater({
       listId: "rep-pets", templateId: "tpl-pet", addId: "add-pet", name: "pet", legend: "Pet", max: 10,
       required: ["species", "weight"], requiredScope: "all"
@@ -724,6 +729,17 @@ import { endDateFor } from "../shared/lease-dates.js";
             }
           }
         }
+
+        for (const entry of emergency.entries()) {
+          if (!entry.values.name) {
+            problems.push(problem(entry.control("name"), "Enter this contact's name."));
+          }
+          if (!entry.values.relationship) {
+            problems.push(problem(entry.control("relationship"), "Say how you know this contact."));
+          }
+          requiredPhone(entry.control("phone"), "this contact's", problems);
+          requiredEmail(entry.control("email"), "this contact's", problems);
+        }
         return problems;
       },
 
@@ -919,7 +935,8 @@ import { endDateFor } from "../shared/lease-dates.js";
         [5, [`${refs} of ${REFERENCES_REQUIRED} references`]],
         [6, [childrenAnswer,
           field("window_guards")?.checked ? "window guards requested" : "",
-          petsLine]]
+          petsLine,
+          `${emergency.count()} emergency ${emergency.count() === 1 ? "contact" : "contacts"}`]]
       ];
 
       reviewList.innerHTML = lines.map(([step, parts]) => {
@@ -941,12 +958,9 @@ import { endDateFor } from "../shared/lease-dates.js";
 
     // The documents that will be asked for in the portal, so nobody finishes
     // this form expecting to be done. The list follows the work-or-school
-    // answer, which is the whole reason the question is asked.
-    function paintDocsNote() {
-      const docsNote = document.getElementById("docs-note");
-      if (!docsNote) return;
-      const status = employmentStatus();
-
+    // answer, which is the whole reason the question is asked. Shared by the
+    // review step and the confirmation page.
+    const docsChecklist = (status) => {
       const items = ["Government ID (front and back)"];
       if (status === "student") items.push("School Offer Letter", "Student Visa / I-20");
       else if (status === "employed") items.push("Job Offer Letter or Last Two Paystubs");
@@ -957,7 +971,13 @@ import { endDateFor } from "../shared/lease-dates.js";
         rows.push('<li class="is-soft">Answer the question on step 3 to see the proof of income or study you\'ll need.</li>');
       }
       rows.push('<li class="is-soft">Last Two Tax Returns and a Rental Payment Record are optional, but they help.</li>');
-      docsNote.innerHTML = rows.join("");
+      return rows.join("");
+    };
+
+    function paintDocsNote() {
+      const docsNote = document.getElementById("docs-note");
+      if (!docsNote) return;
+      docsNote.innerHTML = docsChecklist(employmentStatus());
     }
 
     // Turnstile is mounted the first time the last step is on screen: a widget
@@ -1134,6 +1154,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         employment_status: status,
         rental_history: rental.entries().filter(({ filled }) => filled).map(({ values }) => values),
         reference_contacts: references.entries().map(({ values }) => values),
+        emergency_contacts: emergency.entries().map(({ values }) => values),
         roommates: hasRoommates() === "yes"
           ? roommates.entries().filter(({ filled }) => filled).map(({ values }) => values)
           : [],
@@ -1206,26 +1227,28 @@ import { endDateFor } from "../shared/lease-dates.js";
           throw new Error(payload?.error || "The application could not be submitted. Please try again.");
         }
 
-        const proofOfMeans = employmentStatus() === "student"
-          ? "school offer letter, student visa or I-20"
-          : "job offer letter or last two paystubs";
-
         state.done = true;
         state.dirty = false;
         progressFill.style.width = "100%";
         headerStep.textContent = "Rental Application · Submitted";
         container.innerHTML = `
           <div class="success">
-            <h2>Application Received</h2>
-            <p>Thank you. The Star Real Estate team will review your application for
-               ${escapeHtml(property.title || "this property")} and follow up shortly.</p>
-            <p>Once the team has looked at your application, you will upload your
-               supporting documents in your applicant portal. We will need your
-               government ID, your ${escapeHtml(proofOfMeans)}, and your bank statements.</p>
-            <p><a href="../portal/">Open the applicant portal</a></p>
-            <p><a href="../property/?id=${encodeURIComponent(id)}">Back to the property</a></p>
+            <h2>Thank You for Applying</h2>
+            <p>Your application for ${escapeHtml(property.title || "this property")} has
+               been received. We appreciate your interest. The Star Real Estate team will
+               review your application and contact you within 24 to 48 hours.</p>
+            <div class="success-docs">
+              <h3>After Your Application Is Reviewed</h3>
+              <p>No documents are needed right now. Once the team has looked at your
+                 application, you will upload the following in your applicant portal.</p>
+              <ul class="docs-note">${docsChecklist(employmentStatus())}</ul>
+            </div>
+            <p class="success-links">
+              <a href="../portal/">Open the applicant portal</a>
+              <a href="../property/?id=${encodeURIComponent(id)}">Back to the property</a>
+            </p>
           </div>`;
-        announce("Application received.");
+        announce("Application received. The team will review it and contact you within 24 to 48 hours.");
       } catch (error) {
         showSubmitError(error.message);
         state.submitting = false;

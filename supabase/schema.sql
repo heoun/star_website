@@ -109,7 +109,6 @@ create table if not exists public.applications (
   id_type text check (id_type in ('ssn', 'passport')),
   ssn_encrypted text,
   ssn_last4 text,
-  household_size integer check (household_size >= 1),
   children_under_11 boolean,
   -- The window guard notice's third answer, for applicants without young
   -- children who want the guards anyway. The lease registry reads it as
@@ -182,6 +181,9 @@ create table if not exists public.applications (
 
 -- Migration for databases created before the full application form. Safe to
 -- run repeatedly; a fresh install already has all of this from create table.
+-- Databases from before the form dropped its household size question still
+-- carry a household_size column with its old answers; nothing reads or
+-- writes it any more, and nothing here removes it.
 alter table public.applications add column if not exists first_name text;
 alter table public.applications add column if not exists last_name text;
 alter table public.applications add column if not exists current_address text;

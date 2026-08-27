@@ -69,13 +69,12 @@ const IDENTITY_FIELDS = [
   { key: "first_name", label: "First name", type: "text" },
   { key: "last_name", label: "Last name", type: "text" },
   { key: "email", label: "Email", type: "email" },
-  { key: "phone", label: "Phone", type: "tel" }
+  { key: "phone", label: "Phone", type: "tel" },
+  { key: "current_address", label: "Current address", type: "text" }
 ];
 
-const HOUSEHOLD_FIELDS = [
-  { key: "dob", label: "Date of birth", type: "text", placeholder: "MM/DD/YYYY" },
-  { key: "current_address", label: "Current address", type: "text" },
-  { key: "household_size", label: "Household size", type: "number", min: 1, max: 20 }
+const DETAIL_FIELDS = [
+  { key: "dob", label: "Date of birth", type: "text", placeholder: "MM/DD/YYYY" }
 ];
 
 // The window guard notice is the one part of the lease answered by check
@@ -432,7 +431,7 @@ function leaseTab(app) {
           ${fact("Weight", pet.weight ? `${pet.weight} lb` : "")}
         </dl></div>`);
 
-  return panel("Lease Values",
+  return panel("Lease Contents",
     "These are starting values from the application. Agent should confirm final lease terms when creating the lease.",
     `<div class="facts">${tenant}${tenancy}${guards}</div>
      <div class="sub"><h3>Roommates</h3>${roommates}
@@ -445,7 +444,7 @@ function leaseTab(app) {
 
 function screeningTab(app) {
   return [
-    householdSection(app),
+    detailsSection(app),
     incomeSection(app),
     rentalSection(app),
     documentsSection(app),
@@ -460,16 +459,15 @@ function coApplicants(app) {
   return parts.length > 1 ? parts.slice(1).join(", ") : "";
 }
 
-function householdSection(app) {
-  const residence = group("Residence and household",
-    fields(app, HOUSEHOLD_FIELDS, false) + ssnRow(app));
+function detailsSection(app) {
+  const details = `<dl class="factlist">${fields(app, DETAIL_FIELDS, false) + ssnRow(app)}</dl>`;
 
   const message = app.message
     ? `<p class="longtext">${escapeHtml(app.message)}</p>`
     : '<p class="none">The applicant did not add a message.</p>';
 
-  return fold("household", "Household and residence", "Who is moving in, and from where.",
-    `<div class="facts">${residence}</div>
+  return fold("details", "Applicant details", "Identity details kept for screening.",
+    `${details}
      <div class="sub"><h3>Anything else the applicant wrote</h3>${message}</div>
      <p class="sensitive">Sensitive information is masked. ${
        isManager()
