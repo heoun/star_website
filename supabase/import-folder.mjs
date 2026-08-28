@@ -69,7 +69,7 @@ if (!dryRun && (!url || !key)) {
 // ---- Parse the folder name: "Evergarden 7A" -> building + unit ----
 
 const folderName = path.basename(folder.replace(/\/+$/, ""));
-const { building_name: buildingName, unit } = parseFolderName(folderName);
+const { property_name: propertyName, unit } = parseFolderName(folderName);
 
 // ---- Parse the .docx copy ----
 
@@ -94,7 +94,7 @@ const title = copy.title || folderName;
 console.log("Parsed listing:");
 console.log(JSON.stringify({
   category, transaction_type: copy.transaction_type, title,
-  building_name: buildingName, unit,
+  property_name: propertyName, unit,
   price_amount: copy.price_amount, property_type: copy.property_type,
   bedrooms: copy.bedrooms, bathrooms: copy.bathrooms,
   neighborhood: copy.neighborhood, location: copy.location,
@@ -141,7 +141,7 @@ const listingResponse = await rest("listings", {
     category,
     transaction_type: copy.transaction_type,
     title,
-    building_name: buildingName,
+    property_name: propertyName,
     unit,
     description: copy.description || null,
     price_amount: copy.price_amount,
@@ -191,4 +191,4 @@ if (video) {
 }
 
 rmSync(scratch, { recursive: true, force: true });
-console.log(`Done: "${title}" (${buildingName}${unit ? ` ${unit}` : ""}) with ${photos.length} photos${floorPlan ? ", floor plan" : ""}${video ? ", video" : ""}.`);
+console.log(`Done: "${title}" (${propertyName}${unit ? ` ${unit}` : ""}) with ${photos.length} photos${floorPlan ? ", floor plan" : ""}${video ? ", video" : ""}.`);

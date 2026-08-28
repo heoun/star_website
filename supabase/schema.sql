@@ -14,7 +14,12 @@ create table if not exists public.listings (
   transaction_type text not null check (transaction_type in ('sale', 'rental')),
 
   title text not null,
-  building_name text,
+  -- The name of the property this unit is in, as the website displays it. For
+  -- a unit under a property row the Worker copies buildings.name into it on
+  -- every save, so the label and the address a lease prints can never name
+  -- two different buildings; a listing under no property — a house for sale —
+  -- keeps a typed name.
+  property_name text,
   unit text,
   description text,
 
@@ -105,7 +110,7 @@ create table if not exists public.applications (
   dob text,
   -- The identity number is an SSN or a passport number — international
   -- students rarely have the first. `id_type` says which one `ssn_encrypted`
-  -- holds; rows from before the choice existed are all SSNs and leave it null.
+  -- holds; null means an SSN.
   id_type text check (id_type in ('ssn', 'passport')),
   ssn_encrypted text,
   ssn_last4 text,
@@ -127,7 +132,7 @@ create table if not exists public.applications (
   -- employment_history [{employer, position, start, income}]  (older rows also carry end, supervisor_*)
   -- rental_history     [{address, start, end, monthly_rent, landlord_name, landlord_phone, landlord_email}]
   -- reference_contacts [{name, relationship, phone, email}]  (2 required)
-  -- emergency_contacts [{name, relationship, phone, email}]  (older applications; the form no longer asks)
+  -- emergency_contacts [{name, relationship, phone, email}]
   -- roommates          [{first_name, last_name, phone, email}]
   -- pets               [{type, species, weight}]
   current_employer jsonb,
@@ -179,46 +184,6 @@ create table if not exists public.applications (
   updated_at timestamptz not null default now()
 );
 
--- Migration for databases created before the full application form. Safe to
--- run repeatedly; a fresh install already has all of this from create table.
--- Databases from before the form dropped its household size question still
--- carry a household_size column with its old answers; nothing reads or
--- writes it any more, and nothing here removes it.
-alter table public.applications add column if not exists first_name text;
-alter table public.applications add column if not exists last_name text;
-alter table public.applications add column if not exists current_address text;
-alter table public.applications add column if not exists lease_term_months integer;
-alter table public.applications add column if not exists dob text;
-alter table public.applications add column if not exists ssn_encrypted text;
-alter table public.applications add column if not exists ssn_last4 text;
-alter table public.applications add column if not exists children_under_11 boolean;
-alter table public.applications add column if not exists current_employer jsonb;
-alter table public.applications add column if not exists employment_history jsonb;
-alter table public.applications add column if not exists rental_history jsonb;
-alter table public.applications add column if not exists reference_contacts jsonb;
-alter table public.applications add column if not exists emergency_contacts jsonb;
-alter table public.applications add column if not exists pets jsonb;
-alter table public.applications add column if not exists id_type text;
-alter table public.applications add column if not exists employment_status text;
-alter table public.applications add column if not exists student jsonb;
-alter table public.applications add column if not exists wants_window_guards boolean;
-alter table public.applications add column if not exists roommates jsonb;
-alter table public.applications add column if not exists submitted jsonb;
-alter table public.applications add column if not exists concession_terms text;
-alter table public.applications add column if not exists decision jsonb;
-alter table public.applications add column if not exists lease_snapshot jsonb;
-alter table public.applications drop constraint if exists applications_status_check;
-alter table public.applications add constraint applications_status_check
-  check (status in ('new', 'contacted', 'fee_pending', 'screening', 'review',
-                    'sent_to_landlord', 'needs_info', 'approved', 'declined',
-                    'lease_sent', 'lease_signed'));
-alter table public.applications drop constraint if exists applications_id_type_check;
-alter table public.applications add constraint applications_id_type_check
-  check (id_type in ('ssn', 'passport'));
-alter table public.applications drop constraint if exists applications_employment_status_check;
-alter table public.applications add constraint applications_employment_status_check
-  check (employment_status in ('employed', 'student'));
-
 create index if not exists applications_listing_idx
   on public.applications (listing_id, created_at desc);
 
@@ -254,10 +219,10 @@ grant select, insert, update, delete on public.applications to service_role;
 -- each one means. Nothing here repeats it: this stores values, the registry
 -- says what a value is for.
 
--- The building layer needs something stable to hang off. listings.building_name
--- is free text retyped for every unit, so keying settings on that string would
--- let a typo or a rename silently point a unit at another building's bedbug
--- history — a false statement in a signed lease. Buildings get rows instead.
+-- The building layer needs something stable to hang off. listings.property_name
+-- is a display label, so keying settings on that string would let a typo or a
+-- rename silently point a unit at another building's bedbug history — a false
+-- statement in a signed lease. Buildings get rows instead.
 --
 -- The address parts live here because this is where they are true: the bedbug
 -- disclosure and the Good Cause notice want street, city, state and ZIP on
@@ -265,7 +230,8 @@ grant select, insert, update, delete on public.applications to service_role;
 create table if not exists public.buildings (
   id uuid primary key default gen_random_uuid(),
 
-  -- The same string listings.building_name already displays.
+  -- The property's name. Copied into listings.property_name for every unit
+  -- under it, which is why that column is never typed twice.
   name text not null,
 
   street text,
@@ -285,9 +251,6 @@ create table if not exists public.buildings (
   updated_at timestamptz not null default now()
 );
 
--- Migration for databases created before the property setup screen.
-alter table public.buildings add column if not exists landlord_signer_email text;
-
 -- Two rows for one building would split its settings in half, and a lease
 -- would be generated from whichever half the listing happened to point at.
 create unique index if not exists buildings_name_idx
@@ -298,12 +261,13 @@ create trigger buildings_set_updated_at
   before update on public.buildings
   for each row execute function public.set_updated_at();
 
--- Existing listings predate this, so the link is nullable and is filled in by
--- picking a building in the admin. building_name stays as the display string;
--- building_id is what settings key off. Deleting a building that still has
--- units is refused rather than quietly unlinking them: an unlinked unit loses
--- its whole building layer, which is the silent-miss this table exists to
--- prevent.
+-- Which property a unit belongs to. Declared here rather than in the listings
+-- table above because buildings is declared later in this file. Nullable: a
+-- listing under no property reads the company defaults only. property_name is
+-- the display string; this is what settings key off. Deleting a building that
+-- still has units is refused rather than quietly unlinking them: an unlinked
+-- unit loses its whole building layer, which is the silent-miss this table
+-- exists to prevent.
 alter table public.listings add column if not exists building_id uuid
   references public.buildings (id) on delete restrict;
 
@@ -576,15 +540,6 @@ create table if not exists public.application_documents (
 
   created_at timestamptz not null default now()
 );
-
--- Migration for databases created before the student document types. Safe to
--- run repeatedly; a fresh install already has this list from create table.
-alter table public.application_documents drop constraint if exists application_documents_doc_type_check;
-alter table public.application_documents add constraint application_documents_doc_type_check
-  check (doc_type in (
-    'government_id_front', 'government_id_back', 'job_offer_letter',
-    'paystub', 'school_offer_letter', 'student_visa_i20',
-    'bank_statement', 'tax_return', 'landlord_reference'));
 
 create index if not exists application_documents_application_idx
   on public.application_documents (application_id, doc_type, created_at);

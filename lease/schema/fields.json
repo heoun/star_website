@@ -346,11 +346,12 @@
       "id": "lease.vacancy_lease_date",
       "label": "Date of vacancy lease (bedbug disclosure)",
       "group": "lease_terms",
-      "source": "agent",
+      "source": "deal",
       "type": "date",
       "required": false,
       "default": null,
-      "note": "Deliberately left blank in the template; the agent fills it in before sending."
+      "from": "computed: the date the listing was released on the website (listings.created_at), falling back to the date the lease goes out",
+      "note": "Defaults to the day the listing went up. A manager corrects it when the paperwork says otherwise."
     },
     {
       "id": "rent.monthly",

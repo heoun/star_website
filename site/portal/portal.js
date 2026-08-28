@@ -331,7 +331,7 @@
   function listingLabel(app) {
     const listing = app.listing;
     if (!listing) return "Property no longer listed";
-    const home = [listing.building_name, listing.unit].filter(Boolean).join(" ");
+    const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
     return home ? `${listing.title} · ${home}` : (listing.title || "Property");
   }
 

@@ -14,6 +14,7 @@ import * as workspace from "./lease-workspace.js";
 import { mapDocuments, verifyDocuments } from "../shared/lease-documents.js";
 import { ADDRESS_FIELD, ADDRESS_PARTS, composeAddress } from "../shared/lease-address.js";
 import { applicationWrite } from "../shared/lease-application.js";
+import { agentMayWriteField } from "../shared/lease-permissions.js";
 
 let api;
 let setStatus;
@@ -87,12 +88,13 @@ function blankState() {
   };
 }
 
-// A landlord value is a manager's, and an agent sees it rather than types it.
-// Refusing the change here as well as in the Worker keeps a disabled input from
-// being edited round — applyChange consults this before recording anything, so
-// a field that is not editable cannot even become dirty.
+// An agent edits the terms of the tenancy — the whitelist in
+// site/shared/lease-permissions.js — and sees everything else. Refusing the
+// change here as well as in the Worker keeps a disabled input from being
+// edited round — applyChange consults this before recording anything, so a
+// field that is not editable cannot even become dirty.
 function canEdit(field) {
-  return field.source !== "manager" || isManager();
+  return isManager() || agentMayWriteField(field.id);
 }
 
 // The one rule the browser is allowed to decide for itself. Everything else —
@@ -117,7 +119,7 @@ function recomputeMissing() {
 // about to change the defaults for.
 function unitLabel(listing) {
   if (!listing) return "";
-  const home = [listing.building_name, listing.unit ? `Unit ${listing.unit}` : ""].filter(Boolean).join(" ");
+  const home = [listing.property_name, listing.unit ? `Unit ${listing.unit}` : ""].filter(Boolean).join(" ");
   const where = listing.location || "";
   return [home, where].filter(Boolean).join(" — ") || listing.title || "";
 }
@@ -181,10 +183,10 @@ export async function openLeaseScreen(options = {}) {
   // route change rather than a hide — otherwise the address bar still names a
   // lease nobody is looking at.
   returnTo = options.returnTo || "";
-  // An agent may correct what the application said, and may type a whole lease
-  // when there is no application at all — which is the only way to produce one
-  // until credit reporting is wired up. The landlord's own standing terms are
-  // the exception: those are a manager's, on this screen as everywhere else.
+  // An agent settles the terms of the tenancy — the whitelist in
+  // site/shared/lease-permissions.js — and reads everything else: the
+  // tenant's identity, the premises, the landlord's standing terms are a
+  // manager's, on this screen as everywhere else.
   state.editable = state.readOnly ? () => false : canEdit;
 
   screen.hidden = false;
@@ -485,6 +487,10 @@ function onInput(fieldId, rawValue, isCheckbox) {
 
   state.dirty.add(fieldId);
 
+  // The end date is half move-in, half term; a new move-in moves it now, the
+  // same way a new term does.
+  if (fieldId === "lease.commencement_date") applyEndDate();
+
   // The one-line address is derived, so correcting a part has to move it here
   // too — otherwise the preview shows one address and the produced .docx
   // another. Both sides compose it with the same shared function.
@@ -506,6 +512,9 @@ function onInput(fieldId, rawValue, isCheckbox) {
   }
 
   workspace.annotateWorkspace(formHost, state);
+  // The header facts — the rent, the tenant's name, the status chip — quote
+  // the values being edited, so they move on the same keystroke.
+  renderBar();
   updateActions();
 }
 

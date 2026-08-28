@@ -27,7 +27,7 @@
 //      send a person looking for a permissions problem that is not there.
 
 import { fetchStaffMember, isMissingTable } from "./supabase.js";
-import { isManagerField } from "./lease.js";
+import { agentMayWriteField } from "../site/shared/lease-permissions.js";
 
 export const MANAGER = "manager";
 export const AGENT = "agent";
@@ -111,17 +111,19 @@ export async function resolveStaff(env, identity) {
   return { identity: { ...identity, email, role, name: member.name || "" } };
 }
 
-// The values an agent may not write, in one place, because there are three
-// doors to them: a settings layer, a per-lease override, and the building a
-// listing points at.
-//
-// It is not simply `source === "manager"`. The DHCR consent's two marks are
-// declared `source: "deal"` in the registry while the business has decided they
-// are a manager's — see the ⚑ in notes/lease-information.xlsx. Naming them here
-// closes the door now; when they become manager-source in fields.json this list
-// goes back to being empty and nothing else changes.
-const MANAGER_CONTROLLED = new Set(["dhcr.mark_vacancy", "dhcr.mark_renewal"]);
-
+// The values an agent may not write, decided by the whitelist in
+// site/shared/lease-permissions.js: an agent settles the terms of one tenancy
+// — the dates, the rent, the due day, the deposit, the concession — and every
+// other lease value, the tenant's identity and the statutory marks included,
+// is a manager's. One list, shared with the browser, so the screen never
+// draws an input whose Save this refuses.
 export function isManagerControlled(fieldId) {
-  return isManagerField(fieldId) || MANAGER_CONTROLLED.has(fieldId);
+  return !agentMayWriteField(fieldId);
 }
+
+// The application columns an agent may correct: the same tenancy terms the
+// lease whitelist allows, on the row they start from. Everything else on an
+// application — identity, screening answers — is a manager's to touch.
+export const AGENT_APPLICATION_COLUMNS = new Set([
+  "move_in", "lease_term_months", "concession_terms"
+]);

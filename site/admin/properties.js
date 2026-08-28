@@ -232,7 +232,7 @@ export async function renderPropertyList(host) {
         ? `<div class="empty">
              <h2>No properties yet</h2>
              <p>A property is what lets several apartments share one set of landlord terms.
-                Create one from a listing's building field.</p>
+                Add one from any listing's Property field, then set its address here.</p>
            </div>`
         : `<div class="rows">
              <div class="prop-row is-head">
@@ -243,9 +243,10 @@ export async function renderPropertyList(host) {
            </div>`}
 
       ${unlinked > 0
-        ? `<p class="note">${unlinked} apartment${unlinked === 1 ? " is" : "s are"} not linked to a
-             property, so ${unlinked === 1 ? "it reads" : "they read"} the company defaults only.
-             Link ${unlinked === 1 ? "it" : "them"} on the listing.</p>`
+        ? `<p class="note">${unlinked} apartment${unlinked === 1 ? " is" : "s are"} under no
+             property, so ${unlinked === 1 ? "its lease reads" : "their leases read"} the company
+             defaults and the address off the listing itself. Put
+             ${unlinked === 1 ? "it" : "them"} under one in the listing's Property field.</p>`
         : ""}`;
 
     setStatus("");
@@ -266,6 +267,7 @@ let currentTab = "defaults";
 // one never blocks a lease, so it never earns space above the fold.
 let showOptional = false;
 let signerOpen = false;
+let addressOpen = false;
 
 // `keepStatus` is for the one caller that has something to say afterwards: a
 // save re-renders the page and then reports what it wrote, and clearing the
@@ -277,6 +279,7 @@ export async function renderProperty(host, target, { keepStatus = false } = {}) 
     editingGroup = "";
     showOptional = false;
     signerOpen = false;
+    addressOpen = false;
   }
 
   host.innerHTML = '<p class="status">Loading…</p>';
@@ -364,6 +367,9 @@ function renderPropertyShell({ company, building, fields, layers, here, target }
         <p>${escapeHtml(address)}${company ? "" : ` · ${units.length} apartment${units.length === 1 ? "" : "s"}`}</p>
       </div>
       <div class="actions">
+        ${company || !isManager() ? "" :
+          `<button type="button" id="property-address">${
+            building.street ? "Edit address" : "Set address"}</button>`}
         ${company || units.length === 0 ? "" :
           '<button type="button" id="property-test-lease">Generate test lease</button>'}
       </div>
@@ -407,7 +413,8 @@ function renderPropertyShell({ company, building, fields, layers, here, target }
     ${currentTab === "setup" ? setupTab() : ""}
     ${currentTab === "preview" ? previewTab(company, units, target) : ""}
 
-    ${signerOpen ? signerDialog(signer, signerEmail, emailKnown) : ""}`;
+    ${signerOpen ? signerDialog(signer, signerEmail, emailKnown) : ""}
+    ${addressOpen ? addressDialog(building) : ""}`;
 }
 
 // ------------------------------------------------------------ tab: defaults
@@ -580,6 +587,38 @@ function signerDialog(signer, signerEmail, emailKnown) {
   </div>`;
 }
 
+// The premises address, on the building row. Every lease for the property
+// prints it, and while it is blank each unit's lease falls back to whatever
+// its listing's location text says — which is why setting it is the point of
+// linking listings to a property at all.
+function addressDialog(building) {
+  const field = (id, label, value, hint = "") => `
+    <label for="${id}"${id === "address-street" ? "" : ' style="margin-top:12px"'}>${label}</label>
+    <input type="text" id="${id}" value="${escapeHtml(value || "")}"${hint ? ` placeholder="${escapeHtml(hint)}"` : ""}>`;
+
+  return `<div class="sheet" data-address-sheet>
+    <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="address-title">
+      <div class="sheet-head">
+        <h2 id="address-title">Property address</h2>
+        <button type="button" class="small" data-address-close aria-label="Close">Close</button>
+      </div>
+      <div class="sheet-body">
+        ${field("address-street", "Street", building.street, "81-07 Kew Gardens Road")}
+        ${field("address-city", "City", building.city, "Kew Gardens")}
+        ${field("address-state", "State, spelled out", building.state, "New York")}
+        ${field("address-abbr", "State, abbreviated", building.state_abbr || "NY")}
+        ${field("address-zip", "ZIP", building.zip, "11415")}
+        <p class="note">Printed on every lease for this property. Until it is set, each lease
+           reads the address off its listing instead.</p>
+      </div>
+      <div class="sheet-foot">
+        <button type="button" data-address-close>Cancel</button>
+        <button type="button" class="primary" id="address-save">Save address</button>
+      </div>
+    </div>
+  </div>`;
+}
+
 // --------------------------------------------------------------- tab: setup
 
 // What goes into a lease and who decides it. Four owners, in the order the
@@ -677,7 +716,7 @@ function previewTab(company, units, target) {
     return `<div class="empty">
       <h2>No apartment to read it for</h2>
       <p>A lease is rendered for one apartment, because the address and the rent come from one.
-         Link an apartment to this property on its listing.</p>
+         Put an apartment under this property in the listing's Property field.</p>
     </div>`;
   }
 
@@ -800,6 +839,25 @@ export async function handlePropertyClick(event, host, target) {
     return true;
   }
 
+  if (event.target.closest("#property-address")) {
+    addressOpen = true;
+    await renderProperty(host, target);
+    host.querySelector("#address-street")?.focus();
+    return true;
+  }
+
+  if (event.target.closest("[data-address-close]")
+      || (event.target.matches("[data-address-sheet]"))) {
+    addressOpen = false;
+    await renderProperty(host, target);
+    return true;
+  }
+
+  if (event.target.closest("#address-save")) {
+    await saveAddress(host, target);
+    return true;
+  }
+
   if (event.target.closest("[data-signer-close]")
       || (event.target.matches("[data-signer-sheet]"))) {
     signerOpen = false;
@@ -854,6 +912,40 @@ export async function handlePropertyClick(event, host, target) {
 // with the other 92; the address the request goes to is not in the document at
 // all and lives on the property row. Both are refused for an agent by the
 // Worker, not by this screen.
+// The Worker refuses this for an agent; the screen never shows them the
+// button in the first place.
+async function saveAddress(host, target) {
+  const read = (id) => host.querySelector(id)?.value.trim() || "";
+  const values = {
+    street: read("#address-street"),
+    city: read("#address-city"),
+    state: read("#address-state"),
+    state_abbr: read("#address-abbr"),
+    zip: read("#address-zip")
+  };
+
+  if (!values.street || !values.city || !values.zip) {
+    setStatus("A lease address needs at least the street, the city and the ZIP.", "error");
+    return;
+  }
+
+  setStatus("Saving the address…");
+  try {
+    const { building } = await api(`/buildings/${encodeURIComponent(target)}`, {
+      method: "PATCH",
+      body: JSON.stringify(values)
+    });
+    const index = buildings.findIndex((row) => row.id === target);
+    if (index !== -1 && building) buildings[index] = building;
+
+    addressOpen = false;
+    await renderProperty(host, target, { keepStatus: true });
+    setStatus("Address saved. Every lease for this property prints it.");
+  } catch (error) {
+    setStatus(error.message, "error");
+  }
+}
+
 async function saveSigner(host, target) {
   const name = host.querySelector("#signer-name")?.value.trim() || "";
   const email = host.querySelector("#signer-email")?.value.trim() || "";

@@ -32,27 +32,30 @@ export function initWorkspace(deps) {
 
 // ------------------------------------------------------------ what goes where
 
-// The application answers these, and an agent may correct them. Anything the
-// application collected for screening — date of birth, social security number,
-// income, employment, references, rental history, emergency contacts — is
-// deliberately absent: it is not on the lease and this is not the screen for
-// deciding on a tenant.
+// The application answers these. They are the tenant's identity, so a manager
+// corrects them and an agent reads them — the same rule as the application
+// page. Anything the application collected for screening — date of birth,
+// social security number, income, employment, references, rental history,
+// emergency contacts — is deliberately absent: it is not on the lease and
+// this is not the screen for deciding on a tenant.
 const TENANT_FIELDS = [
   { id: "tenant.names", hint: "As they will be printed and as they will sign." },
   { id: "tenant.email", hint: "Where the signing request goes." },
-  { app: "phone", label: "Phone", hint: "Contact only — the lease does not print a phone number." },
+  { app: "phone", label: "Phone", manager: true,
+    hint: "Contact only — the lease does not print a phone number." },
   { id: "tenant.mailing_address", hint: "Starts as the applicant's current address. Clear it when notices go to the unit." }
 ];
 
-// The terms of this one tenancy.
+// The terms of this one tenancy — the values an agent settles.
 const TRANSACTION_FIELDS = [
+  { id: "lease.effective_date", hint: "The date on page one. Defaults to the day the lease goes out." },
   { id: "lease.commencement_date", hint: "The day the tenancy starts." },
   { app: "lease_term_months", label: "Lease term", hint: "Months. The end date follows from this.", type: "number" },
   { id: "lease.end_date", derived: true, hint: "The last day of the term — the day before the same date, a term later." },
-  { id: "rent.monthly" },
+  { id: "rent.monthly", hint: "Starts from the listing's asking rent." },
+  { id: "rent.due_day", hint: "The day of the month the rent falls due. Starts from the company default." },
   { id: "deposit.amount", hint: "One month is the New York maximum." },
-  { id: "concession.terms", hint: "Fills the Rent Concession Rider." },
-  { id: "lease.vacancy_lease_date", hint: "The date on the bedbug disclosure for this vacancy." }
+  { id: "concession.terms", hint: "Fills the Rent Concession Rider." }
 ];
 
 // The landlord's own terms, as they will print. Grouped so the section can stay
@@ -81,13 +84,14 @@ const MANAGER_GROUPS = [
   }
 ];
 
-// Nobody types these. They are shown so the agent can see they are handled,
-// and so a wrong one is noticed before it is signed.
+// Filled in when the lease is generated, shown so a wrong one is noticed
+// before it is signed. The marks and the vacancy date are a manager's to
+// correct; the address follows the apartment.
 const SYSTEM_FIELDS = [
-  { id: "lease.effective_date", why: "The date this lease is dated — filled when it is generated." },
-  { id: "property.address_full", why: "Composed from the apartment you selected." },
-  { id: "dhcr.mark_vacancy", why: "The landlord's assertion about this tenancy — a manager's to set." },
-  { id: "dhcr.mark_renewal", why: "The landlord's assertion about this tenancy — a manager's to set." }
+  { id: "property.address_full", derived: true, hint: "Composed from the apartment you selected." },
+  { id: "lease.vacancy_lease_date", hint: "The bedbug disclosure's date. Defaults to the day the listing went on the website." },
+  { id: "dhcr.mark_vacancy", hint: "Ticked for a new tenancy." },
+  { id: "dhcr.mark_renewal", hint: "The renewal half of the same answer." }
 ];
 
 const UTILITY_PREFIX = "utility.";
@@ -176,7 +180,7 @@ function unitRow(state) {
 }
 
 function unitLabel(listing) {
-  return [listing.building_name, listing.unit ? `Unit ${listing.unit}` : ""].filter(Boolean).join(" · ")
+  return [listing.property_name, listing.unit ? `Unit ${listing.unit}` : ""].filter(Boolean).join(" · ")
     || listing.title || "Untitled";
 }
 
@@ -200,7 +204,7 @@ function row(entry, state) {
       <p class="ws-status" data-lease-status="${escapeHtml(entry.id)}"></p>
       ${entry.hint || field.note
         ? `<p class="ws-hint">${escapeHtml(entry.hint || field.note)}</p>` : ""}
-      ${!editable && !entry.derived
+      ${!editable && !entry.derived && !state.readOnly
         ? '<p class="ws-hint is-locked">A manager sets this.</p>' : ""}
       ${state.occurrences[entry.id] > 0
         ? `<button type="button" class="ws-find" data-lease-locate="${escapeHtml(entry.id)}">Show on the document</button>`
@@ -209,16 +213,21 @@ function row(entry, state) {
   </div>`;
 }
 
-// A value that lives on the application rather than in the template.
+// A value that lives on the application rather than in the template. One
+// marked `manager` follows the same rule as the tenant's other identity
+// fields: an agent reads it, a manager corrects it.
 function applicationRow(entry, state) {
   const value = state.application ? (state.application[entry.app] ?? "") : "";
+  const locked = entry.manager && !state.isManager();
   return `<div class="ws-row" data-ws-row="${escapeHtml(entry.app)}">
     <label class="ws-label" for="ws-app-${escapeHtml(entry.app)}">${escapeHtml(entry.label)}</label>
     <div class="ws-value">
       <input id="ws-app-${escapeHtml(entry.app)}" data-ws-app="${escapeHtml(entry.app)}"
              type="${entry.type || "text"}"${entry.type === "number" ? ' min="1" max="120"' : ""}
-             value="${escapeHtml(value)}"${state.application ? "" : " disabled"}>
+             value="${escapeHtml(value)}"${
+               state.application && !locked && !state.readOnly ? "" : " disabled"}>
       ${entry.hint ? `<p class="ws-hint">${escapeHtml(entry.hint)}</p>` : ""}
+      ${locked ? '<p class="ws-hint is-locked">A manager sets this.</p>' : ""}
       ${state.application ? "" : '<p class="ws-hint">No application behind this lease.</p>'}
     </div>
   </div>`;
@@ -240,6 +249,9 @@ function control(field, state, editable) {
   }
   if (field.type === "multiline") {
     return `<textarea ${attrs} rows="2">${escapeHtml(value)}</textarea>`;
+  }
+  if (field.type === "integer") {
+    return `<input type="number" ${attrs} min="1" value="${escapeHtml(value)}">`;
   }
   return `<input type="text" ${attrs} value="${escapeHtml(value)}">`;
 }
@@ -311,21 +323,10 @@ function systemSection(state) {
     <details class="ws-fold">
       <summary>
         <span class="ws-fold-title">Filled in for you</span>
-        <span class="ws-fold-note">Derived — nobody types these</span>
+        <span class="ws-fold-note">Filled when the lease is generated. A manager corrects them.</span>
       </summary>
       <div class="ws-fold-body">
-        ${SYSTEM_FIELDS.map((entry) => {
-          const field = state.byId.get(entry.id);
-          if (!field) return "";
-          const value = field.type === "checkbox"
-            ? (state.checked.has(entry.id) ? "Marked" : "Not marked")
-            : (state.values[entry.id] || "—");
-          return `<div class="ws-row" data-ws-row="${escapeHtml(entry.id)}">
-            <span class="ws-label">${escapeHtml(field.label)}</span>
-            <div class="ws-value"><b>${escapeHtml(value)}</b>
-              <p class="ws-hint">${escapeHtml(entry.why)}</p></div>
-          </div>`;
-        }).join("")}
+        ${SYSTEM_FIELDS.map((entry) => row(entry, state)).join("")}
         <p class="ws-hint">The address is written into every place the template asks for it —
           street, city, state, ZIP and the one-line form — from the apartment above.</p>
       </div>

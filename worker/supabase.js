@@ -3,7 +3,7 @@ const LISTING_COLUMNS = [
   "category",
   "transaction_type",
   "title",
-  "building_name",
+  "property_name",
   "unit",
   "description",
   "price_amount",
@@ -21,7 +21,8 @@ const LISTING_COLUMNS = [
   "kind_label",
   "published",
   "position",
-  "building_id"
+  "building_id",
+  "created_at"
 ].join(",");
 
 const MEDIA_COLUMNS = "id,listing_id,kind,path,caption,position";
@@ -287,7 +288,7 @@ export async function fetchApplications(env) {
   // price_amount comes with the row because the leases list states the rent,
   // and asking for it per row would be one request per lease to show a column.
   const response = await selectApplications(
-    env, ",listings(id,title,building_name,unit,price_amount)&order=created_at.desc");
+    env, ",listings(id,title,property_name,unit,price_amount)&order=created_at.desc");
   return response.json();
 }
 
@@ -367,7 +368,7 @@ export async function fetchApplicationSsn(env, id) {
 // to the database.
 const PORTAL_APPLICATION_COLUMNS =
   "id,name,email,status,created_at,move_in,lease_term_months," +
-  "listings(title,building_name,unit,location)," +
+  "listings(title,property_name,unit,location)," +
   "application_documents(id,doc_type,file_name,content_type,size_bytes,created_at)";
 
 function escapeLikePattern(value) {
@@ -403,8 +404,8 @@ export async function fetchApplicationsByEmail(env, email) {
 // completion notice.
 export async function fetchPortalApplication(env, id) {
   const columns = workOrSchoolColumns
-    ? "id,name,email,status,employment_status,listings(title,building_name,unit)"
-    : "id,name,email,status,listings(title,building_name,unit)";
+    ? "id,name,email,status,employment_status,listings(title,property_name,unit)"
+    : "id,name,email,status,listings(title,property_name,unit)";
   let response;
   try {
     response = await restRequest(
@@ -527,7 +528,7 @@ export function toDetailListing(row) {
 
   return {
     ...toFeedListing(row),
-    building_name: row.building_name || "",
+    property_name: row.property_name || "",
     unit: row.unit || "",
     description: row.description || "",
     video_url: row.video_url || "",
@@ -650,7 +651,7 @@ export async function fetchApplicationForLease(env, id) {
   // this row and a lease has no business reading it.
   const base = "id,listing_id,name,email,phone,move_in,lease_term_months," +
     "children_under_11,status," +
-    "listings(id,title,building_name,unit,location,price_amount,building_id)";
+    "listings(id,title,property_name,unit,location,price_amount,building_id,created_at)";
   const select = (columns) =>
     restRequest(env, `applications?id=eq.${encodeURIComponent(id)}&select=${columns}`);
 

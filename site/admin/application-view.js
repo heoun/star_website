@@ -296,7 +296,7 @@ export function requestedItems(app, types) {
 export function homeLabel(app) {
   const listing = app?.listings;
   if (!listing) return "Listing removed";
-  const home = [listing.building_name, listing.unit ? `Unit ${listing.unit}` : ""]
+  const home = [listing.property_name, listing.unit ? `Unit ${listing.unit}` : ""]
     .filter(Boolean).join(" · ");
   return home || listing.title || "Listing removed";
 }
@@ -304,7 +304,7 @@ export function homeLabel(app) {
 export function propertyLine(app) {
   const listing = app?.listings;
   if (!listing) return "The listing this application was made against has been removed.";
-  const home = [listing.building_name, listing.unit ? `Unit ${listing.unit}` : ""]
+  const home = [listing.property_name, listing.unit ? `Unit ${listing.unit}` : ""]
     .filter(Boolean).join(" · ");
   return [listing.title, home].filter(Boolean).join(" — ");
 }

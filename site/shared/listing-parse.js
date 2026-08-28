@@ -22,12 +22,12 @@ const stem = (name) => {
   return index === -1 ? name : name.slice(0, index);
 };
 
-// "Evergarden 7A" -> { building_name: "Evergarden", unit: "7A" }
+// "Evergarden 7A" -> { property_name: "Evergarden", unit: "7A" }
 export function parseFolderName(folderName) {
   const match = folderName.match(/^(.*?)\s+([0-9]+[A-Za-z]?)$/);
   return match
-    ? { building_name: match[1].trim(), unit: match[2] }
-    : { building_name: folderName, unit: null };
+    ? { property_name: match[1].trim(), unit: match[2] }
+    : { property_name: folderName, unit: null };
 }
 
 export function parseListingCopy(text) {

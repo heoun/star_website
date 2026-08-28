@@ -45,7 +45,7 @@ const application = {
 };
 const listing = {
   id: "l", unit: "12B", location: "21-45 44th Drive, Long Island City, NY",
-  price_amount: 3900, building_name: "Evergarden", title: "LIC Condo"
+  price_amount: 3900, property_name: "Evergarden", title: "LIC Condo"
 };
 const building = {
   street: "21-45 44th Drive", city: "Long Island City",

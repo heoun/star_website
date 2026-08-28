@@ -2,7 +2,8 @@ import { verifyAccessRequest } from "./access.js";
 import { describeEnvironment, devIdentity } from "./env.js";
 import { purgeListingsCache } from "./listings.js";
 import {
-  MANAGER, AGENT, isManager, isManagerControlled, normalizeRole, resolveStaff
+  AGENT_APPLICATION_COLUMNS, MANAGER, AGENT,
+  isManager, isManagerControlled, normalizeRole, resolveStaff
 } from "./staff.js";
 import {
   applyLeaseSettings,
@@ -26,6 +27,7 @@ import {
   fetchBuildings,
   fetchLeaseLayers,
   fetchLeaseSettingsLayer,
+  fetchListing,
   fetchListings,
   fetchMediaRow,
   insertBuilding,
@@ -49,6 +51,7 @@ import {
   describeMissing,
   fieldProvenance,
   fillTemplate,
+  formatOverrides,
   isManagerField,
   leaseFilename,
   missingIn,
@@ -77,7 +80,7 @@ const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const SINGLE_LINE_FIELDS = [
-  "building_name",
+  "property_name",
   "unit",
   "price_display",
   "property_type",
@@ -121,7 +124,23 @@ function optionalNumber(value, { integer = false } = {}) {
   return integer ? Math.round(parsed) : parsed;
 }
 
-function normalizeListingInput(body, { partial = false, identity = null } = {}) {
+// The building name a listing displays is the property's own, whenever it is
+// under one. Two places to type the same building's name is two names that
+// drift, and the pair a reader compares is the website's label against the
+// address a lease prints. So the label is copied from the property here and
+// whatever the form sent is discarded; a listing under no property — a house
+// for sale — keeps its typed name.
+//
+// Returns a Response when the link cannot be honoured, null when all is well.
+async function nameFromProperty(env, values) {
+  if (!values.building_id) return null;
+  const building = await fetchBuilding(env, values.building_id);
+  if (!building) return json({ error: "That property no longer exists." }, 422);
+  values.property_name = building.name;
+  return null;
+}
+
+function normalizeListingInput(body, { partial = false, identity = null, current = null } = {}) {
   const values = {};
   const errors = [];
   const refused = [];
@@ -160,21 +179,32 @@ function normalizeListingInput(body, { partial = false, identity = null } = {}) 
   if (body.position !== undefined) values.position = optionalNumber(body.position, { integer: true }) ?? 0;
   if (body.published !== undefined) values.published = Boolean(body.published);
 
-  // Which building's lease settings this unit inherits. Empty unlinks it,
+  // Which property's lease settings this unit inherits. Empty unlinks it,
   // which costs the unit its whole building settings layer.
+  //
+  // An agent may put a new apartment under a property that already exists —
+  // that is the ordinary job, and it is what makes the unit's lease read a
+  // manager's address instead of the listing's own text. What an agent may
+  // not do is MOVE an apartment already under one: re-pointing swaps all 93
+  // per-building values at once, the same write PUT /lease/settings refuses,
+  // reached by another door. `current` is the link as stored; sending it back
+  // unchanged is not a move, so an ordinary edit of a linked listing saves.
+  //
+  // No `identity &&` guard: a call that arrives without one must refuse, not
+  // fall through and write the value.
   if (body.building_id !== undefined) {
-    // Which building a unit belongs to decides which settings layer its leases
-    // read. Re-pointing it swaps all 93 per-building values at once — the same
-    // write PUT /lease/settings refuses, reached by another door.
-    // No `identity &&` guard: a call that arrives without one must refuse, not
-    // fall through to the else branch and write the value.
-    if (!isManager(identity)) {
-      refused.push("the building this apartment belongs to");
+    const buildingId = cleanLine(body.building_id, 40);
+    const moves = (buildingId || null) !== (current || null);
+    if (moves && !isManager(identity) && current) {
+      refused.push("the property this apartment belongs to");
+    } else if (moves && !isManager(identity) && buildingId === "") {
+      refused.push("the property this apartment belongs to");
+    } else if (buildingId === "") {
+      values.building_id = null;
+    } else if (!UUID_PATTERN.test(buildingId)) {
+      errors.push("building_id");
     } else {
-      const buildingId = cleanLine(body.building_id, 40);
-      if (buildingId === "") values.building_id = null;
-      else if (!UUID_PATTERN.test(buildingId)) errors.push("building_id");
-      else values.building_id = buildingId;
+      values.building_id = buildingId;
     }
   }
 
@@ -299,6 +329,8 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
         await request.json(), { identity });
       if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
       if (refused.length > 0) return listingRefusal(refused);
+      const named = await nameFromProperty(env, values);
+      if (named) return named;
 
       const row = await insertListing(env, values);
       ctx.waitUntil(purgeListingsCache(request));
@@ -314,11 +346,20 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
     }
 
     if (request.method === "PATCH") {
+      const body = await request.json();
+      // What this apartment is linked to now, so the rule below can tell an
+      // agent putting a new unit under a property from one moving it.
+      const current = body.building_id === undefined
+        ? null
+        : (await fetchListing(env, id, { publishedOnly: false }))?.building_id || null;
+
       const { values, errors, refused } = normalizeListingInput(
-        await request.json(), { partial: true, identity });
+        body, { partial: true, identity, current });
       if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
       if (refused.length > 0) return listingRefusal(refused);
       if (Object.keys(values).length === 0) return json({ error: "Nothing to update." }, 400);
+      const named = await nameFromProperty(env, values);
+      if (named) return named;
 
       const row = await updateListing(env, id, values);
       if (!row) return json({ error: "Listing not found." }, 404);
@@ -327,6 +368,10 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
     }
 
     if (request.method === "DELETE") {
+      // An agent edits listings; removing one outright is a manager's.
+      if (!isManager(identity)) {
+        return json({ error: "Only a manager can delete a listing." }, 403);
+      }
       await deleteListing(env, id);
       ctx.waitUntil(deleteObjectsByPrefix(env, `${id.toLowerCase()}/`));
       ctx.waitUntil(purgeListingsCache(request, id));
@@ -413,7 +458,10 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
   }
 
   if (request.method === "PATCH") {
-    const body = await request.json();
+    const body = await request.json().catch(() => null);
+    if (!body || typeof body !== "object" || Array.isArray(body)) {
+      return json({ error: "The request body must be a JSON object." }, 400);
+    }
     const values = {};
 
     if (body.status !== undefined) {
@@ -457,9 +505,21 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
     // agent keeps beside it. Needs the row first: what the applicant actually
     // submitted is kept, and a name is made of two halves only one of which
     // may have been sent.
-    const corrections = Object.keys(body)
-      .some((key) => key !== "status" && key !== "notes" && key !== "decision_reason");
+    const correctionKeys = Object.keys(body)
+      .filter((key) => key !== "status" && key !== "notes" && key !== "decision_reason");
+    const corrections = correctionKeys.length > 0;
     if (corrections) {
+      // An agent's corrections stop at the terms of the tenancy. The rest of
+      // the application — the tenant's identity, the screening answers — is a
+      // manager's, the same split the lease overrides enforce.
+      if (!isManager(identity)) {
+        const blocked = correctionKeys.filter((key) => !AGENT_APPLICATION_COLUMNS.has(key));
+        if (blocked.length > 0) {
+          return json({
+            error: `Only a manager can change ${blocked.join(", ")} on an application.`
+          }, 403);
+        }
+      }
       if (!keepsSubmitted()) {
         return json({
           error: "This database cannot record what the applicant originally wrote yet. "
@@ -499,6 +559,11 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
   }
 
   if (request.method === "DELETE") {
+    // An agent works the application; removing it — answers, documents, the
+    // record the tenant warrant relies on — is a manager's.
+    if (!isManager(identity)) {
+      return json({ error: "Only a manager can delete an application." }, 403);
+    }
     await deleteApplication(env, id);
     // The database cascade removes the document rows; the bytes in R2 are
     // this Worker's to clean up.
@@ -1049,7 +1114,7 @@ async function handleLeaseDocument(request, env, identity, applicationId) {
   const frozen = application.lease_snapshot && typeof application.lease_snapshot === "object"
     ? application.lease_snapshot
     : null;
-  const values = frozen ? { ...frozen, ...overrides } : live.values;
+  const values = frozen ? { ...frozen, ...formatOverrides(overrides) } : live.values;
   const missing = frozen ? missingIn(values) : live.missing;
 
   return respondWithLease(request, env, {
@@ -1127,8 +1192,15 @@ function normalizeOverrides(body, identity) {
       patch[id] = Boolean(raw);
       continue;
     }
-    const text = cleanLine(raw, 400);
+    // A multiline field keeps its line breaks and its length — the concession
+    // rider is a paragraph, and flattening it here would print a lease that
+    // disagrees with the same text saved on the application.
+    const text = field.type === "multiline" ? cleanMultiline(raw) : cleanLine(raw, 400);
     if (field.type === "choice" && text !== "" && !field.options.includes(text)) {
+      errors.push(id);
+      continue;
+    }
+    if (field.type === "integer" && text !== "" && !/^\d+$/.test(text)) {
       errors.push(id);
       continue;
     }

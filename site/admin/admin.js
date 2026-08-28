@@ -81,7 +81,7 @@ const dropzone = document.getElementById("dropzone");
 const folderInput = document.getElementById("folder-input");
 
 const TEXT_FIELDS = [
-  "title", "building_name", "unit", "description", "price_display", "property_type",
+  "title", "property_name", "unit", "description", "price_display", "property_type",
   "use_type", "size", "term_label", "location", "neighborhood", "details_url",
   "kind_label", "video_url"
 ];
@@ -102,6 +102,12 @@ let routeId = "";
 // pressed is not worth an address of its own.
 let filter = "all";
 let editingId = null;
+// The properties a listing can be put under, fetched once on the first
+// editor open, and which one the open listing is under as stored — the Worker
+// allows an agent to set that link but not to move it.
+let buildingRows = [];
+let buildingRowsLoaded = false;
+let linkedBuildingId = "";
 let currentMedia = [];
 // Files chosen before the listing exists; uploaded when it is saved.
 let pendingMedia = [];
@@ -341,10 +347,10 @@ async function readFolder(files) {
 
   const parsed = parseListingCopy(await readDocxText(find(document)));
   const folderName = files[0]?.webkitRelativePath?.split("/")[0] || "";
-  const { building_name, unit } = parseFolderName(folderName);
+  const { property_name, unit } = parseFolderName(folderName);
 
   return {
-    fields: { ...parsed, building_name, unit, kind_label: parsed.title },
+    fields: { ...parsed, property_name, unit, kind_label: parsed.title },
     photoFiles: photoNames.map(find).filter(Boolean),
     planFile: planName ? find(planName) : null,
     videoFile: video ? find(video) : null,
@@ -426,7 +432,7 @@ function describe(listing) {
     });
     parts.push(listing.transaction_type === "rental" ? `${amount}/mo` : amount);
   }
-  const home = [listing.building_name, listing.unit].filter(Boolean).join(" ");
+  const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
   if (home) parts.push(home);
   if (listing.neighborhood) parts.push(listing.neighborhood);
   return parts.join(" · ") || "No price or address yet";
@@ -478,7 +484,7 @@ function renderListings() {
       </div>
       <div class="actions">
         <button type="button" data-action="edit">Edit</button>
-        <button type="button" class="danger" data-action="delete">Delete</button>
+        <button type="button" class="danger" data-action="delete" data-manager-only>Delete</button>
       </div>
     </article>
   `).join("");
@@ -685,7 +691,7 @@ function renderLeases() {
   const visible = all.filter((app) => {
     if (leaseFilter !== "all" && leaseState(app).key !== leaseFilter) return false;
     if (!needle) return true;
-    return [app.name, app.email, app.listings?.title, app.listings?.building_name, app.listings?.unit]
+    return [app.name, app.email, app.listings?.title, app.listings?.property_name, app.listings?.unit]
       .filter(Boolean).join(" ").toLowerCase().includes(needle);
   });
 
@@ -710,7 +716,7 @@ function renderLeases() {
     </div>
     ${visible.map((app) => {
       const state = leaseState(app);
-      const home = [app.listings?.building_name, app.listings?.unit ? `Unit ${app.listings.unit}` : ""]
+      const home = [app.listings?.property_name, app.listings?.unit ? `Unit ${app.listings.unit}` : ""]
         .filter(Boolean).join(" · ") || app.listings?.title || "Listing removed";
       return `<a class="lease-row" href="#/leases/${escapeHtml(app.id)}">
         <span class="lease-cell-strong">${escapeHtml(home)}</span>
@@ -761,7 +767,7 @@ function appMatches(app) {
   const needle = appSearch.trim().toLowerCase();
   if (!needle) return true;
   return [app.name, app.email, app.phone, app.listings?.title,
-    app.listings?.building_name, app.listings?.unit]
+    app.listings?.property_name, app.listings?.unit]
     .filter(Boolean).join(" ").toLowerCase().includes(needle);
 }
 
@@ -949,7 +955,104 @@ function openEditor(listing) {
   form.elements.published.checked = listing ? Boolean(listing.published) : true;
 
   renderMedia();
+  linkedBuildingId = listing?.building_id || "";
+  fillPropertySelect(listing?.property_name || "");
+  // Re-drawn once the properties arrive. No name argument: by then somebody —
+  // or a folder import — may have typed in the box, and the list arriving is
+  // no reason to empty it.
+  loadBuildings().then(() => fillPropertySelect());
   if (!editor.open) editor.showModal();
+}
+
+// ---- The property a unit belongs to ----
+//
+// One control, because a unit belongs to one building: the property it is
+// under supplies the name this listing displays and the address every lease
+// for it prints. Typing the name a second time is how a website label and a
+// lease end up naming different buildings, so the name is only typed for a
+// listing under no property at all — a house for sale, a one-off.
+//
+// Moving an apartment already under a property is a manager's: it swaps all
+// 93 landlord values at once. Putting a new one under an existing property is
+// anybody's, which is the ordinary job. The Worker decides both; this only
+// draws what it will accept.
+
+async function loadBuildings(force = false) {
+  if (buildingRowsLoaded && !force) return;
+  try {
+    ({ buildings: buildingRows } = await api("/buildings"));
+    buildingRowsLoaded = true;
+  } catch {
+    buildingRows = [];
+  }
+}
+
+// An agent may not move a linked apartment, so the picker is theirs to use
+// only while the apartment is under nothing yet.
+function mayPickProperty() {
+  return isManager() || !linkedBuildingId;
+}
+
+function fillPropertySelect(typedName) {
+  const select = form.elements.building_id;
+  if (!select) return;
+
+  const options = [
+    `<option value=""${linkedBuildingId ? "" : " selected"}>Not part of a property</option>`,
+    ...buildingRows.map((row) => `<option value="${escapeHtml(row.id)}"${
+      row.id === linkedBuildingId ? " selected" : ""}>${escapeHtml(row.name)}</option>`)
+  ];
+  if (isManager()) options.push('<option value="__create__">Add a new property…</option>');
+
+  select.innerHTML = options.join("");
+  select.disabled = !mayPickProperty();
+  showPropertyName(typedName);
+}
+
+// The name box appears only when there is a name to type: for a listing under
+// no property, and for the property a manager is about to create.
+function showPropertyName(typedName) {
+  const select = form.elements.building_id;
+  const nameInput = form.elements.property_name;
+  const hint = document.getElementById("property-hint");
+  if (!select || !nameInput) return;
+
+  const creating = select.value === "__create__";
+  const unlinked = select.value === "";
+  nameInput.hidden = !(creating || unlinked);
+  if (typedName !== undefined) nameInput.value = creating ? "" : typedName;
+
+  if (hint) {
+    hint.textContent = creating
+      ? "The new property starts with no address. Set one on Properties so its leases print it."
+      : unlinked
+        ? "Not under a property, so this unit's leases read the address off the listing."
+        : select.disabled
+          ? "Only a manager can move an apartment to another property."
+          : "Its leases print this property's address and landlord terms.";
+  }
+}
+
+// What the listing should be linked to, resolved before the save: an existing
+// property's id, a fresh row made from the typed name, or null for none.
+async function resolveBuildingLink(values) {
+  const choice = form.elements.building_id?.value ?? "";
+  if (choice !== "__create__") return choice || null;
+
+  const name = values.property_name;
+  if (!name) throw new Error("Give the new property a name.");
+
+  const existing = buildingRows.find((row) => row.name.toLowerCase() === name.toLowerCase());
+  if (existing) return existing.id;
+
+  const { building } = await api("/buildings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name })
+  });
+  buildingRows.push(building);
+  buildingRowsLoaded = true;
+  return building.id;
 }
 
 function collectValues() {
@@ -971,6 +1074,8 @@ function collectValues() {
   return values;
 }
 
+form.elements.building_id?.addEventListener("change", () => showPropertyName(""));
+
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   saveButton.disabled = true;
@@ -978,6 +1083,10 @@ form.addEventListener("submit", async (event) => {
 
   try {
     const values = collectValues();
+    if (mayPickProperty()) values.building_id = await resolveBuildingLink(values);
+    // Under a property, the name is the property's — the Worker copies it.
+    // Sending the box's contents would be sending a name nobody typed.
+    if (values.building_id) delete values.property_name;
 
     if (editingId) {
       await api(`/listings/${encodeURIComponent(editingId)}`, {

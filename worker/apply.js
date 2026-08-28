@@ -368,7 +368,7 @@ async function verifyTurnstile(env, token, remoteIp) {
 // inboxes are the most common place private data leaks from, so the full
 // application stays in the admin console only.
 async function sendNotification(request, env, listing, name) {
-  const home = [listing.building_name, listing.unit].filter(Boolean).join(" ");
+  const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
   const label = home ? `${listing.title} (${home})` : listing.title;
 
   const sent = await sendEmail(request, env, {
@@ -388,7 +388,7 @@ async function sendNotification(request, env, listing, name) {
 // inboxes are where private data leaks from, and the application's contents
 // stay in the admin console.
 async function sendReceipt(request, env, listing, email, employmentStatus) {
-  const home = [listing.building_name, listing.unit].filter(Boolean).join(" ");
+  const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
   const label = home ? `${listing.title} (${home})` : listing.title;
   const portal = new URL("/portal/", request.url).toString();
 
@@ -506,7 +506,7 @@ export async function handleRoommateInvites(request, env) {
     return withSession(json({ error: "This home does not have room for that many roommates." }, 422));
   }
 
-  const home = [listing.building_name, listing.unit].filter(Boolean).join(" ");
+  const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
   const label = home ? `${listing.title} (${home})` : listing.title;
   const applyUrl = new URL(`/apply/?id=${encodeURIComponent(listingId)}`, request.url).toString();
 

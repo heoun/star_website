@@ -1,14 +1,15 @@
 // Fills the lease template for one approved application.
 //
 // lease/schema/fields.json lists all 147 placeholders in the template and says
-// where each one's value comes from. Three sources feed them:
+// where each one's value comes from. Two sources feed them:
 //
 //   deal     the application and the listing — tenant, dates, rent, address
 //   manager  a stored setting, resolved company < building < unit
-//   agent    typed in at generation time
 //
-// The agent's own entries win over everything, because the generate form is
-// where a person confirms what is about to be signed.
+// Per-lease overrides typed on the generate form win over both, because that
+// form is where a person confirms what is about to be signed. Who may type
+// which override is site/shared/lease-permissions.js's whitelist: an agent
+// settles the terms of the tenancy, a manager may correct anything.
 //
 // A registry default is NOT a fallback here. Defaults exist to prefill the
 // settings form; most of them came from one real building, so falling back to
@@ -82,6 +83,13 @@ const STATE_NAMES = { NY: "New York", NJ: "New Jersey", CT: "Connecticut" };
 export const APPLICATION_FIELDS = applicationColumns(FIELDS);
 
 
+// When the listing was put on the website, as a lease date. created_at is a
+// timestamp; only its date part is read, so no time zone can move the day.
+function listingReleaseDate(listing) {
+  const parts = parseDate(String(listing?.created_at || "").slice(0, 10));
+  return parts ? shortDate(parts) : "";
+}
+
 // Everything the application and the listing already know. Each is a starting
 // point the agent can correct, on either screen.
 export function dealValues({ application, listing, building, today }) {
@@ -107,6 +115,10 @@ export function dealValues({ application, listing, building, today }) {
     "lease.effective_date": longDate(today),
     "lease.commencement_date": shortDate(start),
     "lease.end_date": shortDate(end),
+    // The bedbug disclosure dates the vacancy from the day the listing went
+    // up on the website. A listing with no date — an older row, a stub —
+    // falls back to the day the lease goes out; a manager corrects either.
+    "lease.vacancy_lease_date": listingReleaseDate(listing) || shortDate(today),
     "tenant.names": application?.name || "",
     "tenant.email": application?.email || "",
     "tenant.mailing_address": application?.current_address || "",
@@ -135,7 +147,36 @@ export function dealValues({ application, listing, building, today }) {
     values["window_guard.mark_wants_anyway"] = application.wants_window_guards;
   }
 
+  // Every lease made from an application starts a new tenancy, so the DHCR
+  // consent is marked as a vacancy lease. A manager may override either mark;
+  // an agent may not — see site/shared/lease-permissions.js.
+  values["dhcr.mark_vacancy"] = true;
+  values["dhcr.mark_renewal"] = false;
+
   return values;
+}
+
+// Overrides arrive as raw booleans and typed dates. On a live lease
+// resolveValues formats them; a frozen lease merges them straight onto the
+// snapshot, so they have to be formatted the same way here or a manager's
+// corrected checkbox prints as the word "true".
+export function formatOverrides(overrides) {
+  const out = {};
+  for (const [id, value] of Object.entries(overrides || {})) {
+    const field = FIELDS.find((entry) => entry.id === id);
+    if (!field) continue;
+    if (field.type === "checkbox") {
+      out[id] = value === true ? field.marks.checked : field.marks.unchecked;
+      continue;
+    }
+    let text = value === null || value === undefined ? "" : String(value);
+    if (field.type === "date" && text !== "") {
+      const parts = parseDate(text);
+      if (parts) text = shortDate(parts);
+    }
+    out[id] = text;
+  }
+  return out;
 }
 
 // ------------------------------------------------------------ resolution
@@ -275,7 +316,7 @@ function escapeXml(value) {
 
 // A filename an agent can find later without opening it.
 export function leaseFilename({ application, listing }) {
-  const parts = [listing?.building_name || listing?.title || "Lease", listing?.unit, application?.name]
+  const parts = [listing?.property_name || listing?.title || "Lease", listing?.unit, application?.name]
     .filter(Boolean)
     .join(" ")
     .replace(/[^A-Za-z0-9 \-_]/g, "")

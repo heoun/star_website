@@ -18,7 +18,7 @@
 
 import { handleAdminRequest } from "../../worker/admin.js";
 import { resolveStaff, isManager, normalizeRole, isManagerControlled } from "../../worker/staff.js";
-import { MANAGER_CONTROLLED } from "../../site/shared/lease-permissions.js";
+import { AGENT_WRITABLE, agentMayWriteField } from "../../site/shared/lease-permissions.js";
 
 const passed = [];
 const failed = [];
@@ -32,6 +32,9 @@ function check(name, condition, detail = "") {
 const APPLICATION_ID = "11111111-2222-3333-4444-555555555555";
 const LISTING_ID = "66666666-7777-8888-9999-000000000000";
 const BUILDING_ID = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+const OTHER_BUILDING_ID = "bbbbbbbb-cccc-dddd-eeee-ffffffffffff";
+// What the stub listing is under, so a test can act on a linked apartment.
+let listingBuildingId = null;
 
 // Every Supabase read the routes under test perform, answered from memory.
 // `staffRows` is what public.staff holds; set it to null to act as a database
@@ -73,9 +76,9 @@ globalThis.fetch = async (url, init = {}) => {
       children_under_11: false,
       status: "approved",
       listings: {
-        id: LISTING_ID, title: "Evergarden 7A", building_name: "Evergarden",
+        id: LISTING_ID, title: "Evergarden 7A", property_name: "Evergarden",
         unit: "7A", location: "81-07 Kew Gardens Road, Kew Gardens, NY",
-        price_amount: 4500, building_id: null
+        price_amount: 4500, building_id: null, created_at: "2026-08-20T15:00:00Z"
       }
     }]);
   }
@@ -91,11 +94,15 @@ globalThis.fetch = async (url, init = {}) => {
   }
 
   if (target.includes("/rest/v1/listings")) {
+    // A PATCH answers with the row as written, so a test can read back what
+    // the Worker decided to store — the copied building name in particular.
+    const written = init.method === "PATCH" ? JSON.parse(init.body || "{}") : {};
     return reply([{
       id: LISTING_ID, category: "residential", transaction_type: "rental",
-      title: "Evergarden 7A", building_name: "Evergarden", unit: "7A",
+      title: "Evergarden 7A", property_name: "Evergarden", unit: "7A",
       location: "81-07 Kew Gardens Road, Kew Gardens, NY", price_amount: 4500,
-      published: true, position: 0, building_id: null, listing_media: []
+      published: true, position: 0, building_id: listingBuildingId, listing_media: [],
+      ...written
     }]);
   }
 
@@ -181,7 +188,6 @@ check("an agent can still read them — they have to review what the lease print
 // -------------------------------------------------------- the lease overrides
 
 const managerOverride = { "fine.parking": "$0.00" };
-const dealOverride = { "tenant.names": "Marisol A. Okonkwo" };
 
 const agentOverrides = await call(`/api/admin/lease/document/${APPLICATION_ID}`,
   { method: "POST", body: { mode: "values", overrides: managerOverride }, role: "agent" });
@@ -190,11 +196,51 @@ check("an agent cannot override a landlord value on one lease",
 check("and is told which value it was",
   /Parking violations/i.test(agentOverrides.body.error || ""), agentOverrides.body.error);
 
-const agentDeal = await call(`/api/admin/lease/document/${APPLICATION_ID}`,
-  { method: "POST", body: { mode: "values", overrides: dealOverride }, role: "agent" });
-check("an agent can still correct the tenant's own details",
-  agentDeal.status === 200 && agentDeal.body.values["tenant.names"] === "Marisol A. Okonkwo",
-  `${agentDeal.status}`);
+// The agent's whitelist: the terms of the tenancy, and nothing else.
+const agentTerms = await call(`/api/admin/lease/document/${APPLICATION_ID}`,
+  { method: "POST", body: { mode: "values", overrides: {
+    "deposit.amount": "$4,000.00", "rent.due_day": "5", "lease.effective_date": "October 1, 2026"
+  } }, role: "agent" });
+check("an agent can set the deposit, the due day and the lease date",
+  agentTerms.status === 200 && agentTerms.body.values["deposit.amount"] === "$4,000.00"
+  && agentTerms.body.values["rent.due_day"] === "5",
+  `${agentTerms.status} ${agentTerms.body.error || ""}`);
+
+const agentIdentity = await call(`/api/admin/lease/document/${APPLICATION_ID}`,
+  { method: "POST", body: { mode: "values", overrides: { "tenant.names": "Whoever I like" } },
+    role: "agent" });
+check("an agent cannot rewrite the tenant's name on a lease",
+  agentIdentity.status === 403, `${agentIdentity.status} ${agentIdentity.body.error || ""}`);
+
+const agentAddress = await call(`/api/admin/lease/document/${APPLICATION_ID}`,
+  { method: "POST", body: { mode: "values", overrides: { "property.street": "1 Somewhere Else" } },
+    role: "agent" });
+check("nor the premises address",
+  agentAddress.status === 403, `${agentAddress.status}`);
+
+const agentVacancyDate = await call(`/api/admin/lease/document/${APPLICATION_ID}`,
+  { method: "POST", body: { mode: "values", overrides: { "lease.vacancy_lease_date": "01/01/2020" } },
+    role: "agent" });
+check("nor the vacancy lease date, which defaults to the day it goes out",
+  agentVacancyDate.status === 403, `${agentVacancyDate.status}`);
+
+const managerIdentity = await call(`/api/admin/lease/document/${APPLICATION_ID}`,
+  { method: "POST", body: { mode: "values", overrides: { "tenant.names": "Marisol A. Okonkwo" } },
+    role: "manager" });
+check("a manager can correct the tenant's details",
+  managerIdentity.status === 200
+  && managerIdentity.body.values["tenant.names"] === "Marisol A. Okonkwo",
+  `${managerIdentity.status}`);
+
+const defaults = await call(`/api/admin/lease/document/${APPLICATION_ID}`,
+  { method: "POST", body: { mode: "values" }, role: "agent" });
+check("the vacancy lease date defaults to the day the listing went up",
+  defaults.body.values?.["lease.vacancy_lease_date"] === "08/20/2026",
+  JSON.stringify(defaults.body.values?.["lease.vacancy_lease_date"]));
+check("and the DHCR consent is marked as a vacancy lease, not a renewal",
+  defaults.body.values?.["dhcr.mark_vacancy"] === "[X]"
+  && defaults.body.values?.["dhcr.mark_renewal"] === "[ ]",
+  JSON.stringify([defaults.body.values?.["dhcr.mark_vacancy"], defaults.body.values?.["dhcr.mark_renewal"]]));
 
 const managerOverrides = await call(`/api/admin/lease/document/${APPLICATION_ID}`,
   { method: "POST", body: { mode: "values", overrides: managerOverride }, role: "manager" });
@@ -214,10 +260,33 @@ check("the from-scratch lease refuses it too",
 // so changing it rewrites 93 landlord values without touching /lease/settings.
 
 
-const agentRepoints = await call(`/api/admin/listings/${LISTING_ID}`,
+// The stub listing is under no property, so an agent putting it under one is
+// the ordinary job; moving it afterwards is not.
+const agentLinks = await call(`/api/admin/listings/${LISTING_ID}`,
   { method: "PATCH", body: { building_id: BUILDING_ID }, role: "agent" });
-check("an agent cannot re-point a listing at another building",
+check("an agent can put an unlinked apartment under a property",
+  agentLinks.status === 200, `${agentLinks.status} ${agentLinks.body.error || ""}`);
+
+listingBuildingId = BUILDING_ID;
+const agentRepoints = await call(`/api/admin/listings/${LISTING_ID}`,
+  { method: "PATCH", body: { building_id: OTHER_BUILDING_ID }, role: "agent" });
+check("an agent cannot move an apartment to another property",
   agentRepoints.status === 403, `${agentRepoints.status} ${agentRepoints.body.error || ""}`);
+
+const agentUnlinks = await call(`/api/admin/listings/${LISTING_ID}`,
+  { method: "PATCH", body: { building_id: "" }, role: "agent" });
+check("nor take it out of one",
+  agentUnlinks.status === 403, String(agentUnlinks.status));
+
+const agentKeepsLink = await call(`/api/admin/listings/${LISTING_ID}`,
+  { method: "PATCH", body: { building_id: BUILDING_ID, title: "Evergarden 7A — repriced" },
+    role: "agent" });
+check("an ordinary edit that sends the link back unchanged still saves",
+  agentKeepsLink.status === 200, `${agentKeepsLink.status} ${agentKeepsLink.body.error || ""}`);
+check("and the building name is copied from the property, not from the form",
+  agentKeepsLink.body.listing?.property_name === "Evergarden",
+  JSON.stringify(agentKeepsLink.body.listing?.property_name));
+listingBuildingId = null;
 
 const agentEditsListing = await call(`/api/admin/listings/${LISTING_ID}`,
   { method: "PATCH", body: { title: "Evergarden 7A — renewed" }, role: "agent" });
@@ -376,17 +445,20 @@ check("isManager is false for anything that is not exactly a manager",
   isManager({ role: "manager" }) && !isManager({ role: "agent" }) && !isManager(null)
   && !isManager({}));
 
-// The browser keeps its own copy of the two fields the Worker refuses for an
-// agent despite the registry calling them deal values, so it can draw a value
-// instead of a box that would 403 on Save. Display-only — the Worker is still
-// the one that refuses — but a list that drifts means an agent is handed an
-// input that cannot work. Both disappear the day the registry marks these two
-// fields source: "manager".
-for (const id of MANAGER_CONTROLLED) {
-  check(`the browser and the Worker agree that ${id} is a manager's`, isManagerControlled(id));
+// The browser and the Worker read the same whitelist, so the screen never
+// draws an input whose Save the Worker refuses. These checks pin the
+// whitelist's meaning: every id on it passes, everything off it is refused.
+for (const id of AGENT_WRITABLE) {
+  check(`the whitelist and the Worker agree that ${id} is the agent's`,
+    agentMayWriteField(id) && !isManagerControlled(id));
 }
-check("the browser's exception list is no longer than the Worker's",
-  MANAGER_CONTROLLED.length === 2, `browser has ${MANAGER_CONTROLLED.length}`);
+for (const id of ["tenant.names", "tenant.email", "tenant.mailing_address",
+  "property.street", "lease.vacancy_lease_date", "dhcr.mark_vacancy",
+  "window_guard.mark_has_children", "fine.parking", "landlord.entity_name"]) {
+  check(`${id} is a manager's`, !agentMayWriteField(id) && isManagerControlled(id));
+}
+check("the whitelist is exactly the terms of the tenancy",
+  AGENT_WRITABLE.length === 7, `has ${AGENT_WRITABLE.length}`);
 
 // ------------------------------------------------------- the building's address
 //
@@ -464,6 +536,66 @@ const invented = await call(`/api/admin/applications/${APPLICATION_ID}`, {
   method: "PATCH", role: "manager", body: { status: "maybe" }
 });
 check("a status nobody defined is refused", invented.status === 422, String(invented.status));
+
+// Corrections to the application follow the same split as the lease: an agent
+// settles the tenancy's terms, a manager corrects the tenant's record.
+const agentMoveIn = await call(`/api/admin/applications/${APPLICATION_ID}`, {
+  method: "PATCH", role: "agent", body: { move_in: "11/01/2026" }
+});
+check("an agent can correct the move-in date on an application",
+  agentMoveIn.status === 200, `${agentMoveIn.status} ${agentMoveIn.body.error || ""}`);
+
+const agentConcession = await call(`/api/admin/applications/${APPLICATION_ID}`, {
+  method: "PATCH", role: "agent", body: { concession_terms: "One month free on a 13-month term." }
+});
+check("and write the concession terms",
+  agentConcession.status === 200, `${agentConcession.status} ${agentConcession.body.error || ""}`);
+
+const agentRenames = await call(`/api/admin/applications/${APPLICATION_ID}`, {
+  method: "PATCH", role: "agent", body: { name: "Somebody Else" }
+});
+check("an agent cannot rewrite the applicant's name",
+  agentRenames.status === 403 && /manager/i.test(agentRenames.body.error || ""),
+  `${agentRenames.status} ${agentRenames.body.error || ""}`);
+
+const agentEmailEdit = await call(`/api/admin/applications/${APPLICATION_ID}`, {
+  method: "PATCH", role: "agent", body: { email: "elsewhere@example.com", status: "review" }
+});
+check("nor smuggle an identity change in beside a status change",
+  agentEmailEdit.status === 403, String(agentEmailEdit.status));
+
+const managerRenames = await call(`/api/admin/applications/${APPLICATION_ID}`, {
+  method: "PATCH", role: "manager", body: { first_name: "Marisol", last_name: "Okonkwo" }
+});
+check("a manager can correct the applicant's record",
+  managerRenames.status === 200, `${managerRenames.status} ${managerRenames.body.error || ""}`);
+
+const agentStatusOnly = await call(`/api/admin/applications/${APPLICATION_ID}`, {
+  method: "PATCH", role: "agent", body: { status: "review", notes: "Called the landlord." }
+});
+check("an agent still works the pipeline — status and notes are theirs",
+  agentStatusOnly.status === 200, String(agentStatusOnly.status));
+
+// Editing and deleting are different verbs: an agent runs the pipeline but
+// cannot remove the record it runs on.
+const agentDeletesApp = await call(`/api/admin/applications/${APPLICATION_ID}`,
+  { method: "DELETE", role: "agent" });
+check("an agent cannot delete an application",
+  agentDeletesApp.status === 403, String(agentDeletesApp.status));
+
+const managerDeletesApp = await call(`/api/admin/applications/${APPLICATION_ID}`,
+  { method: "DELETE", role: "manager" });
+check("a manager can", managerDeletesApp.status === 200, String(managerDeletesApp.status));
+
+const agentDeletesListing = await call(`/api/admin/listings/${LISTING_ID}`,
+  { method: "DELETE", role: "agent" });
+check("an agent cannot delete a listing",
+  agentDeletesListing.status === 403, String(agentDeletesListing.status));
+
+const managerDeletesListing = await call(`/api/admin/listings/${LISTING_ID}`,
+  { method: "DELETE", role: "manager" });
+check("a manager can delete a listing",
+  managerDeletesListing.status === 200, String(managerDeletesListing.status));
 
 // ------------------------------------------------- the property's own values
 
@@ -547,7 +679,38 @@ check("a sent lease reads the values it was generated from",
   JSON.stringify(frozenLease.values?.["landlord.entity_name"]));
 check("and the screen is told it is looking at frozen values",
   frozenLease.frozen === true, JSON.stringify(frozenLease.frozen));
+
+// A correction on a sent lease merges straight onto the snapshot, so it has
+// to arrive formatted — a checkbox prints its mark, not the word "true".
+const frozenCorrection = await call(`/api/admin/lease/document/${APPLICATION_ID}`, {
+  method: "POST", role: "manager",
+  body: { mode: "values", overrides: { "dhcr.mark_renewal": true, "lease.commencement_date": "2026-10-01" } }
+});
+check("a checkbox corrected on a sent lease prints its mark",
+  frozenCorrection.body.values?.["dhcr.mark_renewal"] === "[X]",
+  JSON.stringify(frozenCorrection.body.values?.["dhcr.mark_renewal"]));
+check("and a date typed the other way is reformatted",
+  frozenCorrection.body.values?.["lease.commencement_date"] === "10/01/2026",
+  JSON.stringify(frozenCorrection.body.values?.["lease.commencement_date"]));
 applicationExtras = {};
+
+// The concession is a paragraph. The override path must keep its line breaks
+// and its length, or the lease prints a rider the application does not hold.
+const longRider = "One month free on a thirteen-month term.\n\n" + "Terms apply. ".repeat(60);
+const riderOverride = await call(`/api/admin/lease/document/${APPLICATION_ID}`, {
+  method: "POST", role: "agent",
+  body: { mode: "values", overrides: { "concession.terms": longRider } }
+});
+check("a long concession rider survives the override path unflattened",
+  (riderOverride.body.values?.["concession.terms"] || "").includes("\n\n")
+  && (riderOverride.body.values?.["concession.terms"] || "").length > 500,
+  String((riderOverride.body.values?.["concession.terms"] || "").length));
+
+const dueDayJunk = await call(`/api/admin/lease/document/${APPLICATION_ID}`, {
+  method: "POST", role: "agent", body: { mode: "values", overrides: { "rent.due_day": "abc" } }
+});
+check("a rent due day that is not a number is refused",
+  dueDayJunk.status === 422, String(dueDayJunk.status));
 
 // ---------------------------------------------------------------- reporting
 

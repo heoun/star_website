@@ -527,7 +527,7 @@ async function handleList(env, session) {
     employment_status: row.employment_status || null,
     listing: row.listings ? {
       title: row.listings.title,
-      building_name: row.listings.building_name,
+      property_name: row.listings.property_name,
       unit: row.listings.unit,
       location: row.listings.location
     } : null,
@@ -630,7 +630,7 @@ async function handleDelete(env, ctx, session, id) {
 
 async function sendCompletionNotice(request, env, application) {
   const listing = application.listings || {};
-  const home = [listing.building_name, listing.unit].filter(Boolean).join(" ");
+  const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
   const label = home ? `${listing.title} (${home})` : (listing.title || "a property");
 
   const sent = await sendEmail(request, env, {

@@ -399,6 +399,9 @@
 
     label { display: block; font-size: 12.5px; font-weight: 600; margin-bottom: 4px; }
     .hint { font-weight: 400; color: var(--soft); }
+    p.hint { margin: 5px 0 0; font-size: 12px; }
+    p.hint:empty { display: none; }
+    input[hidden] { display: none; }
 
     /* The one message line the whole console writes to. */
     .status {
@@ -1647,8 +1650,11 @@
         </div>
 
         <div>
-          <label for="building_name">Building <span class="hint">(e.g. "Evergarden")</span></label>
-          <input id="building_name" name="building_name" maxlength="120">
+          <label for="building_id">Property <span class="hint">(the building this unit is in)</span></label>
+          <select id="building_id" name="building_id"></select>
+          <input id="property_name" name="property_name" maxlength="120"
+                 placeholder="Name of the building" hidden>
+          <p class="hint" id="property-hint"></p>
         </div>
 
         <div>

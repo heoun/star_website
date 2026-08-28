@@ -40,7 +40,8 @@
 
   const detailRows = (property) => {
     const rows = [
-      ["Building", [property.building_name, property.unit].filter(Boolean).join(" ")],
+      ["Property", property.property_name],
+      ["Unit", property.unit],
       ["Neighborhood", property.neighborhood],
       ["Property type", property.property_type],
       ["Bedrooms", property.bedrooms === "0" ? "Studio" : property.bedrooms],

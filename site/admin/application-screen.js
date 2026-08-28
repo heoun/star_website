@@ -404,9 +404,9 @@ function leaseTab(app) {
     + (edit ? "" : fact("Also named", coApplicants(app))));
 
   const where = [
-    fact("Property", listing?.title, listing
+    fact("Listing", listing?.title, listing
       ? "" : "The listing this application was made against has been removed."),
-    listing?.building_name ? fact("Building", listing.building_name) : "",
+    listing?.property_name ? fact("Property", listing.property_name) : "",
     fact("Unit", listing?.unit)
   ].join("");
   const tenancy = group("The tenancy applied for", where + gatedFields(app, TENANCY_FIELDS, edit));
@@ -767,15 +767,20 @@ function actionButtons(app, stage) {
         confirms the transaction terms. There is no second approval.</p>`
     : "";
 
-  return `<div class="decide-buttons">${buttons.join("")}</div>${note}
-    <details class="menu decide-more">
-      <summary aria-label="More actions">More</summary>
-      <div class="menu-sheet">
-        <button type="button" class="danger" data-appl-delete>Delete application</button>
-        <p class="menu-note">Removes the application, its answers and its uploaded documents.
-           This cannot be undone.</p>
-      </div>
-    </details>`;
+  // Deleting the application is a manager's; an agent's menu would hold one
+  // refused button, so it is not drawn at all.
+  const more = isManager()
+    ? `<details class="menu decide-more">
+        <summary aria-label="More actions">More</summary>
+        <div class="menu-sheet">
+          <button type="button" class="danger" data-appl-delete>Delete application</button>
+          <p class="menu-note">Removes the application, its answers and its uploaded documents.
+             This cannot be undone.</p>
+        </div>
+      </details>`
+    : "";
+
+  return `<div class="decide-buttons">${buttons.join("")}</div>${note}${more}`;
 }
 
 // ------------------------------------------------------------------ public
