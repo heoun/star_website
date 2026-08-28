@@ -109,6 +109,7 @@ export function dealValues({ application, listing, building, today }) {
     "lease.end_date": shortDate(end),
     "tenant.names": application?.name || "",
     "tenant.email": application?.email || "",
+    "tenant.mailing_address": application?.current_address || "",
     "concession.terms": application?.concession_terms || "",
     "property.address_full": addressFull,
     "property.street": street,

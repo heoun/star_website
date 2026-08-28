@@ -41,7 +41,7 @@ const TENANT_FIELDS = [
   { id: "tenant.names", hint: "As they will be printed and as they will sign." },
   { id: "tenant.email", hint: "Where the signing request goes." },
   { app: "phone", label: "Phone", hint: "Contact only — the lease does not print a phone number." },
-  { id: "tenant.mailing_address", hint: "Only if notices go somewhere other than the unit." }
+  { id: "tenant.mailing_address", hint: "Starts as the applicant's current address. Clear it when notices go to the unit." }
 ];
 
 // The terms of this one tenancy.

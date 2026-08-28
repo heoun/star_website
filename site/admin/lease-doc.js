@@ -474,7 +474,7 @@ export function sectionOfField(fieldId) {
 
 // ---------------------------------------------------------------- navigation
 
-let highlighted = null;
+let highlighted = [];
 
 export function scrollToOccurrence(fieldId, index = 0) {
   const slots = slotsByField.get(fieldId) || [];
@@ -483,9 +483,12 @@ export function scrollToOccurrence(fieldId, index = 0) {
   const slot = slots[Math.max(0, Math.min(index, slots.length - 1))];
   slot.scrollIntoView({ block: "center", behavior: "smooth" });
 
-  if (highlighted) highlighted.classList.remove("is-located");
-  slot.classList.add("is-located");
-  highlighted = slot;
+  // Every place the value prints lights up, not only the one scrolled to: a
+  // tenant name is in the parties clause, the occupants clause and above the
+  // signature line, and "show on the document" is asked about all of them.
+  clearHighlight();
+  for (const each of slots) each.classList.add("is-located");
+  highlighted = slots.slice();
 
   return {
     occurrence: Number(slot.dataset.leaseIndex),
@@ -496,8 +499,8 @@ export function scrollToOccurrence(fieldId, index = 0) {
 }
 
 export function clearHighlight() {
-  if (highlighted) highlighted.classList.remove("is-located");
-  highlighted = null;
+  for (const each of highlighted) each.classList.remove("is-located");
+  highlighted = [];
 }
 
 // What the header shows: which section is at the top of the viewport, and the

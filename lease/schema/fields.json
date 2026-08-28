@@ -440,11 +440,12 @@
       "id": "tenant.mailing_address",
       "label": "Tenant mailing address, if not the apartment",
       "group": "parties",
-      "source": "agent",
+      "source": "deal",
       "type": "text",
       "required": false,
       "default": null,
-      "note": "DHCR consent, Section B. Leave blank when it is the apartment itself."
+      "from": "prefilled from applications.current_address, one way: an edit or a blank stays on this lease and never rewrites the application",
+      "note": "DHCR consent, Section B. Starts as the applicant's current address; leave blank when it is the apartment itself."
     },
     {
       "id": "landlord.entity_name",

@@ -1204,6 +1204,9 @@
 
     .ws-tab {
       border: 0;
+      /* The pill radius every button carries would round the focus ring into
+         an oval on a flat tab. */
+      border-radius: 0;
       background: none;
       padding: 12px 14px;
       font-family: var(--body);
@@ -1274,6 +1277,7 @@
        buttons rather than as an aid. */
     .ws-find {
       justify-self: start;
+      border-radius: 0;
       padding: 2px 0;
       font-size: 11px;
       font-family: var(--body);
@@ -1323,6 +1327,7 @@
       padding: 11px 13px;
       border: 0;
       border-left: 2px solid transparent;
+      border-radius: 0;
       background: var(--white);
       font-family: var(--body);
       letter-spacing: 0;
