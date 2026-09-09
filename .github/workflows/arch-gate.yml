@@ -1,0 +1,25 @@
+# The architecture gate. Lands with Ring 0; inert until committed.
+# Three greens = runnable: import fence, type check, end-to-end smoke.
+name: Arch Gate
+on:
+  push:
+    paths: ["backend/**", "worker/**", "site/**", "lease/**", "supabase/**", "scripts/**", "package*.json", ".github/workflows/arch-gate.yml"]
+  pull_request:
+    paths: ["backend/**", "worker/**", "site/**", "lease/**", "supabase/**", "scripts/**", "package*.json", ".github/workflows/arch-gate.yml"]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - name: Import fence
+        run: npm run gate
+      - name: Type check # tsconfig arrives with Ring 0
+        run: npm run typecheck
+      - name: Build all public and staff screens
+        run: npm run build
+      - name: Smoke # runner arrives with Ring 0; walks the whole flow over HTTP
+        run: npm run smoke
+        env: { SMOKE_DB: memory }

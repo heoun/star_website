@@ -4,6 +4,7 @@ import { handleInquiry, renderPage } from "./contact.js";
 import { serveListingsFeed, servePropertyDetail } from "./listings.js";
 import { serveMedia } from "./media.js";
 import { handlePortalRequest } from "./portal.js";
+import { handleBackendRequest } from "../backend/app/index.ts";
 
 export default {
   async fetch(request, env, ctx) {
@@ -25,6 +26,18 @@ export default {
     // Listing photos, floor plans, and videos stored in R2.
     if (pathname.startsWith("/media/")) {
       return serveMedia(request, env, pathname);
+    }
+
+    // The rebuilt backend, one ring at a time. Off unless BACKEND_V2=on, so
+    // deploying this code changes nothing until the switch is thrown.
+    if (pathname === "/api/v2" || pathname.startsWith("/api/v2/")) {
+      if (env.BACKEND_V2 !== "on") {
+        return new Response(JSON.stringify({ error: "Not found." }), {
+          status: 404,
+          headers: { "Content-Type": "application/json; charset=utf-8" }
+        });
+      }
+      return handleBackendRequest(request, env);
     }
 
     if (pathname === "/api/admin" || pathname.startsWith("/api/admin/")) {

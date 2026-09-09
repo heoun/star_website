@@ -73,3 +73,11 @@ DEV_REAL_EMAIL=
 # Deliberately absent: TURNSTILE_SECRET_KEY. Human verification is skipped when
 # it is unset, which is what you want locally. CF_ACCESS_TEAM_DOMAIN and
 # CF_ACCESS_AUD are production-only.
+
+# Turns on the rebuilt backend at /api/v2 (see backend/README.md). Leave off
+# in production until a ring is ready to take real traffic.
+BACKEND_V2=on
+
+# Signs the landlord decision/intake links the rebuilt backend emails out.
+# Any long random string; `openssl rand -hex 32` is fine.
+AUTH_LINK_SECRET=

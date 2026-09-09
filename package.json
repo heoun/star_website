@@ -8,6 +8,13 @@
     "dev:agent": "node scripts/dev.js --var DEV_ADMIN_ROLE:agent",
     "preview": "node server.js",
     "seed:dev": "node scripts/seed-dev.js",
-    "deploy": "npx --yes wrangler@4 deploy"
+    "deploy": "npx --yes wrangler@4 deploy",
+    "gate": "depcruise backend worker --config backend/tools/arch-gate/dependency-cruiser.cjs",
+    "typecheck": "tsc -p backend/tsconfig.json",
+    "smoke": "node backend/tools/smoke.mjs"
+  },
+  "devDependencies": {
+    "typescript": "^5.6.0",
+    "dependency-cruiser": "^16.0.0"
   }
 }
