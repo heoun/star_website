@@ -1,0 +1,4 @@
+# Source templates and mock attachments are binary assets, even when their
+# internal format happens to contain readable text. Preserve bytes exactly.
+*.pdf binary
+*.docx binary

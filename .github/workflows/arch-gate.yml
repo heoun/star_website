@@ -18,6 +18,16 @@ jobs:
         run: npm run gate
       - name: Type check # tsconfig arrives with Ring 0
         run: npm run typecheck
+      - name: Workspace access and workflow
+        run: npm run test:workspace
+      - name: Applicant portal request visibility
+        run: npm run test:portal
+      - name: Owner governance and landlord onboarding
+        run: npm run test:administration
+      - name: Property lease sections and save behavior
+        run: npm run test:property
+      - name: Complete mock properties and leases
+        run: npm run test:demo
       - name: Build all public and staff screens
         run: npm run build
       - name: Smoke # runner arrives with Ring 0; walks the whole flow over HTTP

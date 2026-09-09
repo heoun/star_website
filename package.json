@@ -16,7 +16,10 @@
     "test:workspace:db": "node backend/tools/test-workspace-schema.mjs",
     "test:portal": "node backend/tools/test-portal-request.mjs",
     "test:administration": "node backend/tools/test-administration.mjs",
-    "test:administration:db": "node backend/tools/test-administration-schema.mjs"
+    "test:administration:db": "node backend/tools/test-administration-schema.mjs",
+    "test:demo": "node scripts/test-demo-data.mjs",
+    "demo:workspace": "npm run build && node scripts/demo-workspace.mjs",
+    "test:property": "node scripts/test-property-flow.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0",
