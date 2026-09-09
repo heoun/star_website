@@ -1,0 +1,88 @@
+/* The case workspace: the queue, the case page, and the forms on it. Uses the
+   console's own variables and its panel, line and pill classes; only what is
+   specific to reading and working a case lives here. */
+
+.cw-bar { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; margin: 4px 0 12px; }
+.cw-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.cw-tabs button { border: 0; background: transparent; color: var(--soft); padding: 9px 13px; border-radius: 9px; font-weight: 600; }
+.cw-tabs button[aria-pressed="true"] { background: var(--white); color: var(--blue); box-shadow: 0 1px 0 var(--line), 0 0 0 1px var(--line); }
+.cw-tabs b, .cw-pipeline b { margin-left: 7px; font-size: 12px; font-variant-numeric: tabular-nums; }
+.cw-bar input { padding: 9px 13px; border: 1px solid var(--line); border-radius: 9px; background: var(--white); font: inherit; min-width: 240px; max-width: 100%; }
+
+.cw-pipeline { display: flex; gap: 6px; flex-wrap: wrap; margin: 0 0 14px; }
+.cw-pipeline button { border: 1px solid var(--line); background: var(--white); color: var(--soft); border-radius: 999px; padding: 6px 12px; font-size: 12px; font-weight: 600; }
+.cw-pipeline button.is-zero { opacity: .55; }
+.cw-pipeline button[aria-pressed="true"] { background: var(--blue); border-color: var(--blue); color: #fff; opacity: 1; }
+
+.cw-list { overflow: hidden; }
+.cw-row { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1.4fr) 128px; gap: 18px; align-items: center; padding: 15px 20px; border-bottom: 1px solid var(--line); text-decoration: none; color: var(--ink); }
+.cw-row:last-child { border-bottom: 0; }
+.cw-row:hover { background: #f5f8f7; }
+.cw-row b { font-weight: 600; }
+.cw-row small { display: block; color: var(--soft); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cw-who { display: flex; gap: 12px; align-items: center; min-width: 0; }
+.cw-who-text, .cw-next { display: grid; gap: 2px; min-width: 0; }
+.cw-flags { color: var(--warn) !important; font-weight: 600; }
+.cw-age { text-align: right; display: grid; gap: 2px; }
+.cw-age b { font-variant-numeric: tabular-nums; }
+.cw-age.is-warn b { color: var(--warn); }
+.cw-age.is-bad b { color: var(--bad); }
+.cw-foot { display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 16px 0 0; color: var(--soft); font-size: 12.5px; }
+.cw-foot a { color: var(--blue); text-decoration: none; font-weight: 600; }
+
+.cw-steps { display: flex; gap: 6px; list-style: none; margin: 0 0 16px; padding: 0; }
+.cw-steps li { flex: 1; padding: 8px 0 0; font-size: 12px; font-weight: 600; color: var(--soft); border-top: 3px solid var(--line); }
+.cw-steps li.is-done { border-top-color: var(--good); color: var(--good); }
+.cw-steps li.is-now { border-top-color: var(--blue); color: var(--blue); }
+.cw-steps li.is-closed { border-top-color: var(--line); color: var(--soft); }
+
+.cw-strip { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); background: var(--white); border: 1px solid var(--line); border-radius: var(--radius); margin: 0 0 16px; overflow: hidden; }
+.cw-strip .stat + .stat { border-left: 1px solid var(--line); }
+.cw-strip a { color: var(--blue); text-decoration: none; overflow-wrap: anywhere; }
+.cw-stage { display: flex; align-items: center; gap: 12px; color: var(--soft); margin: 0 0 16px; }
+
+.cw-panel + .cw-panel { margin-top: 14px; }
+.cw-next-panel { border-color: rgba(13, 59, 82, .35); margin: 0 0 16px; }
+.cw-next-panel > .phead { background: rgba(13, 59, 82, .05); }
+.cw-next-panel > .phead h2 { font-size: 17px; }
+.cw-next-panel > .pbody > p:first-child { margin-top: 0; }
+.cw-grid { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(280px, 1fr); gap: 16px; align-items: start; }
+
+.cw-form { display: grid; gap: 12px; margin-top: 10px; }
+.cw-form label { display: grid; gap: 5px; font-size: 12px; font-weight: 600; }
+.cw-form input, .cw-form select, .cw-form textarea { width: 100%; min-width: 0; font: inherit; padding: 9px 10px; border: 1px solid #cfd6dc; border-radius: 8px; background: var(--white); }
+.cw-form textarea { resize: vertical; }
+.cw-form fieldset { border: 1px solid var(--line); border-radius: 8px; padding: 12px; max-height: 240px; overflow: auto; }
+.cw-form > button { justify-self: start; }
+.cw-form > p { margin: 0; font-size: 12.5px; }
+.cw-form p[role="status"]:empty { display: none; }
+.cw-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; }
+.cw-form-grid .cw-span { grid-column: 1 / -1; }
+.cw-edit { margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--line); }
+.cw-edit summary { cursor: pointer; font-size: 13px; font-weight: 700; color: var(--blue); }
+.cw-actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-top: 12px; }
+.cw-note { margin: 10px 0 0; color: var(--soft); font-size: 12.5px; }
+.cw-note a { color: var(--blue); }
+.cw-quote { margin: 10px 0; padding: 12px 14px; background: var(--warn-bg); border-radius: 10px; white-space: pre-wrap; font-size: 13px; overflow-wrap: anywhere; }
+.cw-quote.is-good { background: var(--good-bg); }
+.cw-list { margin: 8px 0 0; padding-left: 18px; font-size: 13px; display: grid; gap: 4px; }
+ul.cw-list { border: 0; }
+.cw-files a { display: inline-block; margin-right: 10px; font-size: 12.5px; color: var(--blue); overflow-wrap: anywhere; }
+.cw-activity { list-style: none; margin: 0; padding: 0; font-size: 13px; }
+.cw-activity li { padding: 9px 0; border-top: 1px solid var(--line); }
+.cw-activity li:first-child { border-top: 0; padding-top: 0; }
+.cw-activity small { display: block; color: var(--soft); font-size: 12px; margin-top: 3px; }
+.cw-activity p { margin: 4px 0 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.cw-saved { background: var(--good-bg); color: var(--good); padding: 11px 16px; border-radius: 10px; margin: 0 0 14px; font-weight: 600; }
+.cw-panel .line .panel-hint { display: block; margin-top: 3px; }
+.cw-panel .line .desk-prewrap { display: block; }
+.line b.is-bad { color: var(--bad); }
+.line b.is-good { color: var(--good); }
+
+@media (max-width: 900px) {
+  .cw-grid { grid-template-columns: 1fr; }
+  .cw-row { grid-template-columns: 1fr; gap: 8px; padding: 14px 16px; }
+  .cw-age { text-align: left; display: flex; gap: 8px; align-items: baseline; }
+  .cw-steps li { font-size: 11px; }
+  .cw-bar input { min-width: 0; width: 100%; }
+}

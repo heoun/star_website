@@ -1,96 +1,41 @@
-// What a manager is actually setting, as opposed to where it prints.
-//
-// The registry groups the 125 landlord values by the part of the document they
-// land on — contacts, fees, utilities, keys, fines, disclosures, good cause.
-// That is the right shape for building the template and the wrong shape for
-// setting one up: it puts the landlord's legal name and the rent-payable
-// address in the same bucket, and it puts thirty-three statutory exemption
-// marks on the same footing as the one field without which no lease can be
-// sent at all.
-//
-// So this is a second reading of the same registry, by what the value is for.
-// Nothing here is stored: every field still lives at the scope the registry
-// gives it, and is written through the same settings layer. Change the
-// registry and these sections follow; the only thing written down twice is
-// which section a field belongs to, and `assign()` refuses to lose one.
-
-// Fields are claimed by explicit id first, then by registry group. First
-// section to claim a field keeps it.
-const SECTIONS = [
-  {
-    id: "signing",
-    label: "Landlord & signing",
-    note: "Who appears as Landlord on the lease, and who signs it.",
-    groups: ["parties"]
-  },
-  {
-    id: "management",
-    label: "Management & notices",
-    note: "The contacts printed on the lease and on the notices that go with it.",
-    ids: [
-      "manager.name", "manager.address", "manager.phone",
-      "legal_notice.name", "legal_notice.address", "legal_notice.phone",
-      "owner_rep.name", "owner_rep.email", "owner_rep.mailing_address",
-      "emergency.phone", "gas.provider_name", "gas.provider_phone"
-    ]
-  },
-  {
-    id: "payments",
-    label: "Payments & standing fees",
-    note: "Where rent goes, where the deposit is held, and the fees the lease "
-      + "charges whatever the tenancy.",
-    ids: [
-      "payee.name", "payee.address", "payee.phone",
-      "deposit.bank_name", "deposit.bank_address",
-      "rent.due_day", "lease.end_time"
-    ],
-    groups: ["fees", "fines"]
-  },
-  {
-    id: "utilities",
-    label: "Utilities & services",
-    note: "Who pays for each service. Every lease for this building says so.",
-    groups: ["utilities"]
-  },
-  {
-    id: "optional",
-    label: "Optional & uncommon terms",
-    note: "Blank here does not stop a lease. Key deposits, the building's "
-      + "disclosure history, and the Good Cause exemptions that do not apply.",
-    optional: true,
-    groups: ["keys", "building_disclosures", "good_cause"]
-  }
+// The property editor follows the order in which the lease package is filled.
+// This is a presentation map: field IDs, permissions and storage scopes stay fixed.
+export const PROPERTY_SECTIONS = [
+  { id: "property", label: "Properties", note: "Start with the property's address.", ids: [], always: true },
+  { id: "signing", label: "Landlord & signing", note: "Identify the landlord and the person who signs the lease.", ids: ["landlord.print_name", "landlord.entity_name", "landlord.address"], groups: ["parties"] },
+  { id: "management", label: "Management & notices", note: "Set management, notice recipients and the housing emergency contact.", ids: ["manager.name", "manager.address", "manager.phone", "legal_notice.name", "legal_notice.address", "legal_notice.phone", "emergency.phone"] },
+  { id: "payments", label: "Lease terms, payments & policies", note: "Work through lease timing, payments, deposits and standing policies.", ids: ["lease.end_time", "rent.due_day", "fee.returned_payment", "payee.name", "payee.address", "payee.phone", "deposit.bank_name", "deposit.bank_address", "guest.consecutive_days", "guest.total_days", "guest.window_days", "fee.lock_change_admin", "fee.animal_liability_cap", "insurance.required_yes", "insurance.required_no", "fee.lptli_monthly", "attorney_fees.cap_enabled", "attorney_fees.cap_amount", "smoking.in_unit_yes", "smoking.in_unit_no"] },
+  { id: "utilities", label: "Utility", note: "Choose who pays for each service and name any additional utilities.", groups: ["utilities"] },
+  { id: "keys", label: "Key rider", note: "For each key or remote, record the quantity and replacement charge.", groups: ["keys"] },
+  { id: "insurance", label: "New York renters insurance rider", note: "Set required liability coverage and insurance-related monthly charges.", ids: ["insurance.min_liability", "fee.renters_insurance_waiver_monthly", "fee.lptli_admin_monthly"] },
+  { id: "fines", label: "Fine schedule", note: "Review the amount or description printed for each violation.", groups: ["fines"] },
+  { id: "bedbug", label: "Bedbug", note: "Review the infestation history used in the disclosure.", prefixes: ["bedbug."] },
+  { id: "sprinkler", label: "Sprinkler system notice", note: "Record the system's status and the actual inspection date.", prefixes: ["sprinkler."] },
+  { id: "gas", label: "NYC gas leak, carbon monoxide and smoke alarm rider", note: "Provide the gas supplier and its emergency telephone number.", ids: ["gas.provider_name", "gas.provider_phone"] },
+  { id: "smoking", label: "New York smoking policy rider", note: "Specify restricted areas, exceptions and the complaint contact.", prefixes: ["smoking."] },
+  { id: "concession", label: "Rent concession rider", note: "Offer details are confirmed for each rental when preparing its lease.", ids: [], always: true },
+  { id: "dhcr", label: "DHCR electronic lease consent", note: "Review the owner's consent contact. Lease type is confirmed for each rental.", ids: ["owner_rep.name", "owner_rep.email", "owner_rep.mailing_address"] },
+  { id: "good_cause", label: "Good Cause Eviction notice", note: "Work through applicability, exemptions, rent increases and nonrenewal reasons.", groups: ["good_cause"] }
 ];
 
 export function sectionsFor(fields) {
-  const claimed = new Map();
-  for (const section of SECTIONS) {
-    for (const field of fields) {
-      if (claimed.has(field.id)) continue;
-      const byId = (section.ids || []).includes(field.id);
-      const byGroup = (section.groups || []).includes(field.group);
-      if (byId || byGroup) claimed.set(field.id, section.id);
-    }
-  }
-
-  // A field nobody claimed is a field nobody would ever see. It is not worth
-  // silently dropping to keep a screen tidy, so it lands in whichever bucket
-  // tells the truth about it: required values stay in view.
-  const orphans = fields.filter((field) => !claimed.has(field.id));
-  for (const field of orphans) claimed.set(field.id, field.required ? "payments" : "optional");
-
-  return SECTIONS
-    .map((section) => ({
-      ...section,
-      fields: fields.filter((field) => claimed.get(field.id) === section.id)
-    }))
-    .filter((section) => section.fields.length > 0);
+  const claimed = new Set();
+  const sections = PROPERTY_SECTIONS.map(section => {
+    const ordered = [...(section.ids || []).map(id => fields.find(field => field.id === id)).filter(Boolean),
+      ...fields.filter(field => (section.groups || []).includes(field.group) || (section.prefixes || []).some(prefix => field.id.startsWith(prefix)))];
+    const own = ordered.filter(field => {
+      if (claimed.has(field.id)) return false;
+      claimed.add(field.id); return true;
+    });
+    return {...section, fields: own};
+  }).filter(section => section.always || section.fields.length);
+  const extra = fields.filter(field => !claimed.has(field.id));
+  if (extra.length) sections.push({id:"additional", label:"Additional property fields", note:"Additional fields in this lease package.", fields:extra});
+  return sections;
 }
 
-// A section that only holds optional fields is collapsed whatever its id says:
-// the rule is about what blocking means, not about which bucket a value is in.
 export function isOptionalSection(section) {
-  return section.optional === true || section.fields.every((field) => !field.required);
+  return section.fields.length > 0 && section.fields.every(field => !field.required);
 }
 
 // ------------------------------------------------------------- readiness
@@ -120,7 +65,7 @@ const CHECKS = [
 //   ready            nothing required is missing
 //   one required     exactly one check is short — name it
 //   setup incomplete more than one
-export function readiness({ fields, answered, hasSigner = true, signerApplies = true }) {
+export function readiness({ fields, answered, hasSigner = true }) {
   const sections = sectionsFor(fields);
   const inSection = new Map();
   for (const section of sections) {
@@ -129,8 +74,6 @@ export function readiness({ fields, answered, hasSigner = true, signerApplies = 
 
   const checks = [];
   for (const check of CHECKS) {
-    if (check.signer && !signerApplies) continue;
-
     const own = check.ids
       ? fields.filter((field) => check.ids.includes(field.id))
       : fields.filter((field) => inSection.get(field.id) === check.section && field.required);
@@ -151,6 +94,13 @@ export function readiness({ fields, answered, hasSigner = true, signerApplies = 
     });
   }
 
+  const covered = new Set(CHECKS.flatMap(check => check.ids || fields.filter(field => inSection.get(field.id) === check.section && field.required).map(field => field.id)));
+  for (const section of sections) {
+    const remaining = section.fields.filter(field => field.required && !covered.has(field.id));
+    if (!remaining.length) continue;
+    const missing = remaining.filter(field => !answered(field)).length;
+    checks.push({id:section.id, label:section.label, blocking:`${section.label} still needs required values.`, missing, needsEmail:false, complete:missing === 0});
+  }
   const short = checks.filter((check) => !check.complete);
   return {
     checks,

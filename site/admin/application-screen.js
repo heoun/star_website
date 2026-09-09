@@ -43,6 +43,7 @@ let api;
 let setStatus;
 let escapeHtml = (value) => String(value ?? "");
 let isManager = () => false;
+let isReadOnly = () => false;
 let documentTypesOf = () => [];
 let onSaved = () => {};
 let onDeleted = () => {};
@@ -51,6 +52,7 @@ let openLease = () => {};
 export function initApplicationScreen(deps) {
   ({ api, setStatus, escapeHtml, isManager, onSaved, onDeleted, openLease } = deps);
   documentTypesOf = deps.documentTypes || (() => []);
+  isReadOnly = deps.isReadOnly || (() => false);
 }
 
 // ------------------------------------------------------------------- shape
@@ -350,6 +352,7 @@ function entryCards(app, key, render) {
 // ------------------------------------------------------------------- head
 
 function editTools(section) {
+  if (isReadOnly()) return '<span class="pill">View only</span>';
   if (editing === section) {
     return `<div class="phead-tools">
       <button type="button" class="small primary" data-appl-save>Save</button>
@@ -635,6 +638,7 @@ function documentsSection(app) {
 // beside every filename is a mis-click away from making the applicant upload
 // their passport again.
 function docMenu(row) {
+  if (isReadOnly()) return "";
   const single = row.files.length === 1 ? row.files[0] : null;
   return `<details class="menu">
     <summary aria-label="More actions for ${escapeHtml(row.type.label)}">⋯</summary>
@@ -655,6 +659,12 @@ function docMenu(row) {
 // -------------------------------------------------------- decision panel
 
 function decisionPanel(app) {
+  if (Array.isArray(app.allowed_actions)) return `<aside class="decide"><div class="decide-head"><h2>Application record</h2><p>Review the submitted information and documents here.</p></div><div class="decide-body"><a class="desk-button" href="#/applications/${escapeHtml(app.id)}">← Back to rental & next steps</a><p>Verification, decisions and lease terms are managed in the rental workspace.</p></div></aside>`;
+  if (isReadOnly()) return `<aside class="decide"><div class="decide-head"><h2>Application status</h2>
+    <p>Your agent manages this application.</p></div><div class="decide-body">
+    <span class="pill">${escapeHtml(statusLabel(app.status))}</span>
+    <p>You can review the applicant’s information and supporting documents. Contact your agent for application questions.</p>
+    </div></aside>`;
   const stage = stageOf(app);
   const items = requestedItems(app, documentTypesOf());
   const decision = app.decision || null;

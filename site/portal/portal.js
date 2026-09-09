@@ -19,7 +19,8 @@
     review: "Under review",
     sent_to_landlord: "With the landlord",
     needs_info: "More information needed",
-    approved: "Approved",
+    approved: "Approved by the leasing team",
+    landlord_approved: "Lease preparation",
     declined: "Not approved",
     lease_sent: "Lease sent for signing",
     lease_signed: "Lease signed"
@@ -451,6 +452,7 @@
             <span class="portal-chip is-${escapeHtml(app.status)}">${escapeHtml(STATUS_LABELS[app.status] || app.status)}</span>
           </div>
           <p class="portal-facts">${escapeHtml(facts)}</p>
+          ${app.request ? `<div class="portal-request"><b>What We Need From You</b><p>${escapeHtml(app.request.message)}</p></div>` : ""}
           <p class="portal-progress${progress.met === progress.total ? " is-done" : ""}">
             ${progress.met === progress.total
               ? "All required documents received. Thank you"

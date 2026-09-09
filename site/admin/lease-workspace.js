@@ -53,7 +53,7 @@ const TRANSACTION_FIELDS = [
   { app: "lease_term_months", label: "Lease term", hint: "Months. The end date follows from this.", type: "number" },
   { id: "lease.end_date", derived: true, hint: "The last day of the term — the day before the same date, a term later." },
   { id: "rent.monthly", hint: "Starts from the listing's asking rent." },
-  { id: "rent.due_day", hint: "The day of the month the rent falls due. Starts from the company default." },
+  { id: "rent.due_day", hint: "The day of the month the rent falls due. Starts from the property's default." },
   { id: "deposit.amount", hint: "One month is the New York maximum." },
   { id: "concession.terms", hint: "Fills the Rent Concession Rider." }
 ];
@@ -173,7 +173,7 @@ function unitRow(state) {
         ? "Fixed to the apartment this application was made for. Starting a lease for a different one means an application for it."
         : "Set by the property this document is being read for."}</p>`}
       ${listing && !listing.building_id
-        ? '<p class="ws-hint is-warn">This apartment is not linked to a building, so it reads company settings only.</p>'
+        ? '<p class="ws-hint is-warn">This apartment is under no property, so it has no landlord values at all.</p>'
         : ""}
     </div>
   </div>`;

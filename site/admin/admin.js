@@ -1,4 +1,9 @@
+import { renderAdminDashboard } from "./admin-dashboard.js";
+import { renderOnboarding } from "./onboarding.js";
+import { renderLandlordProperties } from "./landlord-properties.js";
 import { readDocxText } from "./docx.js";
+import { renderCaseQueue, renderCaseDetail } from "./case-workspace.js";
+import { renderPermissions, renderRequests, renderStaff, renderListingDetail } from "./workspace.js";
 import {
   handleApplicationChange,
   handleApplicationClick,
@@ -59,6 +64,13 @@ const environmentDatabaseEl = document.getElementById("environment-database");
 // One section per screen, shown one at a time. The three list screens share
 // #rows between them, because they are the same list wearing three filters.
 const ROUTE_HOSTS = {
+  cases: document.getElementById("route-cases"),
+  overview: document.getElementById("route-overview"),
+  onboarding: document.getElementById("route-onboarding"),
+  requests: document.getElementById("route-requests"),
+  staff: document.getElementById("route-staff"),
+  permissions: document.getElementById("route-permissions"),
+  listing: document.getElementById("route-listing"),
   listings: document.getElementById("route-listings"),
   applications: document.getElementById("route-applications"),
   application: document.getElementById("route-application"),
@@ -101,6 +113,7 @@ let routeId = "";
 // The listings screen's own filter. It is not part of the route: which chip is
 // pressed is not worth an address of its own.
 let filter = "all";
+let listingSearch = "";
 let editingId = null;
 // The properties a listing can be put under, fetched once on the first
 // editor open, and which one the open listing is under as stored — the Worker
@@ -446,6 +459,11 @@ function coverUrl(listing) {
 }
 
 function render() {
+  if (route === "dossier") {
+    const app = applications.find(item => item.id === routeId);
+    if (app) renderApplicationScreen(ROUTE_HOSTS.application, app);
+    return;
+  }
   if (route === "applications") {
     if (!routeId) return renderApplications();
     const app = applications.find((item) => item.id === routeId);
@@ -458,6 +476,7 @@ function render() {
 
 function renderListings() {
   const visible = listings.filter((listing) => {
+    if (listingSearch && ![listing.title, listing.location, listing.property_name, listing.unit].join(" ").toLowerCase().includes(listingSearch)) return false;
     if (filter === "all") return true;
     if (filter === "draft") return !listing.published;
     return listing.category === filter;
@@ -474,7 +493,7 @@ function renderListings() {
         ? `<img class="thumb" src="${escapeHtml(coverUrl(listing))}" alt="" loading="lazy">`
         : '<div class="thumb"></div>'}
       <div>
-        <h2>${escapeHtml(listing.title || "Untitled listing")}</h2>
+        <h2><a href="#/listings/${escapeHtml(listing.id)}">${escapeHtml(listing.title || "Untitled listing")}</a></h2>
         <p>${escapeHtml(describe(listing))}</p>
         <div class="tags">
           <span class="tag">${escapeHtml(listing.category)}</span>
@@ -483,7 +502,7 @@ function renderListings() {
         </div>
       </div>
       <div class="actions">
-        <button type="button" data-action="edit">Edit</button>
+        ${!listing.can_edit ? `<a class="desk-button" href="#/listings/${escapeHtml(listing.id)}">View listing</a>` : '<button type="button" data-action="edit">Edit</button>'}
         <button type="button" class="danger" data-action="delete" data-manager-only>Delete</button>
       </div>
     </article>
@@ -495,12 +514,14 @@ function renderListings() {
 // Screens are addresses, so a property or a lease can be linked to, reloaded
 // and gone back from. The hash carries at most two parts: the screen, and the
 // one thing it is showing.
-const ROUTES = new Set(["listings", "applications", "leases", "properties"]);
+const ROUTES = new Set(["overview", "listings", "applications", "dossier", "leases", "properties", "requests", "staff", "permissions", "onboarding"]);
 
 function readHash() {
   const parts = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
-  const name = ROUTES.has(parts[0]) ? parts[0] : "listings";
-  return { name, id: decodeURIComponent(parts[1] || "") };
+  const name = ROUTES.has(parts[0]) ? parts[0] : "overview";
+  let id = "";
+  try { id = decodeURIComponent(parts[1] || ""); } catch { /* malformed URL: show list */ }
+  return { name, id };
 }
 
 function crumbs(parts) {
@@ -516,7 +537,7 @@ function crumbs(parts) {
 // use it. Every host is hidden first so no two are ever on screen together.
 // A screen that shows one thing keeps its list's nav item lit: reading one
 // application is still being in Applications.
-const NAV_OF = { lease: "leases", application: "applications" };
+const NAV_OF = { cases: "applications", lease: "applications", application: "applications", listing: "listings" };
 
 function showRoute(name, { rows }) {
   for (const [key, host] of Object.entries(ROUTE_HOSTS)) host.hidden = key !== name;
@@ -530,6 +551,10 @@ function showRoute(name, { rows }) {
 }
 
 async function goto({ name, id }) {
+  if (session.owner && name !== "staff") {
+    location.replace("#/staff");
+    return;
+  }
   route = name;
   routeId = id;
   setStatus("");
@@ -538,41 +563,78 @@ async function goto({ name, id }) {
   // has to put it away first, or it stays on top of whatever loads behind it.
   if (name !== "leases" || !id) closeLeaseScreen();
 
-  if (name === "listings") {
-    showRoute("listings", { rows: true });
-    dropzone.hidden = false;
-    crumbs([{ label: "Listings", href: "#/listings" }]);
-    render();
+  if (name === "overview" && session.role === "manager") {
+    showRoute("overview", { rows: false }); crumbs([{ label: "Dashboard" }]);
+    return renderAdminDashboard(ROUTE_HOSTS.overview, { api, session });
+  }
+  if (name === "onboarding") {
+    showRoute("onboarding", { rows: false }); crumbs([{ label: "Landlord onboarding", href: "#/onboarding" }, ...(id ? [{ label: id === "new" ? "Invite landlord" : "Review submission" }] : [])]);
+    if (!isManager()) { ROUTE_HOSTS.onboarding.innerHTML = '<p role="alert">Only Admin can manage landlord onboarding.</p>'; return; }
+    return renderOnboarding(ROUTE_HOSTS.onboarding, { api, session, id });
+  }
+
+  if (name === "overview" || name === "applications" || (name === "leases" && session.role === "landlord")) {
+    showRoute(name === "overview" ? "overview" : "cases", { rows: false });
+    const host = name === "overview" ? ROUTE_HOSTS.overview : ROUTE_HOSTS.cases;
+    crumbs([{ label: name === "overview" ? "My workspace" : name === "leases" ? "Lease documents" : "Rentals", href: "#/applications" }, ...(id ? [{ label: "Rental details" }] : [])]);
+    if (id) return renderCaseDetail(host, { api, session, id });
+    return renderCaseQueue(host, { api, session, overview: name === "overview", files: name === "leases" });
+  }
+
+  if (name === "dossier") {
+    showRoute("application", { rows: false });
+    crumbs([{ label: "Rental", href: `#/applications/${encodeURIComponent(id)}` }, { label: "Application & documents" }]);
+    if (session.role === "landlord") { ROUTE_HOSTS.application.innerHTML = '<p role="alert">Application review is handled by the leasing team.</p>'; return; }
+    try {
+      const { application, document_types } = await api(`/applications/${encodeURIComponent(id)}`);
+      if (route !== name || routeId !== id) return;
+      if (document_types) documentTypes = document_types;
+      remember(application); render();
+    } catch (error) { ROUTE_HOSTS.application.innerHTML = `<p role="alert">${escapeHtml(error.message)}</p>`; }
     return;
   }
 
-  // Applications are a list and, one at a time, a page. The list never draws
-  // a whole application into itself: the row is a link to the address of the
-  // one thing it names.
-  if (name === "applications") {
-    showRoute(id ? "application" : "applications", { rows: !id });
-
-    if (id) {
-      ROUTE_HOSTS.application.innerHTML = '<p class="status">Loading…</p>';
-      crumbs([{ label: "Applications", href: "#/applications" }, { label: "Application", href: "" }]);
-    } else {
-      resetApplicationScreen();
-      crumbs([{ label: "Applications", href: "#/applications" }]);
+  if (session.role === "landlord" && name === "properties") {
+    showRoute("properties", { rows: false }); crumbs([{ label: "My properties" }]);
+    return renderLandlordProperties(ROUTE_HOSTS.properties, { api, listings, id });
+  }
+  if (session.role === "landlord" && ["leases", "staff"].includes(name)) {
+    closeLeaseScreen();
+    showRoute("permissions", { rows: false });
+    crumbs([{ label: "Permissions" }]);
+    renderPermissions(ROUTE_HOSTS.permissions);
+    return;
+  }
+  if (["requests", "staff", "permissions"].includes(name)) {
+    showRoute(name, { rows: false });
+    const titles = { overview: "Overview", requests: "Change requests", staff: "Accounts & access", permissions: "Role permissions" };
+    crumbs([{ label: titles[name] }]);
+    const host = ROUTE_HOSTS[name];
+    if (name === "permissions") return renderPermissions(host);
+    if (name === "requests") return renderRequests(host, { api, session, listings, selectedListing: id });
+    if (name === "staff") {
+      if (!isManager()) { host.innerHTML = '<p class="status">Only an admin can manage accounts.</p>'; return; }
+      return renderStaff(host, { api, session });
     }
+    return;
+  }
 
-    if (!applicationsLoaded) await refreshApplications();
-
+  if (name === "listings") {
     if (id) {
-      const app = applications.find((item) => item.id === id);
-      if (!app) {
-        crumbs([{ label: "Applications", href: "#/applications" }, { label: "Not found", href: "" }]);
-        ROUTE_HOSTS.application.innerHTML = `<p class="status" data-tone="error">That application no
-          longer exists. <a href="#/applications">Back to applications</a>.</p>`;
-        return;
-      }
-      crumbs([{ label: "Applications", href: "#/applications" }, { label: app.name, href: "" }]);
+      showRoute("listing", { rows: false });
+      const listing = listings.find(row => row.id === id);
+      crumbs([{ label: "Listings", href: "#/listings" }, { label: listing?.title || "Not found" }]);
+      if (listing) renderListingDetail(ROUTE_HOSTS.listing, listing, !listing.can_edit);
+      else ROUTE_HOSTS.listing.innerHTML = '<p class="status">Listing not found. <a href="#/listings">Back to listings</a></p>';
+      return;
     }
-
+    showRoute("listings", { rows: true });
+    dropzone.hidden = session.role === "landlord" || (!isManager() && !session.property_ids?.length);
+    ROUTE_HOSTS.listings.querySelector("h1").textContent = session.role === "landlord" ? "My listings" : "Listings";
+    ROUTE_HOSTS.listings.querySelector(".pagehead p").textContent = session.role === "landlord"
+      ? "Your assigned rental properties. Request updates from your leasing team."
+      : "Property marketing information. Edit listings within your assigned property access.";
+    crumbs([{ label: "Listings", href: "#/listings" }]);
     render();
     return;
   }
@@ -584,6 +646,8 @@ async function goto({ name, id }) {
     // covers the console rather than drawing into it, so the route opens it
     // and leaving the route is what closes it.
     if (id) {
+      try { const { application } = await api(`/applications/${encodeURIComponent(id)}`); remember(application); }
+      catch (error) { showRoute("lease", { rows: false }); ROUTE_HOSTS.lease.innerHTML = `<p role="alert">${escapeHtml(error.message)}</p>`; return; }
       const app = applications.find((item) => item.id === id);
       if (!app) {
         showRoute("lease", { rows: false });
@@ -594,7 +658,7 @@ async function goto({ name, id }) {
       }
       showRoute("lease", { rows: false });
       crumbs([{ label: "Leases", href: "#/leases" }, { label: app.name, href: "" }]);
-      await openLeaseScreen({ application: app, returnTo: "#/leases" });
+      await openLeaseScreen({ application: app, returnTo: `#/applications/${encodeURIComponent(id)}` });
       return;
     }
 
@@ -608,14 +672,6 @@ async function goto({ name, id }) {
   if (name === "properties") {
     // The Worker refuses these routes for an agent; this keeps the browser from
     // asking in the first place.
-    if (!isManager()) {
-      showRoute("properties", { rows: false });
-      crumbs([{ label: "Properties", href: "#/properties" }]);
-      ROUTE_HOSTS.properties.innerHTML = `<p class="status">Landlord settings are a manager's.
-        You can read every one of them on a lease.</p>`;
-      return;
-    }
-
     showRoute("properties", { rows: false });
     if (id) {
       await renderProperty(ROUTE_HOSTS.properties, id);
@@ -631,7 +687,7 @@ async function goto({ name, id }) {
   }
 }
 
-window.addEventListener("hashchange", () => goto(readHash()));
+window.addEventListener("hashchange", () => goto(readHash()).catch(error => setStatus(error.message, "error")));
 
 // ---- Leases ----
 
@@ -775,6 +831,7 @@ function appMatches(app) {
 // lease can only start once somebody has approved it, and once one exists the
 // action is to open that one rather than to make a second.
 function appAction(app) {
+  if (session.role === "landlord") return "View →";
   const stage = stageOf(app);
   if (stage.key === "lease") return "Open lease →";
   if (stage.key === "approved") return "Create lease →";
@@ -885,11 +942,39 @@ async function refreshApplications() {
 // can see that they are an agent stops wondering why a box will not open.
 function showSession() {
   whoEl.textContent = session.email;
-  whoRoleEl.textContent = session.name || session.role || "—";
+  const label = session.owner ? "Platform owner" : { manager: "Admin", agent: "Agent", landlord: "Landlord" }[session.role] || "Account";
+  whoRoleEl.textContent = session.name || label;
   document.body.dataset.role = session.role;
+  const navigation = session.owner ? { staff: "Accounts & access" } : session.role === "manager"
+    ? { overview: "Dashboard", applications: "Rentals", onboarding: "Landlord onboarding", properties: "Properties & settings", listings: "Listings", staff: "Accounts & access", requests: "Change requests" }
+    : session.role === "agent"
+      ? { overview: "My tasks", applications: "My rentals", listings: "Listings" }
+      : { overview: "Awaiting my decision", properties: "My properties", leases: "Lease documents" };
+  document.querySelectorAll('.nav [data-route]').forEach(link => {
+    const label = navigation[link.dataset.route]; link.hidden = !label;
+    if (label) { link.querySelector("span").textContent = label; link.setAttribute("aria-label", label); }
+  });
+  const nav = document.querySelector(".nav");
+  document.querySelector('.side .brand').href = session.owner ? "#/staff" : "#/overview";
+  document.querySelector('.side .brand').setAttribute("aria-label", session.owner ? "Star Real Estate access management" : "Star Real Estate dashboard");
+  nav.querySelectorAll('.nav-section').forEach(section => section.remove());
+  const groups = session.role === "manager"
+    ? {overview:"Workspace", properties:"Portfolio", staff:"Administration"}
+    : {overview:"Workspace"};
+  Object.keys(navigation).forEach(key => {
+    if (groups[key]) {
+      const section = document.createElement("div");
+      section.className = "nav-section";
+      section.textContent = groups[key];
+      nav.append(section);
+    }
+    nav.append(nav.querySelector(`[data-route="${key}"]`));
+  });
+  document.getElementById("new-listing").hidden = !isManager() && !session.property_ids?.length;
+  document.getElementById("import-folder").hidden = !isManager() && !session.property_ids?.length;
 
   roleBadgeEl.hidden = !session.role;
-  roleBadgeEl.textContent = session.role;
+  roleBadgeEl.textContent = label;
 
   const source = session.name || session.email;
   avatarEl.textContent = source
@@ -916,12 +1001,15 @@ function showEnvironment(me) {
 async function load() {
   setStatus("Loading listings…");
   try {
-    const [{ listings: rows }, me] = await Promise.all([api("/listings"), api("/me").catch(() => null)]);
-    listings = rows;
+    const me = await api("/me");
+    listings = me.owner ? [] : (await api("/listings")).listings;
     if (me?.email) {
       session.email = me.email;
       session.role = me.role || "";
       session.name = me.name || "";
+      session.property_ids = me.property_ids || [];
+      session.owner = me.owner === true;
+      session.demo = me.demo === true;
       showSession();
     }
     showEnvironment(me);
@@ -935,6 +1023,8 @@ async function load() {
 // ---- Editor ----
 
 function openEditor(listing) {
+  if (session.role === "landlord") return;
+  if (!isManager() && (listing ? !listing.can_edit : !session.property_ids?.length)) return;
   editingId = listing?.id || null;
   currentMedia = (listing?.listing_media || []).slice();
   for (const item of pendingMedia) URL.revokeObjectURL(item.preview);
@@ -1477,6 +1567,7 @@ initApplicationScreen({
   setStatus,
   escapeHtml,
   isManager,
+  isReadOnly: () => session.role === "landlord",
   documentTypes: () => documentTypes,
   onSaved: remember,
   onDeleted: (id) => {
@@ -1497,4 +1588,33 @@ initProperties({
   openDocument: openLeaseScreen
 });
 
+document.getElementById("listing-search").addEventListener("input", event => {
+  listingSearch = event.target.value.trim().toLowerCase(); renderListings();
+});
+ROUTE_HOSTS.overview.addEventListener("click", event => {
+  if (event.target.closest("[data-desk-refresh]")) { applicationsLoaded = false; load(); }
+});
+ROUTE_HOSTS.listing.addEventListener("click", event => {
+  if (event.target.closest("[data-desk-edit-listing]")) openEditor(listings.find(row => row.id === routeId));
+});
+ROUTE_HOSTS.properties.addEventListener("click", event => {
+  if (event.target.closest("[data-desk-new-property]") && isManager()) {
+    document.getElementById("new-property-form").reset();
+    document.getElementById("new-property-feedback").textContent = "";
+    document.getElementById("new-property-dialog").showModal();
+  }
+});
+document.getElementById("new-property-cancel").addEventListener("click", () => document.getElementById("new-property-dialog").close());
+document.getElementById("new-property-form").addEventListener("submit", async event => {
+  event.preventDefault();
+  const form = event.currentTarget, button = form.querySelector('[type="submit"]');
+  button.disabled = true;
+  try {
+    const { building } = await api("/buildings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
+    buildingRowsLoaded = false;
+    document.getElementById("new-property-dialog").close();
+    location.hash = `#/properties/${building.id}`;
+  } catch (error) { document.getElementById("new-property-feedback").textContent = error.message; }
+  finally { button.disabled = false; }
+});
 load();

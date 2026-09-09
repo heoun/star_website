@@ -3,11 +3,9 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <link rel="icon" href="/favicon.ico" sizes="48x48">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <meta name="robots" content="noindex, nofollow">
   <title>Star Admin</title>
+  <!-- INLINE_BRAND_ICON -->
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -96,7 +94,7 @@
     }
 
     .brand { display: flex; align-items: center; gap: 10px; padding: 0 10px 20px; text-decoration: none; }
-    .brand svg { width: 22px; height: 22px; display: block; flex: none; }
+    .brand svg { width: 96px; height: 96px; max-width: 100%; display: block; flex: none; color: #fff; }
     .brand b { font-family: var(--display); font-weight: 700; font-size: 11.5px; letter-spacing: 0.24em; color: #fff; }
 
     .role {
@@ -752,36 +750,41 @@
        property configuration
     ------------------------------------------------------------------ */
 
+    .prop-directory { border-radius: 14px; }
     .prop-row {
       display: grid;
-      grid-template-columns: minmax(0, 1.7fr) 96px minmax(0, 1.2fr) minmax(0, 1.2fr) 148px 96px;
-      gap: 14px;
+      grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr) 136px 90px;
+      gap: 28px;
       align-items: center;
-      padding: 13px 14px;
+      padding: 24px;
       background: var(--white);
       text-decoration: none;
       color: inherit;
+      transition: background 150ms ease;
     }
-
     .prop-row.is-head {
-      font-size: 11px;
-      font-weight: 800;
-      letter-spacing: 0.5px;
-      text-transform: uppercase;
-      color: #6b7680;
-      background: var(--paper2);
+      padding-top: 14px;
+      padding-bottom: 14px;
+      font-weight: 600;
+      color: var(--soft);
+      background: #f8fafb;
     }
-
-    a.prop-row:hover { background: rgba(13, 59, 82, 0.05); }
-    a.prop-row:hover .prop-go { color: var(--blue); }
-    a.prop-row:focus-visible { outline-offset: -2px; }
+    .prop-row.is-head > span { font-size: 12px; white-space: nowrap; }
+    a.prop-row:hover { background: #f7fafb; }
+    a.prop-row:focus-visible { outline: 2px solid var(--blue); outline-offset: -3px; }
     .prop-row > span { min-width: 0; overflow-wrap: anywhere; font-size: 13px; }
-    .prop-row b { display: block; font-weight: 600; }
-    .prop-row small { display: block; color: var(--soft); font-size: 12px; }
+    .prop-row b { display: block; font-size: 15px; line-height: 1.5; font-weight: 650; color: var(--blue); }
+    .prop-row small { display: block; margin-top: 5px; color: var(--soft); font-size: 12px; line-height: 1.6; }
+    .prop-listing-count { display: inline-block; margin-top: 10px; color: #536c7a; font-size: 11px; line-height: 1.5; }
+    .prop-entity { display: block; line-height: 1.6; }
+    .prop-mobile-caption { display: none; }
     .prop-go {
-      font-size: 12.5px; font-weight: 800;
-      color: var(--soft); text-align: right; white-space: nowrap;
+      justify-self: end; display: inline-flex; align-items: center; gap: 10px;
+      padding: 8px 12px; border: 1px solid #dbe4e9; border-radius: 8px;
+      font-weight: 600; color: var(--blue); white-space: nowrap;
     }
+    a.prop-row:hover .prop-go { background: #eaf1f4; border-color: #b8cbd4; }
+    .prop-readiness .pill { font-size: 12px; line-height: 1.5; }
     /* The one thing whose absence stops an agent. Red is reserved for it. */
     .prop-need { color: var(--bad); font-weight: 600; }
 
@@ -913,8 +916,7 @@
 
     @media (max-width: 1280px) {
       .appl-cols, .prop-cols { grid-template-columns: minmax(0, 1fr) 300px; }
-      .prop-row { grid-template-columns: minmax(0, 1.6fr) minmax(0, 1.2fr) minmax(0, 1.2fr) 148px 96px; }
-      .prop-row > span:nth-child(2) { display: none; }
+      .prop-row { gap: 20px; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) 114px 84px; padding: 20px; }
       /* Applied and move-in are the two columns a narrower table can lose
          first: both are on the application's own page, one click away. */
       .app-row { grid-template-columns: minmax(0, 1.5fr) minmax(0, 1.2fr) 100px 116px 132px 104px; }
@@ -933,6 +935,16 @@
       .appl-cols, .prop-cols { grid-template-columns: minmax(0, 1fr); }
       .decide { position: static; }
       .decide-buttons { grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); }
+    }
+
+    @media (max-width: 1080px) {
+      .prop-row { grid-template-columns: minmax(0, 1fr) auto; gap: 18px 24px; }
+      .prop-row.is-head { display: none; }
+      .prop-identity, .prop-landlord { grid-column: 1 / -1; }
+      .prop-landlord { border-top: 1px solid var(--line); padding-top: 14px; }
+      .prop-mobile-caption { display: block; color: var(--soft); font-size: 11px; font-weight: 600; margin-bottom: 5px; }
+      .prop-readiness { grid-column: 1; }
+      .prop-go { grid-column: 2; align-self: end; }
     }
 
     @media (max-width: 860px) {
@@ -954,10 +966,7 @@
       .stat { border-left: 0 !important; box-shadow: inset 0 -1px 0 var(--line); }
       .line { grid-template-columns: minmax(0, 1fr); gap: 3px; }
 
-      .prop-row { grid-template-columns: minmax(0, 1fr) auto; }
-      .prop-row > span:nth-child(n+2) { display: none; }
-      .prop-row > span:nth-child(5) { display: block; }
-      .prop-row.is-head { display: none; }
+
       .owners { grid-template-columns: minmax(0, 1fr); }
 
       .app-row { grid-template-columns: minmax(0, 1fr) auto; }
@@ -1126,6 +1135,10 @@
        field browser it belonged to. */
     #lease-fields { flex: 1; min-height: 0; display: flex; flex-direction: column; }
     .lease-actions { display: flex; align-items: center; gap: 10px; padding: 10px 16px; border-top: 1px solid var(--line); background: var(--white); }
+    /* Same trap as #lease-screen above: `display: flex` outranks the UA
+       stylesheet's rule for [hidden], and the property editor hides this whole
+       row — it saves through its own panels and produces no lease. */
+    .lease-actions[hidden] { display: none; }
     .lease-warnings { flex: 1; font-size: 12px; color: var(--bad); font-weight: 600; }
 
     .lease-tabs { display: none; gap: 8px; padding: 8px 16px; border-top: 1px solid var(--line); background: var(--white); }
@@ -1275,6 +1288,34 @@
 
     .ws-check { display: flex; align-items: center; gap: 8px; font-size: 13px; font-weight: 400; margin: 0; }
     .ws-check input { width: auto; }
+
+    /* ---- the property editor, in the narrow half ---- */
+
+    /* Its panels are the property page's own — the same markup, so the two
+       screens cannot drift apart. Only the wide three-column row has to give
+       way here, where there is half a screen instead of a page. */
+    .ws-defaults { padding: 14px 16px 26px; }
+    .lease-pane-form .line { grid-template-columns: minmax(0, 1fr); gap: 5px; }
+    .lease-pane-form .line > .lbl { font-weight: 600; color: var(--ink); }
+    .lease-pane-form .line .src { justify-self: start; }
+    /* `.empty` is also the class the page-level empty states use, and its 48px
+       of padding turns one unanswered value into half a pane in here. */
+    .lease-pane-form .line .empty {
+      display: inline; padding: 0; text-align: left; background: none; border-radius: 0;
+    }
+    .lease-pane-form .panel > .phead { padding: 12px 14px; }
+    .lease-pane-form .panel > .pbody { padding: 10px 14px; }
+    .lease-pane-form .section-title { font-size: 15px; }
+
+    /* Where the value you just clicked in the document lives, and where the
+       one you are typing prints. Both directions land on a row, so both say
+       so the same way. */
+    .ws-row.is-located, .line.is-located {
+      background: var(--warn-bg);
+      box-shadow: inset 2px 0 0 var(--warn);
+      padding-left: 10px;
+      margin-left: -10px;
+    }
 
     /* Quiet until it is wanted: one of these on every row read as a column of
        buttons rather than as an aid. */
@@ -1490,31 +1531,38 @@
 <body>
   <div class="app">
     <aside class="side">
-      <a class="brand" href="#/listings">
-        <svg xmlns="http://www.w3.org/2000/svg" viewBox="836 284 250 270" aria-hidden="true"><g fill="#fff"><path d="M 892.515625 424.273438 L 924.578125 424.273438 C 924.578125 424.273438 940.9375 427.332031 950.960938 438.488281 L 950.960938 475.820312 C 950.960938 475.820312 937.359375 444.34375 892.515625 424.273438 "/><path d="M 966.78125 324.289062 L 966.78125 374.75 C 966.78125 374.75 977.230469 384.414062 986.386719 386.878906 L 1052.832031 386.878906 C 1052.832031 386.878906 1000.71875 375.835938 966.78125 324.289062 "/><path d="M 917.089844 397.144531 C 940.609375 387.851562 954.144531 377.738281 957.855469 374.757812 C 958.523438 374.21875 958.90625 373.382812 958.90625 372.484375 L 958.90625 287.105469 C 958.90625 283.976562 954.90625 283.152344 953.792969 286.042969 C 922.3125 367.789062 867.457031 398.257812 838.277344 409.058594 C 835.4375 410.109375 836.132812 414.601562 839.140625 414.601562 L 999.628906 414.601562 C 976.109375 423.890625 962.574219 434.007812 958.863281 436.988281 C 958.191406 437.527344 957.8125 438.363281 957.8125 439.261719 L 957.8125 548.777344 C 957.8125 552.074219 962.1875 552.730469 963.015625 549.554688 C 989.003906 450.210938 1049.65625 414.574219 1080.015625 402.660156 C 1082.796875 401.566406 1082.042969 397.144531 1079.082031 397.144531 Z M 917.089844 397.144531 "/></g></svg>
-        <b>STAR</b>
+      <a class="brand" href="#/overview" aria-label="Star Real Estate dashboard">
+        <!-- INLINE_LOGO -->
       </a>
 
+
+      <nav class="nav">
+        <a href="#/overview" data-route="overview"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Overview</span><abbr title="Overview">OV</abbr></a>
+        <a href="#/listings" data-route="listings"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16M12 9h5M12 14h5"/></svg><span>Listings</span><abbr title="Listings">LS</abbr></a>
+        <a href="#/properties" data-route="properties"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h1m6 0h1M8 11h1m6 0h1M10 21v-6h4v6"/></svg><span>Properties</span><abbr title="Properties">PR</abbr></a>
+        <a href="#/applications" data-route="applications"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5H5v16h14V5h-3"/><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 12h8M8 16h5"/></svg><span>Applications</span><abbr title="Applications">AP</abbr></a>
+        <a href="#/leases" data-route="leases"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H5v18h14V8zM14 3v5h5M8 12h8M8 16h6"/></svg><span>Leases</span><abbr title="Leases">LE</abbr></a>
+        <a href="#/requests" data-route="requests"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-5 3V6a2 2 0 0 1 2-2z"/><path d="M8 10h8M8 14h5"/></svg><span>Change requests</span><abbr title="Change requests">CR</abbr></a>
+        <a href="#/onboarding" data-route="onboarding" data-manager-only><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8M5 9v11h9M9 20v-7h5M18 14v7M14.5 17.5h7"/></svg><span>Landlord onboarding</span><abbr title="Landlord onboarding">LO</abbr></a>
+        <a href="#/staff" data-route="staff" data-manager-only><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0112 0v2M16 5a3 3 0 010 6M18 14a5 5 0 013 4v2"/></svg><span>Accounts & access</span><abbr title="Accounts & access">AC</abbr></a>
+        <a href="#/permissions" data-route="permissions"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6"/></svg><span>Role permissions</span><abbr title="Role permissions">RP</abbr></a>
+      </nav>
+
+      <div class="sidebar-account">
       <div class="role">
         <span class="k">Signed in as</span>
         <b id="who-role">—</b>
         <span class="who" id="who"></span>
       </div>
-
-      <nav class="nav">
-        <a href="#/listings" data-route="listings"><span>Listings</span><abbr title="Listings">LS</abbr></a>
-        <a href="#/properties" data-route="properties" data-manager-only><span>Properties</span><abbr title="Properties">PR</abbr></a>
-        <a href="#/applications" data-route="applications"><span>Applications</span><abbr title="Applications">AP</abbr></a>
-        <a href="#/leases" data-route="leases"><span>Leases</span><abbr title="Leases">LE</abbr></a>
-      </nav>
-
-      <a class="sign-out" href="/cdn-cgi/access/logout">Sign out</a>
+      <a class="sign-out" href="/cdn-cgi/access/logout"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 4H4v16h5M9 12h12M17 8l4 4-4 4"/></svg>Sign out</a>
+      </div>
     </aside>
 
     <main class="main">
       <header class="top">
         <nav class="crumb" id="crumb" aria-label="Breadcrumb"></nav>
         <div class="topright">
+          <a href="/cdn-cgi/access/logout" style="font-size:12px">Sign out</a>
           <span class="badge" id="role-badge" hidden></span>
           <span class="avatar" id="avatar" aria-hidden="true"></span>
         </div>
@@ -1526,7 +1574,14 @@
       </div>
 
       <div class="content">
-        <p class="status" id="status" hidden></p>
+        <p class="status" id="status" role="status" hidden></p>
+        <section class="route" id="route-onboarding" hidden></section>
+        <section class="route" id="route-overview" hidden></section>
+        <section class="route" id="route-cases" hidden></section>
+        <section class="route" id="route-requests" hidden></section>
+        <section class="route" id="route-staff" hidden></section>
+        <section class="route" id="route-permissions" hidden></section>
+        <section class="route" id="route-listing" hidden></section>
 
         <!-- Listings ------------------------------------------------->
         <section class="route" id="route-listings" hidden>
@@ -1537,8 +1592,8 @@
               <p>Everything the public website shows, and everything an application can be made against.</p>
             </div>
             <div class="actions">
-              <button type="button" id="import-folder">Import folder…</button>
-              <button type="button" class="primary" id="new-listing">New listing</button>
+              <button type="button" id="import-folder" data-staff-only>Import folder…</button>
+              <button type="button" class="primary" id="new-listing" data-staff-only>New listing</button>
             </div>
           </div>
 
@@ -1549,6 +1604,7 @@
               <button type="button" class="chip" data-filter="commercial" aria-pressed="false">Commercial</button>
               <button type="button" class="chip" data-filter="draft" aria-pressed="false">Unpublished</button>
             </div>
+            <input type="search" id="listing-search" aria-label="Search listings" placeholder="Search address, property or unit…" autocomplete="off">
           </div>
 
           <div class="dropzone" id="dropzone">
@@ -1796,6 +1852,21 @@
   <script type="importmap">
     { "imports": { "jszip": "/admin/vendor/jszip.shim.mjs" } }
   </script>
+  <dialog id="new-property-dialog" aria-labelledby="new-property-title">
+    <form id="new-property-form" class="desk-form">
+      <h2 id="new-property-title">New property</h2>
+      <p>Create the property first, then add landlord details and lease defaults.</p>
+      <label>Property name<input name="name" required maxlength="200"></label>
+      <label>Street<input name="street" required maxlength="200"></label>
+      <label>City<input name="city" required maxlength="200"></label>
+      <label>State<input name="state_abbr" value="NY" required maxlength="2"></label>
+      <label>ZIP code<input name="zip" required pattern="[0-9]{5}(-[0-9]{4})?"></label>
+      <div class="actions"><button type="submit" class="primary">Create property</button><button type="button" id="new-property-cancel">Cancel</button></div>
+      <p id="new-property-feedback" role="status"></p>
+    </form>
+  </dialog>
+  <link rel="stylesheet" href="workspace.css">
+  <link rel="stylesheet" href="case-workspace.css">
   <script type="module" src="admin.js"></script>
 </body>
 </html>

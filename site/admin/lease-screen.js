@@ -1,6 +1,13 @@
 // The lease screen: the document on the left, the fields that fill it on the
 // right, on one screen.
 //
+// It shows two things, and they share every line of this file except which
+// fields go in the right half. A lease is one tenancy, filled in by an agent.
+// Property defaults are the landlord's standing terms, filled in by a manager
+// (mode "defaults", opened from the property page) — the same document, the
+// same click-to-locate, the same keystroke patching the page, because the
+// question both people are answering is "what will this say".
+//
 // It replaces both of the things it grew out of — the settings form that had no
 // document, and the generate dialog whose preview was behind a button. Those
 // were two write paths to the same 147 values, which is how someone ends up
@@ -15,6 +22,10 @@ import { mapDocuments, verifyDocuments } from "../shared/lease-documents.js";
 import { ADDRESS_FIELD, ADDRESS_PARTS, composeAddress } from "../shared/lease-address.js";
 import { applicationWrite } from "../shared/lease-application.js";
 import { agentMayWriteField } from "../shared/lease-permissions.js";
+import {
+  defaultsMarkup, handleDefaultsClick, rememberDefaultsNavigation, syncDefaultsNavigation, layerOf, loadLayer, managerFields,
+  mayLeaveEditor, newDefaultsUi, propertyOf, resolve
+} from "./property-defaults.js";
 
 let api;
 let setStatus;
@@ -36,6 +47,9 @@ let state = null;
 // page and so is everything derived from it.
 let packageDocuments = [];
 let returnTo = "";
+// The property editor's own state, in "defaults" mode: which panel is open,
+// which dialog is up. One property is open at a time, so one of these.
+let defaultsUi = newDefaultsUi();
 let formHost = null;
 let docHost = null;
 let mounted = false;
@@ -166,19 +180,20 @@ export async function openLeaseScreen(options = {}) {
   ({ buildings } = await api("/buildings").catch(() => ({ buildings: [] })));
 
   state = blankState();
-  state.mode = options.application ? "lease" : "setup";
+  state.mode = options.mode === "defaults" ? "defaults"
+    : options.application ? "lease" : "setup";
   state.application = options.application || null;
   state.listingId = options.application?.listing_id || options.listingId || "";
   state.buildingId = options.buildingId || "";
-  // One layer for now: the specific apartment. Company and building settings
-  // still exist in the database and are still inherited, but nothing here
-  // writes to them — a value saved from this screen belongs to one address.
+  // One layer for what this screen saves as a lease: the specific apartment.
+  // The property layer is written too, but only in "defaults" mode and only
+  // through the property editor, which names its own scope.
   state.scope = "unit";
   // Opened to be read rather than filled in. The property screen uses this to
-  // show where a building's settings land on the page: everything it writes
-  // goes to the building layer, so a stray edit here — which would land on one
+  // show where a property's settings land on the page: everything it writes
+  // goes to the property layer, so a stray edit here — which would land on one
   // apartment instead — must not be possible at all.
-  state.readOnly = options.readOnly === true;
+  state.readOnly = options.readOnly === true || state.mode === "defaults";
   // Where "back" goes. The workspace covers the console, so leaving it is a
   // route change rather than a hide — otherwise the address bar still names a
   // lease nobody is looking at.
@@ -187,7 +202,19 @@ export async function openLeaseScreen(options = {}) {
   // site/shared/lease-permissions.js — and reads everything else: the
   // tenant's identity, the premises, the landlord's standing terms are a
   // manager's, on this screen as everywhere else.
-  state.editable = state.readOnly ? () => false : canEdit;
+  //
+  // Filling in the defaults is the mirror image: the landlord's own values are
+  // the only ones a keystroke may move, and only a manager's keystroke. The
+  // panel decides who may open an editor at all; this decides what a value
+  // typed into one is allowed to do to the document.
+  state.editable = state.mode === "defaults"
+    ? (field) => isManager() && field.source === "manager"
+    : state.readOnly ? () => false : canEdit;
+
+  if (state.mode === "defaults") {
+    defaultsUi = newDefaultsUi();
+    await loadLayer(state.buildingId);
+  }
 
   screen.hidden = false;
   if (mainEl) mainEl.hidden = true;
@@ -216,8 +243,14 @@ export async function openLeaseScreen(options = {}) {
     // form used to fall back to registry order from the second open onwards.
     state.documentOrder = doc.fieldsInDocument();
     state.documents = packageDocuments;
-    state.listings = listingsOf();
-    state.canPickUnit = !state.readOnly && state.mode !== "lease";
+    // Filling in a property's defaults reads them on one of its own
+    // apartments; a lease reads the one it is for.
+    state.listings = state.mode === "defaults"
+      ? listingsOf().filter((row) => row.building_id === state.buildingId)
+      : listingsOf();
+    // Which apartment the document is read for. Fixed to the application's in
+    // a lease; free in the other two, where the document is a sample.
+    state.canPickUnit = state.mode !== "lease" && !options.readOnly;
     for (const field of state.fields) state.occurrences[field.id] = doc.occurrenceCount(field.id);
     state.targetLabel = targetLabelFor();
 
@@ -230,7 +263,7 @@ export async function openLeaseScreen(options = {}) {
     // package would make that button look broken.
     showDocument(options.document || "");
     if (options.document) state.tab = "documents";
-    workspace.renderWorkspace(formHost, state);
+    renderFormPane();
     // Again, now that the values are in: the header states the status, and a
     // status must never read "Ready to send" over a set of gaps nobody has
     // counted yet.
@@ -295,7 +328,56 @@ export function closeLeaseScreen() {
 
 let shellRendered = false;
 
+// The right half. Which editor it holds is the whole difference between the
+// two things this screen shows; everything around it — the document, the
+// locating, the patching — does not know which one is in there.
+function renderFormPane() {
+  if (state.mode !== "defaults") {
+    workspace.renderWorkspace(formHost, state);
+    return;
+  }
+
+  rememberDefaultsNavigation(formHost, defaultsUi);
+  formHost.innerHTML = `<div class="ws-body ws-defaults" id="ws-body">${defaultsMarkup({
+    fields: managerFields(registry),
+    values: layerOf(state.buildingId),
+    buildingId: state.buildingId,
+    ui: defaultsUi,
+    docLinked: true
+  })}</div>`;
+  syncDefaultsNavigation(formHost, defaultsUi);
+}
+
+// The property being filled in, and what is still short. No status chip and no
+// rent: nothing here belongs to one tenancy, and a "Draft" over a property
+// would be a lease that does not exist.
+function renderDefaultsBar() {
+  const building = propertyOf(state.buildingId);
+  const values = layerOf(state.buildingId);
+  const short = managerFields(registry)
+    .filter((field) => field.required && !resolve(field, values).answered).length;
+
+  screen.querySelector("#lease-bar").innerHTML = `
+    <button type="button" id="lease-back">← Back to the property</button>
+    <div class="lease-head">
+      <h2>${escapeHtml(building?.name || "Property defaults")}</h2>
+      <p>The landlord's own values, and the lease they fill in</p>
+    </div>
+    <dl class="lease-facts">
+      <div><dt>Required</dt><dd><span class="lease-status is-${short === 0 ? "good" : "off"}">${
+        short === 0 ? "All answered" : `${short} still needed`}</span></dd></div>
+    </dl>
+    <select id="lease-listing" aria-label="Apartment this document is read for">
+      ${state.listings.map((row) => `<option value="${escapeHtml(row.id)}"${
+        row.id === state.listingId ? " selected" : ""}>${escapeHtml(unitLabel(row))}</option>`).join("")}
+    </select>`;
+
+  screen.querySelector("#lease-actions").hidden = true;
+}
+
 function renderBar() {
+  if (state.mode === "defaults") return renderDefaultsBar();
+
   const listing = listingsOf().find((l) => l.id === state.listingId);
   const tenants = state.values["tenant.names"] || (state.application?.name ?? "");
   const status = leaseStatus();
@@ -457,10 +539,18 @@ let zoom = 1;
 
 function focusField(fieldId) {
   const input = formHost.querySelector(`[data-lease-input="${CSS.escape(fieldId)}"]`);
+
+  // In the property editor a value has an input only while its panel is open
+  // for editing, and clicking the document is how a person asks "which value
+  // is this". The row is always there, so the row is what answers.
+  if (!input && state.mode === "defaults") {
+    return locateRow(formHost.querySelector(`[data-setting-row="${CSS.escape(fieldId)}"]`));
+  }
+
   if (!input) return;
   // The value may be on a tab that is not open; the information tab is the one
   // that holds every editable value.
-  if (!input.offsetParent && state.tab !== "information") {
+  if (!input.offsetParent && state.mode !== "defaults" && state.tab !== "information") {
     state.tab = "information";
     workspace.renderTab(formHost, state);
     return focusField(fieldId);
@@ -469,8 +559,15 @@ function focusField(fieldId) {
   input.closest("details")?.setAttribute("open", "");
   input.scrollIntoView({ block: "center", behavior: "smooth" });
   input.focus();
-  input.closest("[data-lease-row]")?.classList.add("is-located");
-  setTimeout(() => input.closest("[data-lease-row]")?.classList.remove("is-located"), 1600);
+  locateRow(input.closest("[data-lease-row], [data-setting-row]"), false);
+}
+
+// Says "this one", for as long as it takes to look at it.
+function locateRow(row, scroll = true) {
+  if (!row) return;
+  if (scroll) row.scrollIntoView({ block: "center", behavior: "smooth" });
+  row.classList.add("is-located");
+  setTimeout(() => row.classList.remove("is-located"), 1600);
 }
 
 function onInput(fieldId, rawValue, isCheckbox) {
@@ -511,7 +608,7 @@ function onInput(fieldId, rawValue, isCheckbox) {
     if (input && document.activeElement !== input) input.value = state.values[ADDRESS_FIELD];
   }
 
-  workspace.annotateWorkspace(formHost, state);
+  if (state.mode !== "defaults") workspace.annotateWorkspace(formHost, state);
   // The header facts — the rent, the tenant's name, the status chip — quote
   // the values being edited, so they move on the same keystroke.
   renderBar();
@@ -593,6 +690,15 @@ function applyEndDate() {
 }
 
 function updateActions() {
+  // Nothing here belongs to the property editor: it saves through its own
+  // panels, and no lease is produced from it.
+  if (state.mode === "defaults") {
+    screen.querySelector("#lease-actions").hidden = true;
+    return;
+  }
+
+  screen.querySelector("#lease-actions").hidden = false;
+
   const warnings = screen.querySelector("#lease-warnings");
   const dirtyManager = [...state.dirty].filter((id) => state.byId.get(id)?.source === "manager");
   const parts = [];
@@ -690,6 +796,32 @@ async function produce(mode) {
   }
 }
 
+// What the property editor needs from its host: where it is drawn, which
+// property it is editing, and the two things only this screen can do — redraw
+// the pane, and put what was just saved onto the document beside it.
+function defaultsContext() {
+  return {
+    host: formHost,
+    buildingId: state.buildingId,
+    fields: managerFields(registry),
+    ui: defaultsUi,
+    rerender: async () => {
+      renderFormPane();
+      renderBar();
+    },
+    onSaved: async () => {
+      // The saved value is now what a lease for this property prints, and the
+      // lease is on the left of the screen.
+      await fetchValues();
+      syncChecked();
+      recomputeMissing();
+      doc.patchValues(state.values, state.missingLabels);
+      renderFormPane();
+      renderBar();
+    }
+  };
+}
+
 function bindOnce() {
   if (bound) return;
   bound = true;
@@ -727,11 +859,32 @@ function bindOnce() {
   });
 
   screen.addEventListener("click", async (event) => {
+    // The property editor owns its panels, its two dialogs and its writes.
+    // Asked first, because a dialog's backdrop is not a button.
+    if (state?.mode === "defaults") {
+      if (await handleDefaultsClick(event, defaultsContext())) return;
+
+      // Anywhere else on a value's row: show where it prints. The whole point
+      // of this screen is that a value and its sentence are one click apart.
+      const row = event.target.closest("[data-setting-row]");
+      if (row && !event.target.closest("button, input, select, textarea, label, a")) {
+        showFieldInDocument(row.dataset.settingRow);
+        return;
+      }
+    }
+
     const button = event.target.closest("button");
     if (!button) return;
 
     if (button.id === "lease-back") {
-      if (returnTo) location.hash = returnTo;
+      if (state.mode === "defaults" && !mayLeaveEditor(formHost, defaultsUi)) return;
+      // Both ways of opening this screen from the property page leave the hash
+      // already naming the property, so assigning it fires no hashchange and
+      // the button does nothing at all. Ask for the route again instead: goto
+      // puts this screen away and redraws the page underneath, which has to
+      // happen anyway — a value saved here is a value that page is showing.
+      if (returnTo && location.hash !== returnTo) location.hash = returnTo;
+      else if (returnTo) window.dispatchEvent(new HashChangeEvent("hashchange"));
       else closeLeaseScreen();
       return;
     }
@@ -783,6 +936,14 @@ function bindOnce() {
     }
   });
 
+  // Reading and filling in are the same gesture here: the field you are in is
+  // the sentence you are shown.
+  screen.addEventListener("focusin", (event) => {
+    if (state?.mode !== "defaults") return;
+    const input = event.target.closest("[data-lease-input]");
+    if (input) showFieldInDocument(input.dataset.leaseInput);
+  });
+
   const scroller = screen.querySelector("#lease-doc-scroll");
   let ticking = false;
   scroller.addEventListener("scroll", () => {
@@ -808,7 +969,8 @@ async function reloadLayer() {
     syncChecked();
     recomputeMissing();
     doc.patchValues(state.values, state.missingLabels);
-    workspace.renderWorkspace(formHost, state);
+    renderFormPane();
+    renderBar();
     updateActions();
     setStatus("");
   } catch (error) {
