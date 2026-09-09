@@ -18,3 +18,18 @@ notes/
 # copy of the template, not a second source of truth.
 *.docx.bak
 __pycache__/
+
+# Share configuration templates, never local credentials.
+!.dev.vars.example
+!.env.example
+
+# Browser automation output and local test/build caches.
+.playwright-mcp/
+playwright-report/
+test-results/
+coverage/
+*.log
+*.tsbuildinfo
+
+# Requirement spreadsheets belong under ignored notes/, not the repository root.
+/lease-information*.xlsx
