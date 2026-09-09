@@ -65,14 +65,18 @@ sent. `site/shared/lease-application.js` reads which they are off this registry
 — `"from": "applications.move_in"` — so neither side can hold a different
 list.
 
-**`manager`** (125 fields) — a stored setting, resolved in three layers where
-the later one wins:
+**`manager`** (125 fields) — a stored setting, resolved in two layers where the
+later one wins:
 
-    company  <  building  <  unit
+    property  <  unit
 
-- `company` (32) — the same everywhere. Fees, guest limits, the fine schedule.
-- `building` (93) — differs per building: who pays for water, the sprinkler
-  inspection date, the bedbug history, the Good Cause exemption.
+All 125 are set on the property: who pays for water, the sprinkler inspection
+date, the bedbug history, the Good Cause exemption, and equally the fees, the
+guest limits and the fine schedule. A third layer above these once held the 32
+that tend to be the same company-wide; it is gone, because a lease could assert
+a fine or a gas emergency number that no property page showed and nobody could
+point at. Typing the same figure on ten properties is worth more than one
+figure inherited invisibly by ten. See `supabase/drop-company-layer.sql`.
 
 **`agent`** (2) — `lease.vacancy_lease_date` and `tenant.mailing_address`, left
 blank on purpose: nothing knows the day a vacancy lease is signed, and the DHCR
@@ -109,11 +113,9 @@ exemption about a different one, in a document someone signs. So:
 
 - A field nobody stored counts as **unanswered**. Generating a final lease with
   a required field unanswered is refused, with the list of what is missing.
-- The company settings form prefills from the registry, because those are fee
-  and policy numbers and accepting them is the point.
-- The building settings form does **not** prefill. It shows the sample value as
-  a hint and starts empty, and it saves only the fields a person actually
-  touched — so opening the tab and pressing Save cannot assert 93 things nobody
+- The property's defaults do **not** prefill. Each panel shows the sample value
+  as a hint and starts empty, and it saves only the fields a person actually
+  touched — so opening a panel and pressing Save cannot assert 93 things nobody
   reviewed.
 - The database enforces the same distinction: an empty string and a JSON null
   are rejected, so "answered blank" is not a state a setting can reach.
@@ -132,8 +134,10 @@ that fill it on the right.
    credit reporting is wired up a lease often has to be produced before any
    application exists.
 2. Values belong to one apartment, named by its full address in the bar. The
-   company and building layers still exist in the database and are still
-   inherited, but nothing on this screen writes to them.
+   property layer is inherited and is not written from here — except in the one
+   mode that exists to write it, **Properties → Fill these in on the document**,
+   where the same screen shows a property's own defaults beside the lease they
+   fill in.
 3. Type. The document updates on the keystroke. An unanswered required field
    prints its own name in red, in place, so a gap can never read as a blank.
 4. **Find** scrolls the document to where a value appears; a value printed in

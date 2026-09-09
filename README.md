@@ -8,9 +8,11 @@ Requirements:
 
 - Node.js 18 or newer
 
-No npm dependencies need to be installed. The development server and build use Node.js built-in modules; Cloudflare's wrangler CLI is fetched on demand through npx.
+Run `npm ci` to install the locked development dependencies for type checking and architecture checks. The development server and build use Node.js built-in modules; Cloudflare's wrangler CLI is fetched on demand through npx. CI uses Node.js 24.
 
 ```bash
+npm ci
+
 # Copy the development configuration and fill it in (see below)
 cp .dev.vars.example .dev.vars
 
@@ -138,6 +140,8 @@ commercial rentals "For Lease".
 
 `site/index.html` and page directories such as `site/buy/`, `site/rental/`, and `site/contact-us/` are the editable source files. Each page directory contains an `index.html` so the deployed site can use clean paths such as `/buy/`.
 
+The logo paths live in `site/partials/brand-logo.html`. `INLINE_LOGO` embeds them directly into page HTML at build/serve time; `currentColor` inherits each page’s existing palette. `INLINE_BRAND_ICON` embeds the same shape as a data-URL favicon. There is no runtime logo image request or dependency on the original design file.
+
 Pages that use the shared navigation contain a `SHARED_HEADER` marker. The renderer replaces that marker with `site/partials/site-header.html` while serving or building the site. Edit the partial or `scripts/render-html.js` for site-wide navigation changes; do not copy the generated header markup back from `dist/`.
 
 ### Listings data
@@ -171,7 +175,7 @@ Required Worker secrets and variables:
 | `RESEND_API_KEY` | Contact form and application notification email (secret) |
 | `APP_ENCRYPTION_KEY` | AES-256 key for applicant SSNs, 32 random bytes base64 (secret) |
 | `TURNSTILE_SECRET_KEY` | Optional; enforces human verification on the application form (secret) |
-| `OWNER_EMAIL` | The bootstrap manager. Always a manager, without a `staff` row — see below. Set it with `wrangler secret put OWNER_EMAIL`: a plain variable set in the dashboard is wiped by the next `wrangler deploy`, and this is the account that gets you back in |
+| `OWNER_EMAIL` | The platform owner and bootstrap Admin. Only this identity can grant/revoke Admin access. Always a manager, without a `staff` row — see below. Set it with `wrangler secret put OWNER_EMAIL`: a plain variable set in the dashboard is wiped by the next `wrangler deploy`, and this is the account that gets you back in |
 
 None of these are set locally except Supabase and `APP_ENCRYPTION_KEY`; `.dev.vars.example` says what a development machine needs instead.
 
@@ -263,27 +267,19 @@ already been asked to sign.
 
 **One value, one place it is written.** A building default is written on Properties; a single lease's override on the document screen; a tenant correction straight back to the application row. No screen writes a layer that belongs to another screen, which is why the settings form and the generate dialog were merged in the first place — two write paths to the same 147 values is how somebody edits a building's legal disclosures without realising it.
 
-#### Managers and agents
+#### Accounts and platform ownership
 
-Access answers one question — may this request reach the Worker — and `public.staff` answers the other: is this a **manager** or an **agent**. They are kept apart on purpose. Removing somebody from an Access group ends every session they have at once, which is what offboarding needs; a role is business data a manager reads and changes, and Access's application token carries an email but no group membership anyway.
+The current role workflow and migration instructions are in [Backoffice implementation](docs/backoffice/implementation.md), including the September 9 Admin dashboard and landlord onboarding changes. `manager` is the stored value for **Admin**.
 
-There is **no default role**. An email absent from `staff` is refused rather than treated as an agent, so anyone added to the Access group by mistake gains nothing. `OWNER_EMAIL` is the exception: it is always a manager, checked before any query, because a fresh database has no rows and somebody has to be able to add the first one.
+Cloudflare Access verifies identity; `staff` determines business permissions. Unknown or inactive accounts are refused. The configured `OWNER_EMAIL` is the protected platform owner and remains an Admin without a staff row. Only the Owner can appoint, demote or suspend another Admin, with an authorization reason and audit record. Ordinary Admins manage Agents and Landlords; they cannot alter peer Admins. Account type is fixed during ordinary editing, and Landlord accounts cannot become internal staff accounts.
 
-| | manager | agent |
-| --- | --- | --- |
-| Listings, media, applications, documents | ✅ | ✅ |
-| Correct an application | ✅ | ✅ |
-| Generate and send a lease | ✅ | ✅ |
-| Read the landlord's standing terms | ✅ | ✅ |
-| **Change them** — `PUT /lease/settings` | ✅ | ❌ |
-| **Override one on a single lease** | ✅ | ❌ |
-| See and change who uses the console | ✅ | ❌ |
+Agents see applications assigned to them or in which they collaborate. Landlords see assigned properties and explicitly shared rental recommendations, without original application material. Property defaults remain Admin controlled; Agents may edit only the allowed transaction fields for their own cases. The complete permission matrix is in `docs/backoffice/implementation.md`.
 
-The second refusal matters more than the first. A settings write lands in `lease_settings_audit`; an override does not, and it prints on the page somebody signs — so `normalizeOverrides` refuses manager fields for an agent on both lease routes, not only on the stored layers. `worker/staff.js` holds the policy, and `lease/tools/test-permissions.mjs` drives the real routes to prove it.
+Property default writes land in `lease_settings_audit`. Per-lease overrides are also checked: `normalizeOverrides` refuses manager-controlled fields for an Agent on both lease routes, not only on the stored layers. `worker/staff.js` holds the policy, and `lease/tools/test-permissions.mjs` drives the real routes to prove it.
 
 The admin page renders an agent's view read-only rather than hiding it: an agent has to be able to review what the lease will print. That is convenience only — the Worker refuses the write whatever the browser sends.
 
-**Order matters when deploying this the first time.** Run `supabase/schema.sql`, insert the first manager, `wrangler secret put OWNER_EMAIL`, *then* deploy the Worker. Deploy first and everyone is refused until the table exists — the Worker says so in as many words rather than reporting a permissions problem, but nobody can work in the meantime.
+**Order matters when deploying this the first time.** Run `supabase/schema.sql`, `supabase/backoffice.sql`, `supabase/workspace.sql`, then `supabase/administration.sql`; configure `OWNER_EMAIL` with `wrangler secret put OWNER_EMAIL`, *then* deploy the Worker. The Owner can create an Agent account and separately grant Admin access through Accounts & access. Deploy first and everyone is refused until the table exists — the Worker says so in as many words rather than reporting a permissions problem, but nobody can work in the meantime.
 
 Three doors reach a landlord value and all three are closed to an agent: `PUT /lease/settings`, an `overrides` entry on either lease route, and the `building_id` on a listing — re-pointing a unit at another building swaps all 93 per-building values at once, which is the same write by another name.
 
@@ -501,7 +497,7 @@ cannot end up shaped differently from a submitted one, and what the applicant
 originally wrote is kept and shown under anything that changed — the lease has
 the tenant warrant that their application is accurate, so the version they
 warranted has to survive being corrected. Landlord values are saved to the
-layer the registry says they belong to, company-wide or per building.
+property they belong to.
 
 The five values the lease repeats are edited in **both** places and are the
 same values: correcting a name on the lease screen writes it to the application
@@ -524,9 +520,9 @@ without anyone retyping the tenant's name into fourteen rider preambles.
 `lease/template/lease-template.docx` is the lease with every variable value
 replaced by a `{{placeholder}}`, and `lease/schema/fields.json` says where each
 of the 147 values comes from: 20 from the application and the listing, 125 from
-a stored setting, two typed in by the agent. Settings resolve in three layers,
-later winning: company (fees, fine schedule) < building (utilities, sprinkler,
-bedbug history, Good Cause exemption) < unit.
+a stored setting, two typed in by the agent. Settings resolve in two layers,
+later winning: property (fees, fine schedule, utilities, sprinkler, bedbug
+history, Good Cause exemption) < unit.
 
 A registry default is never a fallback when a lease is generated. Most of them
 came from one real building, so a field nobody stored counts as unanswered and
@@ -794,3 +790,7 @@ Also verify that:
 - `/admin/` prompts for sign-in and rejects unauthenticated requests.
 - The contact form submits successfully on the deployed site (`/api/contact`).
 - No credential or local configuration file is included in the commit.
+
+## Repository maintenance
+
+See [repository layout and delivery checkpoints](docs/repository.md) for source-file retention, local artifacts, validation commands and the ordered delivery history.
