@@ -4,7 +4,7 @@
 // where each one's value comes from. Two sources feed them:
 //
 //   deal     the application and the listing — tenant, dates, rent, address
-//   manager  a stored setting, resolved company < building < unit
+//   manager  a stored setting, resolved property < unit
 //
 // Per-lease overrides typed on the generate form win over both, because that
 // form is where a person confirms what is about to be signed. Who may type
@@ -181,15 +181,19 @@ export function formatOverrides(overrides) {
 
 // ------------------------------------------------------------ resolution
 
+// Two layers, not three. A company layer existed above these and was removed:
+// it let a lease assert a fee or a fine that no property page showed, and that
+// nobody could point at when asked where it came from. See
+// supabase/drop-company-layer.sql.
 function mergeLayers(layers) {
-  return { ...(layers?.company || {}), ...(layers?.building || {}), ...(layers?.unit || {}) };
+  return { ...(layers?.building || {}), ...(layers?.unit || {}) };
 }
 
 // Which layer answered each field, so the settings screen can show a person
 // whether a value is inherited or set here.
 export function fieldProvenance(layers) {
   const provenance = {};
-  for (const [name, values] of [["company", layers?.company], ["building", layers?.building], ["unit", layers?.unit]]) {
+  for (const [name, values] of [["building", layers?.building], ["unit", layers?.unit]]) {
     for (const id of Object.keys(values || {})) provenance[id] = name;
   }
   return provenance;

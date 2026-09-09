@@ -166,7 +166,7 @@ create table if not exists public.applications (
 
   status text not null default 'new'
     check (status in ('new', 'contacted', 'fee_pending', 'screening', 'review',
-                      'sent_to_landlord', 'needs_info', 'approved', 'declined',
+                      'sent_to_landlord', 'needs_info', 'approved', 'landlord_approved', 'declined',
                       'lease_sent', 'lease_signed')),
   notes text,
 
@@ -211,9 +211,16 @@ grant select, insert, update, delete on public.applications to service_role;
 -- ---------------------------------------------------------------------------
 
 -- Of the lease's 130 placeholders, 110 are answered by a manager rather than
--- by the deal, and those answer at three levels: a company default, something
--- true of a building, something true of one unit. Generating a lease reads all
--- three and the later layer wins — company < building < unit.
+-- by the deal, and those answer at two levels: something true of a property,
+-- something true of one unit. Generating a lease reads both and the later
+-- layer wins — property < unit.
+--
+-- There is deliberately no layer above the property. One existed, holding the
+-- terms that are the same company-wide, and it meant a lease could assert a
+-- fine or a gas emergency number that nobody remembered setting and that no
+-- property page showed. Every manager value is now typed on the property it
+-- prints for: the same figure typed on ten properties is worth more than one
+-- figure inherited invisibly by ten.
 --
 -- lease/schema/fields.json is the authority on which field ids exist and what
 -- each one means. Nothing here repeats it: this stores values, the registry
@@ -263,7 +270,7 @@ create trigger buildings_set_updated_at
 
 -- Which property a unit belongs to. Declared here rather than in the listings
 -- table above because buildings is declared later in this file. Nullable: a
--- listing under no property reads the company defaults only. property_name is
+-- listing under no property has no landlord values at all. property_name is
 -- the display string; this is what settings key off. Deleting a building that
 -- still has units is refused rather than quietly unlinking them: an unlinked
 -- unit loses its whole building layer, which is the silent-miss this table
@@ -299,16 +306,15 @@ as $$
   end;
 $$;
 
--- One row per layer: one company row, one per building, one per unit.
--- field_values holds only what that layer actually answers, keyed by registry
--- field id, so merging a lease is company || building || unit.
+-- One row per layer: one per building, one per unit. field_values holds only
+-- what that layer actually answers, keyed by registry field id, so merging a
+-- lease is building || unit.
 create table if not exists public.lease_settings (
   id uuid primary key default gen_random_uuid(),
 
-  scope text not null check (scope in ('company', 'building', 'unit')),
+  scope text not null check (scope in ('building', 'unit')),
 
-  -- Exactly one of these is set, decided by scope. The company layer has
-  -- neither, because there is one of it.
+  -- Exactly one of these is set, decided by scope.
   building_id uuid references public.buildings (id) on delete cascade,
   listing_id uuid references public.listings (id) on delete cascade,
 
@@ -320,7 +326,6 @@ create table if not exists public.lease_settings (
   updated_at timestamptz not null default now(),
 
   constraint lease_settings_scope_target check (
-    (scope = 'company'  and building_id is null     and listing_id is null) or
     (scope = 'building' and building_id is not null and listing_id is null) or
     (scope = 'unit'     and building_id is null     and listing_id is not null)
   ),
@@ -330,11 +335,8 @@ create table if not exists public.lease_settings (
   )
 );
 
--- Partial unique indexes rather than one composite key, because the company
--- row has no target to key on.
-create unique index if not exists lease_settings_company_idx
-  on public.lease_settings (scope) where scope = 'company';
-
+-- Partial unique indexes rather than one composite key, because the two scopes
+-- key off different columns.
 create unique index if not exists lease_settings_building_idx
   on public.lease_settings (building_id) where scope = 'building';
 
@@ -451,7 +453,7 @@ begin
 end;
 $$;
 
--- The three layers that apply to one unit, returned separately rather than
+-- The two layers that apply to one unit, returned separately rather than
 -- pre-merged: the admin screen has to show which layer answered each field,
 -- because "inherited from the building" and "set on this unit" are different
 -- things to a person deciding whether a lease is safe to send.
@@ -463,9 +465,6 @@ security definer
 set search_path = public
 as $$
   select jsonb_build_object(
-    'company', coalesce(
-      (select field_values from public.lease_settings where scope = 'company'),
-      '{}'::jsonb),
     'building', coalesce(
       (select s.field_values
          from public.lease_settings s

@@ -27,6 +27,13 @@ DEV_ADMIN_EMAIL=
 # In production the role comes from public.staff, never from a variable.
 DEV_ADMIN_ROLE=
 
+# Platform owner: the only identity that can grant/revoke Admin access.
+# Owner is configuration, not a selectable account type in Accounts & access.
+# For a local Owner session, match DEV_ADMIN_EMAIL and use manager above.
+# In production configure OWNER_EMAIL as a Worker secret and admit that address
+# through Cloudflare Access. Ordinary Admins cannot change it from the console.
+OWNER_EMAIL=
+
 # The DEVELOPMENT Supabase project — not production. Create a second free
 # project and run supabase/schema.sql on it, then paste its details here.
 # The admin page prints the project name it is connected to, so if this ever

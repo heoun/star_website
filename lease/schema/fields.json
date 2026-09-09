@@ -7,7 +7,7 @@
     "manager": "A building or company default, set once in admin settings.",
     "agent": "The agent types this in for each lease.",
     "_needs_setup": "Fields marked needs_setup have no default because the source lease left them blank. A manager has to supply a value before the first lease is generated.",
-    "_scope": "manager fields carry a scope: 'company' settings are the same everywhere; 'building' settings differ per building and their defaults came from one specific building, so review them before reusing.",
+    "_scope": "Every manager field is set per property, on that property's defaults page. There is no company-wide layer: a value that should be the same on ten properties is typed on ten properties, so no property can inherit a term nobody remembers setting. The defaults shipped here came from one specific building — review them before reusing.",
     "_source_value": "Removed. It held what the one real lease this template was built from actually said — a landlord entity, an escrow bank, a payee address and phone — which is that landlord's and that tenancy's data, not a default. The find/replace table it came from now lives outside the repository, in notes/template-rules.json."
   },
   "groups": [
@@ -340,7 +340,7 @@
       "type": "text",
       "required": true,
       "default": "11:59 PM",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "lease.vacancy_lease_date",
@@ -371,7 +371,7 @@
       "type": "integer",
       "required": true,
       "default": "1",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "deposit.amount",
@@ -659,7 +659,7 @@
       "type": "text",
       "required": true,
       "default": "516-829-9401",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "owner_rep.name",
@@ -671,7 +671,7 @@
       "default": null,
       "note": "Section A of the DHCR electronic lease consent form.",
       "needs_setup": true,
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "owner_rep.email",
@@ -682,7 +682,7 @@
       "required": true,
       "default": null,
       "needs_setup": true,
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "owner_rep.mailing_address",
@@ -693,7 +693,7 @@
       "required": true,
       "default": null,
       "needs_setup": true,
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fee.returned_payment",
@@ -703,7 +703,7 @@
       "type": "money",
       "required": true,
       "default": "$25.00",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fee.lock_change_admin",
@@ -713,7 +713,7 @@
       "type": "money",
       "required": true,
       "default": "$75.00",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fee.animal_liability_cap",
@@ -723,7 +723,7 @@
       "type": "money",
       "required": true,
       "default": "$100.00",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fee.lptli_monthly",
@@ -733,7 +733,7 @@
       "type": "money",
       "required": true,
       "default": "$25.00",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fee.renters_insurance_waiver_monthly",
@@ -743,7 +743,7 @@
       "type": "money",
       "required": true,
       "default": "$25.00",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fee.lptli_admin_monthly",
@@ -754,7 +754,7 @@
       "required": false,
       "default": null,
       "note": "Blank in the source lease.",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "insurance.min_liability",
@@ -764,7 +764,7 @@
       "type": "money",
       "required": true,
       "default": "$100,000.00",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "insurance.required_yes",
@@ -778,7 +778,7 @@
       },
       "required": false,
       "default": true,
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "insurance.required_no",
@@ -792,7 +792,7 @@
       },
       "required": false,
       "default": false,
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "guest.consecutive_days",
@@ -802,7 +802,7 @@
       "type": "integer",
       "required": true,
       "default": "3",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "guest.total_days",
@@ -812,7 +812,7 @@
       "type": "integer",
       "required": true,
       "default": "5",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "guest.window_days",
@@ -822,7 +822,7 @@
       "type": "integer",
       "required": true,
       "default": "14",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "attorney_fees.cap_enabled",
@@ -836,7 +836,7 @@
       },
       "required": false,
       "default": false,
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "attorney_fees.cap_amount",
@@ -847,7 +847,7 @@
       "required": false,
       "default": null,
       "note": "Only prints meaningfully when attorney_fees.cap_enabled is checked.",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "utility.water",
@@ -1217,7 +1217,7 @@
       "type": "text",
       "required": true,
       "default": "$100",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fine.dog_waste",
@@ -1227,7 +1227,7 @@
       "type": "text",
       "required": true,
       "default": "$100",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fine.common_space_cleanliness",
@@ -1237,7 +1237,7 @@
       "type": "text",
       "required": true,
       "default": "$100",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fine.hallway_items",
@@ -1247,7 +1247,7 @@
       "type": "text",
       "required": true,
       "default": "$50",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fine.trash_disposal",
@@ -1257,7 +1257,7 @@
       "type": "text",
       "required": true,
       "default": "$50",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fine.furniture_damage",
@@ -1267,7 +1267,7 @@
       "type": "text",
       "required": true,
       "default": "Responsible for paying for fix or replacement",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fine.parking",
@@ -1277,7 +1277,7 @@
       "type": "text",
       "required": true,
       "default": "Responsible for charge schedule of towing company",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fine.short_term_rental",
@@ -1287,7 +1287,7 @@
       "type": "text",
       "required": true,
       "default": "Strictly prohibited. Fines per city guidelines and permitted under NYC law.",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fine.other_violation",
@@ -1297,7 +1297,7 @@
       "type": "text",
       "required": true,
       "default": "$50",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "fine.no_insurance",
@@ -1307,7 +1307,7 @@
       "type": "text",
       "required": true,
       "default": "$25 per month of noncompliance",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "sprinkler.mark_option1",
@@ -1440,7 +1440,7 @@
       "type": "text",
       "required": true,
       "default": "Con Edison",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "gas.provider_phone",
@@ -1450,7 +1450,7 @@
       "type": "text",
       "required": true,
       "default": "1 (800) 752-6633",
-      "scope": "company"
+      "scope": "building"
     },
     {
       "id": "smoking.inside_units",

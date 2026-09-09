@@ -20,6 +20,8 @@ export async function sendEmail(request, env, message) {
   const local = isLocalRequest(request);
 
   if (local && env.DEV_REAL_EMAIL !== "true") {
+    // Local demo/test inbox; never used for a non-loopback request.
+    if (env.LOCAL_EMAIL_SINK?.send) { await env.LOCAL_EMAIL_SINK.send(message); return true; }
     console.log(
       [
         "",

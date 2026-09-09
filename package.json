@@ -11,7 +11,12 @@
     "deploy": "npx --yes wrangler@4 deploy",
     "gate": "depcruise backend worker --config backend/tools/arch-gate/dependency-cruiser.cjs",
     "typecheck": "tsc -p backend/tsconfig.json",
-    "smoke": "node backend/tools/smoke.mjs"
+    "smoke": "node backend/tools/smoke.mjs",
+    "test:workspace": "node backend/tools/test-workspace.mjs",
+    "test:workspace:db": "node backend/tools/test-workspace-schema.mjs",
+    "test:portal": "node backend/tools/test-portal-request.mjs",
+    "test:administration": "node backend/tools/test-administration.mjs",
+    "test:administration:db": "node backend/tools/test-administration-schema.mjs"
   },
   "devDependencies": {
     "typescript": "^5.6.0",

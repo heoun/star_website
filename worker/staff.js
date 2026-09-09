@@ -31,8 +31,9 @@ import { agentMayWriteField } from "../site/shared/lease-permissions.js";
 
 export const MANAGER = "manager";
 export const AGENT = "agent";
+export const LANDLORD = "landlord";
 
-const ROLES = new Set([MANAGER, AGENT]);
+const ROLES = new Set([MANAGER, AGENT, LANDLORD]);
 
 export function normalizeRole(value) {
   const role = String(value ?? "").trim().toLowerCase();
@@ -66,11 +67,13 @@ export async function resolveStaff(env, identity) {
     const role = normalizeRole(identity.role);
     if (!role) {
       return {
-        error: `DEV_ADMIN_ROLE is "${identity.role}". Use "manager" or "agent".`,
+        error: `DEV_ADMIN_ROLE is "${identity.role}". Use "manager", "agent" or "landlord".`,
         status: 403
       };
     }
-    return { identity: { ...identity, email, role } };
+    // Landlord assignments always come from the database, including locally.
+    const member = [LANDLORD, AGENT].includes(role) ? await fetchStaffMember(env, email) : null;
+    return { identity: { ...identity, email, role, owner: role === MANAGER && email === ownerEmail(env), property_ids: member?.active ? member.property_ids || [] : [] } };
   }
 
   const owner = ownerEmail(env);
@@ -98,7 +101,7 @@ export async function resolveStaff(env, identity) {
   if (!member || !member.active) {
     return {
       error: `${email} is not set up to use the admin console. `
-        + "A manager can add the account under Staff.",
+        + "An Admin can add the account under Accounts & access.",
       status: 403
     };
   }
@@ -108,7 +111,7 @@ export async function resolveStaff(env, identity) {
     return { error: `${email} has an unrecognised role. A manager can correct it.`, status: 403 };
   }
 
-  return { identity: { ...identity, email, role, name: member.name || "" } };
+  return { identity: { ...identity, email, role, owner: false, name: member.name || "", property_ids: member.property_ids || [] } };
 }
 
 // The values an agent may not write, decided by the whitelist in

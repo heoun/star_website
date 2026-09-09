@@ -1,9 +1,12 @@
+import { handleAdministration } from "./administration.js";
 import { verifyAccessRequest } from "./access.js";
+import { handleLandlordRead, handleChangeRequests, handleCaseWorkspace, requireCaseAccess, caseWorkspace } from "./backoffice.js";
+import { projectCase } from "../backend/app/workspace.ts";
 import { describeEnvironment, devIdentity } from "./env.js";
 import { purgeListingsCache } from "./listings.js";
 import {
-  AGENT_APPLICATION_COLUMNS, MANAGER, AGENT,
-  isManager, isManagerControlled, normalizeRole, resolveStaff
+  AGENT_APPLICATION_COLUMNS,
+  isManager, isManagerControlled, resolveStaff
 } from "./staff.js";
 import {
   applyLeaseSettings,
@@ -11,17 +14,12 @@ import {
   deleteApplicationDocument,
   deleteListing,
   deleteMediaRow,
-  deleteStaffMember,
-  fetchStaff,
+  requireConfig,
   isMissingTable,
-  upsertStaffMember,
   fetchApplicationDocument,
   fetchApplicationForLease,
   fetchApplication,
-  keepsLeaseSnapshots,
   keepsSubmitted,
-  recordsDecisions,
-  fetchApplications,
   fetchApplicationSsn,
   fetchBuilding,
   fetchBuildings,
@@ -71,10 +69,6 @@ import {
 const CATEGORIES = ["residential", "commercial"];
 const TRANSACTION_TYPES = ["sale", "rental"];
 const MEDIA_KINDS = ["photo", "floor_plan"];
-const APPLICATION_STATUSES = [
-  "new", "contacted", "fee_pending", "screening", "review",
-  "sent_to_landlord", "needs_info", "approved", "declined", "lease_sent", "lease_signed"
-];
 const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 const MAX_VIDEO_BYTES = 60 * 1024 * 1024;
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -274,21 +268,51 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
       return json({
         email: identity.email,
         role: identity.role,
+        owner: identity.owner === true,
+        demo: identity.development === true && Boolean(env.LOCAL_EMAIL_SINK),
         name: identity.name || "",
+        property_ids: identity.property_ids || [],
         ...describeEnvironment(request, env)
       });
     }
 
-    if (resource === "staff") {
-      return await handleStaff(request, env, identity, id);
+    // Owner governs access only, including when following an old business URL.
+    if (identity.owner === true) {
+      if (resource === "staff" && segments.length <= 3) return await handleAdministration(request, env, identity, resource, id, subresource);
+      if (resource === "buildings" && segments.length === 1 && request.method === "GET") {
+        return json({ buildings: (await fetchBuildings(env)).map(({ id, name }) => ({ id, name })) });
+      }
+      return json({ error: "Platform Owner manages accounts and permissions only. Business operations require an Admin account." }, 403);
+    }
+
+    if (resource === "requests" && !subresource) {
+      return await handleChangeRequests(request, env, identity, id);
+    }
+    if (resource === "cases" && segments.length <= 3) {
+      return await handleCaseWorkspace(request, env, identity, id, subresource);
+    }
+
+    // Fail closed before dispatching any legacy staff endpoint, including media,
+    // lease generation and SSN reveal. A hidden button is not authorization.
+    if (identity.role === "landlord") {
+      return await handleLandlordRead(request, env, identity, resource, id, subresource);
+    }
+
+    if (["staff", "onboarding"].includes(resource) && segments.length <= 3) {
+      return await handleAdministration(request, env, identity, resource, id, subresource);
     }
 
     if (resource === "media" && id) {
+      if (!isManager(identity)) {
+        const media = await fetchMediaRow(env, id);
+        const listing = media && await fetchListing(env, media.listing_id, { publishedOnly: false });
+        if (!listing || !(identity.property_ids || []).includes(listing.building_id)) return json({ error: "You cannot edit this property's marketing content." }, 403);
+      }
       return await handleMediaItem(request, env, ctx, id);
     }
 
     if (resource === "documents" && id) {
-      return await handleDocumentItem(request, env, ctx, id);
+      return await handleDocumentItem(request, env, ctx, identity, id);
     }
 
     if (resource === "applications") {
@@ -307,6 +331,12 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
       return json({ error: "Unknown endpoint." }, 404);
     }
 
+    if (!isManager(identity) && request.method !== "GET") {
+      const listing = id ? await fetchListing(env, id, { publishedOnly: false }) : await request.clone().json().catch(() => null);
+      const propertyId = listing?.building_id || (request.method === "PATCH" && id && listing ? (await request.clone().json().catch(() => null))?.building_id : null);
+      if (!propertyId || !(identity.property_ids || []).includes(propertyId)) return json({ error: "An admin must assign you marketing access to this property first." }, 403);
+    }
+
     if (id && subresource === "uploads" && request.method === "POST") {
       return await handleUpload(request, env, id);
     }
@@ -321,7 +351,8 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
 
     if (!id && request.method === "GET") {
       const rows = await fetchListings(env, { publishedOnly: false });
-      return json({ listings: rows.map(toAdminListing) });
+      return json({ listings: rows.filter(row => isManager(identity) || row.published || (identity.property_ids || []).includes(row.building_id))
+        .map(row => ({ ...toAdminListing(row), can_edit: isManager(identity) || (identity.property_ids || []).includes(row.building_id) })) });
     }
 
     if (!id && request.method === "POST") {
@@ -380,27 +411,29 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
 
     return json({ error: "Method not allowed." }, 405);
   } catch (error) {
-    console.error("Admin request failed", error);
-    return json({ error: "The request could not be completed." }, 500);
+    if (!error.status || error.status >= 500) console.error("Admin request failed", error);
+    return json({ error: error.status ? error.message : "The request could not be completed." }, error.status || 500);
   }
 }
 
 // A document the applicant uploaded through the portal: staff read it, and
 // can remove one that is wrong or was uploaded twice. Uploading stays on the
 // portal side — the paperwork is the applicant's to provide.
-async function handleDocumentItem(request, env, ctx, documentId) {
+async function handleDocumentItem(request, env, ctx, identity, documentId) {
   if (!UUID_PATTERN.test(documentId)) {
     return json({ error: "Document not found." }, 404);
   }
 
   const row = await fetchApplicationDocument(env, documentId);
   if (!row) return json({ error: "Document not found." }, 404);
+  const application = await requireCaseAccess(env, identity, row.application_id);
 
   if (request.method === "GET") {
     return serveDocumentFile(env, row);
   }
 
   if (request.method === "DELETE") {
+    if (["landlord_approved", "lease_sent", "lease_signed"].includes(application.status)) return json({ error: "Documents are locked after landlord confirmation." }, 409);
     await deleteApplicationDocument(env, documentId);
     ctx.waitUntil(requireDocsBucket(env).delete(row.path));
     return json({ deleted: true });
@@ -410,6 +443,7 @@ async function handleDocumentItem(request, env, ctx, documentId) {
 }
 
 async function handleApplications(request, env, ctx, identity, id, subresource) {
+  const scoped = id && UUID_PATTERN.test(id) ? await requireCaseAccess(env, identity, id) : null;
   // Reveal endpoint: decrypts one SSN on demand. The list payload never
   // carries more than the last four digits, and this is the only way to the
   // rest of them.
@@ -445,7 +479,8 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
 
   if (!id) {
     if (request.method === "GET") {
-      const rows = await fetchApplications(env);
+      const summaries = await caseWorkspace(env).list(identity);
+      const rows = summaries;
       // The checklist registry rides along so the admin page names document
       // types the same way the portal does, from the same list.
       return json({ applications: rows, document_types: DOCUMENT_TYPES });
@@ -456,6 +491,7 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
   if (!UUID_PATTERN.test(id)) {
     return json({ error: "Application not found." }, 404);
   }
+  if (request.method === "GET") return json({ application: projectCase(identity, scoped, true), document_types: DOCUMENT_TYPES });
 
   if (request.method === "PATCH") {
     const body = await request.json().catch(() => null);
@@ -464,37 +500,14 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
     }
     const values = {};
 
-    if (body.status !== undefined) {
-      const status = cleanLine(body.status, 20).toLowerCase();
-      if (!APPLICATION_STATUSES.includes(status)) return json({ error: "Invalid status." }, 422);
-      values.status = status;
-
-      // A lease that goes out for signature stops following the settings
-      // screen. Everything it was filled from is frozen onto the application
-      // now, so a manager correcting a building default next week cannot
-      // change what somebody has already been asked to sign.
-      //
-      // Only the first time: a lease that is already out was generated from
-      // the values recorded then, not from today's.
-      if (status === "lease_sent" && keepsLeaseSnapshots()) {
-        const current = await fetchApplication(env, id);
-        if (current && !current.lease_snapshot) {
-          const snapshot = await freezeLease(env, id);
-          if (snapshot) values.lease_snapshot = snapshot;
-        }
-      }
-
-      // Who moved it, when, and why. Stamped here rather than sent by the
-      // browser: the console can say what it is doing, but it does not get to
-      // say who is doing it.
-      if (recordsDecisions()) {
-        values.decision = {
-          status,
-          by: identity.name || identity.email,
-          at: new Date().toISOString(),
-          reason: cleanMultiline(body.decision_reason, 2000) || ""
-        };
-      }
+    if (body.status !== undefined) return json({ error: "Use the case's available actions to change its stage." }, 409);
+    const changingFacts = Object.keys(body).some(key => !["notes", "decision_reason"].includes(key));
+    if (changingFacts && ["landlord_approved", "lease_sent", "lease_signed"].includes(scoped.status)) return json({ error: "Confirmed lease details are locked. Start a reviewed revision before changing them." }, 409);
+    if (changingFacts) {
+      const workspace = { ...scoped.workspace };
+      delete workspace.review; delete workspace.recommendation; delete workspace.landlord_decision;
+      if (workspace.checks) workspace.checks = { ...workspace.checks, documents: "pending" };
+      values.workspace = workspace; values.status = "review";
     }
 
     if (body.notes !== undefined) {
@@ -540,7 +553,7 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
 
     let row;
     try {
-      row = await updateApplication(env, id, values);
+      row = await updateApplication(env, id, values, { version: scoped.workspace_version });
     } catch (error) {
       // A status this Worker knows and the table does not. It means the
       // database has not had supabase/schema.sql run on it since "needs
@@ -554,8 +567,8 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
       }
       throw error;
     }
-    if (!row) return json({ error: "Application not found." }, 404);
-    return json({ application: row });
+    if (!row) return json({ error: "This application changed. Refresh before saving." }, 409);
+    return json({ application: await caseWorkspace(env).get(identity, id) });
   }
 
   if (request.method === "DELETE") {
@@ -656,129 +669,7 @@ async function handleMediaItem(request, env, ctx, mediaId) {
   return json({ error: "Method not allowed." }, 405);
 }
 
-// ---- Staff accounts ----
-
-// Managing who may use the console, from inside the console.
-//
-// Manager-only, and it refuses two things a manager might otherwise do by
-// accident: change their own role, and remove their own account. Either would
-// end with the person holding the keys locked outside, and on a small team that
-// can mean nobody left who can let them back in.
-//
-// OWNER_EMAIL is not editable here at all. It is the bootstrap manager, it is
-// configuration rather than data, and it is what makes an empty table
-// recoverable — a row in this table cannot be allowed to contradict it.
-// Whether an active manager other than `email` is left on the list. Read fresh
-// rather than cached: the answer decides whether the console can be reopened.
-async function anotherManagerRemains(env, email) {
-  const rows = await fetchStaff(env);
-  return rows.some((row) => row.email !== email && row.role === MANAGER && row.active);
-}
-
-async function handleStaff(request, env, identity, id) {
-  if (!isManager(identity)) {
-    return json({ error: "Only a manager can see or change who uses the admin console." }, 403);
-  }
-
-  const owner = String(env.OWNER_EMAIL || "").trim().toLowerCase();
-
-  if (request.method === "GET" && !id) {
-    let rows;
-    try {
-      rows = await fetchStaff(env);
-    } catch (error) {
-      if (!isMissingTable(error)) throw error;
-      return json({
-        error: "The admin account list does not exist on this database yet. "
-          + "Run supabase/schema.sql on it, then reload."
-      }, 503);
-    }
-    return json({
-      staff: rows,
-      owner: owner || null,
-      you: { email: identity.email, role: identity.role }
-    });
-  }
-
-  if (request.method === "PUT" && !id) {
-    const body = await request.json().catch(() => ({}));
-    const email = cleanLine(body.email, 180).toLowerCase();
-    const role = normalizeRole(body.role);
-
-    if (!EMAIL_PATTERN.test(email)) return json({ error: "Enter a valid email address." }, 422);
-    if (!role) return json({ error: `Role must be ${MANAGER} or ${AGENT}.` }, 422);
-    if (owner && email === owner) {
-      return json({
-        error: "That address is the owner account, set by configuration. It is always a manager."
-      }, 422);
-    }
-    if (email === identity.email && role !== identity.role) {
-      return json({
-        error: "You cannot change your own role. Ask another manager to do it."
-      }, 422);
-    }
-
-    // An omitted `active` keeps whatever the row already says. Defaulting it to
-    // true would let a PUT that only meant to fix a name quietly reinstate a
-    // deactivated account. The string "false" is a value a form can send, and
-    // Boolean("false") is true, so it is read rather than coerced.
-    const existing = (await fetchStaff(env)).find((row) => row.email === email);
-    const active = body.active === undefined
-      ? (existing ? existing.active : true)
-      : !(body.active === false || body.active === "false" || body.active === 0);
-
-    if (email === identity.email && !active) {
-      return json({ error: "You cannot deactivate your own account." }, 422);
-    }
-
-    // Nobody may remove the last way back in. With OWNER_EMAIL set there is
-    // always one, which is what it is for; without it, this is the only guard.
-    const losesManager = existing && existing.role === MANAGER && existing.active
-      && (role !== MANAGER || !active);
-    if (!owner && losesManager && !(await anotherManagerRemains(env, email))) {
-      return json({
-        error: "That is the last manager. Add another before changing this one, "
-          + "or set OWNER_EMAIL so there is always a way back in."
-      }, 422);
-    }
-
-    const member = await upsertStaffMember(env, {
-      email,
-      role,
-      name: cleanLine(body.name, 120) || null,
-      active
-    });
-    return json({ member });
-  }
-
-  if (request.method === "DELETE" && id) {
-    const email = decodeURIComponent(id).trim().toLowerCase();
-    if (!EMAIL_PATTERN.test(email)) return json({ error: "Enter a valid email address." }, 422);
-    if (email === identity.email) {
-      return json({ error: "You cannot remove your own account." }, 422);
-    }
-    if (owner && email === owner) {
-      return json({ error: "The owner account is set by configuration, not here." }, 422);
-    }
-
-    const existing = (await fetchStaff(env)).find((row) => row.email === email);
-    // Reported rather than answered "deleted": a typo that matched nothing
-    // otherwise reads as a person successfully removed.
-    if (!existing) return json({ error: `${email} is not on the list.` }, 404);
-
-    if (!owner && existing.role === MANAGER && existing.active
-      && !(await anotherManagerRemains(env, email))) {
-      return json({
-        error: "That is the last manager. Add another first, or set OWNER_EMAIL."
-      }, 422);
-    }
-
-    await deleteStaffMember(env, email);
-    return json({ deleted: true });
-  }
-
-  return json({ error: "Method not allowed." }, 405);
-}
+// Account governance routes live in worker/administration.js.
 
 // The page itself, not the API behind it. Somebody who passes Access but has no
 // staff row would otherwise get the console shell and watch every request in it
@@ -808,7 +699,10 @@ function deniedPage(message, status = 403) {
 
 // ---- Lease generation ----
 
-const LEASE_SCOPES = ["company", "building", "unit"];
+// Two layers. A lease value belongs to a property, or to one apartment of it.
+// The company layer that used to sit above both is gone — see
+// supabase/drop-company-layer.sql for what happened to what it held.
+const LEASE_SCOPES = ["building", "unit"];
 const BUILDING_FIELDS = [
   "name", "street", "city", "state", "state_abbr", "zip", "landlord_signer_email"
 ];
@@ -930,27 +824,26 @@ async function handleLeaseSettings(request, env, identity) {
   if (request.method === "GET") {
     const listingId = url.searchParams.get("listing_id");
 
-    // A unit view needs all three layers: the screen shows which one answered
-    // each field, because inherited and set-here are different to a person
-    // deciding whether a lease is safe to send.
+    // A unit view needs both layers: the screen shows which one answered each
+    // field, because inherited and set-here are different to a person deciding
+    // whether a lease is safe to send.
     if (listingId) {
       if (!UUID_PATTERN.test(listingId)) return json({ error: "Listing not found." }, 404);
       const layers = await fetchLeaseLayers(env, listingId);
       return json({ layers, provenance: fieldProvenance(layers) });
     }
 
-    const scope = cleanLine(url.searchParams.get("scope"), 20) || "company";
-    if (!LEASE_SCOPES.includes(scope)) return json({ error: "Unknown settings scope." }, 422);
+    // Without a listing there is one layer left to ask for, and it needs a
+    // property to be a layer at all.
+    const scope = cleanLine(url.searchParams.get("scope"), 20) || "building";
+    if (scope !== "building") return json({ error: "Unknown settings scope." }, 422);
 
     const buildingId = url.searchParams.get("building_id");
-    if (scope === "building" && !UUID_PATTERN.test(buildingId || "")) {
+    if (!UUID_PATTERN.test(buildingId || "")) {
       return json({ error: "A building is required for building settings." }, 422);
     }
 
-    const row = await fetchLeaseSettingsLayer(env, {
-      scope,
-      buildingId: scope === "building" ? buildingId : null
-    });
+    const row = await fetchLeaseSettingsLayer(env, { scope, buildingId });
     return json({ scope, field_values: row?.field_values || {}, updated_at: row?.updated_at || null });
   }
 
@@ -1007,6 +900,7 @@ async function handleLeaseFromScratch(request, env, identity) {
   if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
 
   const body = await request.json().catch(() => ({}));
+  if (body.mode === "final") return json({ error: "Create the final lease from a landlord-confirmed case." }, 409);
   const listingId = body.listing_id || null;
   if (listingId && !UUID_PATTERN.test(listingId)) return json({ error: "Listing not found." }, 404);
 
@@ -1043,7 +937,7 @@ async function handleLeaseFromScratch(request, env, identity) {
   });
 }
 
-const EMPTY_LAYERS = { company: {}, building: {}, unit: {} };
+const EMPTY_LAYERS = { building: {}, unit: {} };
 
 // The three modes every lease request answers in, in one place so the rule that
 // a final lease may not carry an unanswered required value cannot drift apart
@@ -1088,6 +982,9 @@ async function handleLeaseDocument(request, env, identity, applicationId) {
   if (!UUID_PATTERN.test(applicationId)) return json({ error: "Application not found." }, 404);
 
   const body = await request.json().catch(() => ({}));
+  const scoped = await requireCaseAccess(env, identity, applicationId);
+  if (body.mode === "final" && (!scoped.workspace?.landlord_decision || scoped.workspace.landlord_decision.outcome !== "accepted")) return json({ error: "Landlord confirmation is required before producing the final lease." }, 409);
+  if (["landlord_approved", "lease_sent", "lease_signed"].includes(scoped.status) && Object.keys(body.overrides || {}).length) return json({ error: "These terms were confirmed by the landlord. Use the saved version." }, 409);
   const application = await fetchApplicationForLease(env, applicationId);
   if (!application) return json({ error: "Application not found." }, 404);
 
@@ -1103,7 +1000,8 @@ async function handleLeaseDocument(request, env, identity, applicationId) {
 
   const today = todayParts(body.today);
   const deal = dealValues({ application, listing, building, today });
-  const live = resolveValues({ layers, deal, overrides });
+  const savedTerms = scoped.workspace?.recommendation?.terms || scoped.workspace?.terms || {};
+  const live = resolveValues({ layers, deal, overrides: { ...savedTerms, ...overrides } });
 
   // A lease that has gone out is no longer a view of the settings screen. It
   // was generated from particular values, somebody has it in front of them,
@@ -1114,10 +1012,10 @@ async function handleLeaseDocument(request, env, identity, applicationId) {
   const frozen = application.lease_snapshot && typeof application.lease_snapshot === "object"
     ? application.lease_snapshot
     : null;
-  const values = frozen ? { ...frozen, ...formatOverrides(overrides) } : live.values;
+  const values = frozen ? { ...frozen } : live.values;
   const missing = frozen ? missingIn(values) : live.missing;
 
-  return respondWithLease(request, env, {
+  const response = await respondWithLease(request, env, {
     mode: cleanLine(body.mode, 10) || "values",
     values,
     missing,
@@ -1131,28 +1029,14 @@ async function handleLeaseDocument(request, env, identity, applicationId) {
     },
     filename: leaseFilename({ application, listing })
   });
-}
-
-// The values one application's lease would be generated from right now.
-//
-// The same walk handleLeaseDocument does, without the document: the listing,
-// its building, the settings layers that apply, and the deal the application
-// carries. Returns null rather than throwing when the listing has been
-// removed — a status change should not fail because a snapshot could not be
-// taken, it should just not take one.
-async function freezeLease(env, applicationId) {
-  try {
-    const application = await fetchApplicationForLease(env, applicationId);
-    const listing = application?.listings;
-    if (!listing) return null;
-
-    const building = listing.building_id ? await fetchBuilding(env, listing.building_id) : null;
-    const layers = await fetchLeaseLayers(env, listing.id);
-    const deal = dealValues({ application, listing, building, today: todayParts() });
-    return resolveValues({ layers, deal }).values;
-  } catch {
-    return null;
+  // Final downloads and later signatures must use the same immutable values.
+  // Produce the file before persisting; a failed template does not lock a lease.
+  if (body.mode === "final" && response.ok && !frozen) {
+    await caseWorkspace(env).execute(identity, applicationId, {
+      action: "prepare_lease", version: scoped.workspace_version || 0, lease_snapshot: values
+    });
   }
+  return response;
 }
 
 // What the lease screen changed but did not save. It may correct the deal — a

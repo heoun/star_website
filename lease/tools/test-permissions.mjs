@@ -61,12 +61,12 @@ globalThis.fetch = async (url, init = {}) => {
     if ((init.method || "GET") === "DELETE") return reply([], 204);
     if (init.method === "POST") return reply([JSON.parse(init.body)]);
     const email = decodeURIComponent((target.match(/email=eq\.([^&]+)/) || [])[1] || "");
-    return reply(email ? staffRows.filter((row) => row.email === email) : staffRows);
+    return reply(email === "agent@starreusa.com" ? [{ email, role: "agent", active: true, property_ids: [BUILDING_ID] }] : email ? staffRows.filter((row) => row.email === email) : staffRows);
   }
 
   if (target.includes("/rest/v1/applications")) {
     return reply([{
-      ...applicationExtras,
+      responsible_email: "agent@starreusa.com", collaborator_emails: [], workspace_version: 0, workspace: {},
       id: APPLICATION_ID,
       listing_id: LISTING_ID,
       name: "Marisol Okonkwo",
@@ -79,7 +79,7 @@ globalThis.fetch = async (url, init = {}) => {
         id: LISTING_ID, title: "Evergarden 7A", property_name: "Evergarden",
         unit: "7A", location: "81-07 Kew Gardens Road, Kew Gardens, NY",
         price_amount: 4500, building_id: null, created_at: "2026-08-20T15:00:00Z"
-      }
+      }, ...applicationExtras
     }]);
   }
 
@@ -107,10 +107,10 @@ globalThis.fetch = async (url, init = {}) => {
   }
 
   if (target.includes("/rest/v1/rpc/lease_settings_for_listing")) {
-    return reply({ company: {}, building: {}, unit: {} });
+    return reply({ building: {}, unit: {} });
   }
   if (target.includes("/rest/v1/rpc/lease_settings_apply")) {
-    return reply({ scope: "company", field_values: {} });
+    return reply({ scope: "building", field_values: {} });
   }
 
   return reply([]);
@@ -170,7 +170,10 @@ check("a mistyped role is refused, not rounded down to the safer one",
 
 // ------------------------------------------------- the stored settings layers
 
-const SETTINGS = { scope: "company", field_values: { "fee.returned_payment": "$40.00" } };
+const SETTINGS = {
+  scope: "building", building_id: BUILDING_ID,
+  field_values: { "fee.returned_payment": "$40.00" }
+};
 
 const agentWrites = await call("/api/admin/lease/settings",
   { method: "PUT", body: SETTINGS, role: "agent" });
@@ -181,7 +184,8 @@ const managerWrites = await call("/api/admin/lease/settings",
   { method: "PUT", body: SETTINGS, role: "manager" });
 check("a manager can", managerWrites.status === 200, JSON.stringify(managerWrites.body));
 
-const agentReads = await call("/api/admin/lease/settings?scope=company", { role: "agent" });
+const agentReads = await call(
+  `/api/admin/lease/settings?scope=building&building_id=${BUILDING_ID}`, { role: "agent" });
 check("an agent can still read them — they have to review what the lease prints",
   agentReads.status === 200);
 
@@ -290,8 +294,8 @@ listingBuildingId = null;
 
 const agentEditsListing = await call(`/api/admin/listings/${LISTING_ID}`,
   { method: "PATCH", body: { title: "Evergarden 7A — renewed" }, role: "agent" });
-check("an agent can still edit the listing itself, which is their job",
-  agentEditsListing.status === 200, `${agentEditsListing.status}`);
+check("an agent cannot edit a listing with no assigned marketing property",
+  agentEditsListing.status === 403, `${agentEditsListing.status}`);
 
 const managerRepoints = await call(`/api/admin/listings/${LISTING_ID}`,
   { method: "PATCH", body: { building_id: BUILDING_ID }, role: "manager" });
@@ -313,94 +317,9 @@ check("an agent cannot see the account list", agentSeesStaff.status === 403);
 const managerSeesStaff = await call("/api/admin/staff", { role: "manager" });
 check("a manager can", managerSeesStaff.status === 200);
 
-const demoteSelf = await call("/api/admin/staff", {
-  method: "PUT", role: "manager",
-  body: { email: ENV.DEV_ADMIN_EMAIL, role: "agent" }
-});
-check("a manager cannot demote themselves out of the console",
-  demoteSelf.status === 422, demoteSelf.body.error);
-
-const deactivateSelf = await call("/api/admin/staff", {
-  method: "PUT", role: "manager",
-  body: { email: ENV.DEV_ADMIN_EMAIL, role: "manager", active: false }
-});
-check("nor deactivate themselves", deactivateSelf.status === 422);
-
-const removeSelf = await call(`/api/admin/staff/${ENV.DEV_ADMIN_EMAIL}`,
-  { method: "DELETE", role: "manager" });
-check("nor remove themselves", removeSelf.status === 422);
-
-const removeOwner = await call("/api/admin/staff/boss@starreusa.com",
-  { method: "DELETE", role: "manager", OWNER_EMAIL: "boss@starreusa.com" });
-check("nor remove the owner, who is configuration rather than a row",
-  removeOwner.status === 422, removeOwner.body.error);
-
-staffRows = [
-  { email: "solo@starreusa.com", role: "manager", name: "Solo", active: true },
-  { email: "hand@starreusa.com", role: "agent", name: "Hand", active: true }
-];
-const lastManager = await call("/api/admin/staff", {
-  method: "PUT", role: "manager", body: { email: "solo@starreusa.com", role: "agent" }
-});
-check("the last manager cannot be demoted while no owner is configured",
-  lastManager.status === 422 && /last manager/i.test(lastManager.body.error || ""),
-  lastManager.body.error);
-
-const withOwner = await call("/api/admin/staff", {
-  method: "PUT", role: "manager", OWNER_EMAIL: "boss@starreusa.com",
-  body: { email: "solo@starreusa.com", role: "agent" }
-});
-check("but can be once OWNER_EMAIL guarantees a way back in", withOwner.status === 200,
-  `${withOwner.status} ${withOwner.body.error || ""}`);
-
-const quietReactivation = await call("/api/admin/staff", {
-  method: "PUT", role: "manager", body: { email: "hand@starreusa.com", role: "agent", name: "Hand" }
-});
-check("a PUT that omits active leaves it alone rather than switching it on",
-  quietReactivation.status === 200 && quietReactivation.body.member.active === true,
-  JSON.stringify(quietReactivation.body));
-
-staffRows = [{ email: "gone@starreusa.com", role: "agent", active: false }];
-const stayGone = await call("/api/admin/staff", {
-  method: "PUT", role: "manager", body: { email: "gone@starreusa.com", role: "agent" }
-});
-check("a deactivated account is not reinstated by a PUT that says nothing about it",
-  stayGone.body.member?.active === false, JSON.stringify(stayGone.body));
-
-const falseString = await call("/api/admin/staff", {
-  method: "PUT", role: "manager",
-  body: { email: "gone@starreusa.com", role: "agent", active: "false" }
-});
-check('the string "false" deactivates, rather than being coerced to true',
-  falseString.body.member?.active === false, JSON.stringify(falseString.body));
-
-staffRows = [];
-const deleteUnknown = await call("/api/admin/staff/nobody@starreusa.com",
-  { method: "DELETE", role: "manager" });
-check("deleting an address that is not on the list says so",
-  deleteUnknown.status === 404, `${deleteUnknown.status}`);
-
-const deleteJunk = await call("/api/admin/staff/not-an-email",
-  { method: "DELETE", role: "manager" });
-check("and one that cannot be an address is refused before the query",
-  deleteJunk.status === 422);
-
-const badRole = await call("/api/admin/staff", {
-  method: "PUT", role: "manager", body: { email: "new@starreusa.com", role: "admin" }
-});
-check("an unknown role is refused", badRole.status === 422);
-
-const badEmail = await call("/api/admin/staff", {
-  method: "PUT", role: "manager", body: { email: "not-an-email", role: "agent" }
-});
-check("so is an address that cannot be one", badEmail.status === 422);
-
-const added = await call("/api/admin/staff", {
-  method: "PUT", role: "manager", body: { email: "New.Agent@Starreusa.com ", role: "agent" }
-});
-check("a new agent is stored lower-cased, so a lookup cannot miss them",
-  added.status === 200 && added.body.member.email === "new.agent@starreusa.com",
-  JSON.stringify(added.body));
+// Versioned account mutations, Owner appointments and partner type boundaries
+// are tested through the real Worker routes in backend/tools/test-administration.mjs.
+// This legacy suite continues to cover identity resolution and field permissions.
 
 // ------------------------------------------- resolving a role from the table
 
@@ -527,15 +446,15 @@ check("the lease reads no screening material off the application",
 const decided = await call(`/api/admin/applications/${APPLICATION_ID}`, {
   method: "PATCH", role: "manager", body: { status: "needs_info", decision_reason: "Two paystubs missing." }
 });
-check("needs_info is a status the Worker accepts", decided.status === 200, String(decided.status));
+check("legacy status writes must use a workspace action", decided.status === 409, String(decided.status));
 
 const patched = calls.filter((entry) => entry.startsWith("PATCH applications"));
-check("a status change is recorded with who made it", patched.length > 0);
+check("rejected legacy status writes do not reach the database", patched.length === 0);
 
 const invented = await call(`/api/admin/applications/${APPLICATION_ID}`, {
   method: "PATCH", role: "manager", body: { status: "maybe" }
 });
-check("a status nobody defined is refused", invented.status === 422, String(invented.status));
+check("a status nobody defined is refused", invented.status === 409, String(invented.status));
 
 // Corrections to the application follow the same split as the lease: an agent
 // settles the tenancy's terms, a manager corrects the tenant's record.
@@ -562,7 +481,7 @@ const agentEmailEdit = await call(`/api/admin/applications/${APPLICATION_ID}`, {
   method: "PATCH", role: "agent", body: { email: "elsewhere@example.com", status: "review" }
 });
 check("nor smuggle an identity change in beside a status change",
-  agentEmailEdit.status === 403, String(agentEmailEdit.status));
+  agentEmailEdit.status === 409, String(agentEmailEdit.status));
 
 const managerRenames = await call(`/api/admin/applications/${APPLICATION_ID}`, {
   method: "PATCH", role: "manager", body: { first_name: "Marisol", last_name: "Okonkwo" }
@@ -571,9 +490,9 @@ check("a manager can correct the applicant's record",
   managerRenames.status === 200, `${managerRenames.status} ${managerRenames.body.error || ""}`);
 
 const agentStatusOnly = await call(`/api/admin/applications/${APPLICATION_ID}`, {
-  method: "PATCH", role: "agent", body: { status: "review", notes: "Called the landlord." }
+  method: "PATCH", role: "agent", body: { notes: "Called the landlord." }
 });
-check("an agent still works the pipeline — status and notes are theirs",
+check("an assigned agent can save team notes",
   agentStatusOnly.status === 200, String(agentStatusOnly.status));
 
 // Editing and deleting are different verbs: an agent runs the pipeline but
@@ -686,11 +605,11 @@ const frozenCorrection = await call(`/api/admin/lease/document/${APPLICATION_ID}
   method: "POST", role: "manager",
   body: { mode: "values", overrides: { "dhcr.mark_renewal": true, "lease.commencement_date": "2026-10-01" } }
 });
-check("a checkbox corrected on a sent lease prints its mark",
-  frozenCorrection.body.values?.["dhcr.mark_renewal"] === "[X]",
+check("a signed-version checkbox cannot be silently overridden",
+  frozenCorrection.status === 409,
   JSON.stringify(frozenCorrection.body.values?.["dhcr.mark_renewal"]));
-check("and a date typed the other way is reformatted",
-  frozenCorrection.body.values?.["lease.commencement_date"] === "10/01/2026",
+check("nor can its dates be silently overridden",
+  !frozenCorrection.body.values,
   JSON.stringify(frozenCorrection.body.values?.["lease.commencement_date"]));
 applicationExtras = {};
 

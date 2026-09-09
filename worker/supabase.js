@@ -55,13 +55,15 @@ async function restRequest(env, path, init = {}) {
   return response;
 }
 
-export async function fetchListings(env, { publishedOnly = true } = {}) {
+export async function fetchListings(env, { publishedOnly = true, propertyIds } = {}) {
+  if (propertyIds && !propertyIds.length) return [];
   const filters = [
     `select=${LISTING_COLUMNS},listing_media(${MEDIA_COLUMNS})`,
     "order=position.asc,created_at.desc",
     "listing_media.order=kind.asc,position.asc"
   ];
   if (publishedOnly) filters.push("published=eq.true");
+  if (propertyIds) filters.push(`building_id=in.(${propertyIds.map(encodeURIComponent).join(",")})`);
 
   const response = await restRequest(env, `listings?${filters.join("&")}`);
   return response.json();
@@ -156,9 +158,27 @@ const APPLICATION_WORK_OR_SCHOOL =
   "employment_status,id_type,student,wants_window_guards,roommates";
 let workOrSchoolColumns = true;
 
+// What PostgREST said, without the request in front of it. The request names
+// every column it asked for, so a match on the whole message would blame
+// whichever column happened to be in the select, not the one that is missing.
+function errorBody(error) {
+  const message = String(error && error.message);
+  const at = message.indexOf(" failed: ");
+  return at === -1 ? message : message.slice(at + 9).replace(/^\d{3}\s*/, "");
+}
+
 function namesWorkOrSchool(error) {
   return /\bemployment_status\b|\bid_type\b|\bstudent\b|\bwants_window_guards\b|\broommates\b/i
-    .test(String(error && error.message));
+    .test(errorBody(error));
+}
+
+// What the leasing team asked the applicant for lives in the workspace column
+// the back office writes. The portal reads it so "More information needed"
+// can say what; a database without the column lists applications as before.
+let workspaceColumn = true;
+
+function namesWorkspace(error) {
+  return /\bworkspace\b/i.test(errorBody(error));
 }
 
 // Two columns arrived after some databases were created: `submitted`, which is
@@ -284,11 +304,13 @@ export async function insertApplication(env, values) {
   return row;
 }
 
-export async function fetchApplications(env) {
+export async function fetchApplications(env, { listingIds } = {}) {
+  if (listingIds && !listingIds.length) return [];
   // price_amount comes with the row because the leases list states the rent,
   // and asking for it per row would be one request per lease to show a column.
   const response = await selectApplications(
-    env, ",listings(id,title,property_name,unit,price_amount)&order=created_at.desc");
+    env, ",listings(id,title,property_name,unit,price_amount)&order=created_at.desc"
+      + (listingIds ? `&listing_id=in.(${listingIds.map(encodeURIComponent).join(",")})` : ""));
   return response.json();
 }
 
@@ -298,9 +320,9 @@ export async function fetchApplication(env, id) {
   return row ?? null;
 }
 
-export async function updateApplication(env, id, values) {
+export async function updateApplication(env, id, values, { version } = {}) {
   const send = async (body) => {
-    const response = await restRequest(env, `applications?id=eq.${encodeURIComponent(id)}`, {
+    const response = await restRequest(env, `applications?id=eq.${encodeURIComponent(id)}${version === undefined ? "" : `&workspace_version=eq.${Number(version)}`}`, {
       method: "PATCH",
       headers: { Prefer: "return=representation" },
       body: JSON.stringify(body)
@@ -331,7 +353,7 @@ export async function updateApplication(env, id, values) {
     else if (snapshotColumn && namesSnapshot(error)) snapshotColumn = false;
     else if (workOrSchoolColumns && namesWorkOrSchool(error)) workOrSchoolColumns = false;
     else throw error;
-    return updateApplication(env, id, values);
+    return updateApplication(env, id, values, { version });
   }
 }
 
@@ -379,9 +401,8 @@ function escapeLikePattern(value) {
 // the portal reads it — behind the same degrade flag as the console, because
 // both are asking the same database.
 export async function fetchApplicationsByEmail(env, email) {
-  const columns = workOrSchoolColumns
-    ? `${PORTAL_APPLICATION_COLUMNS},employment_status`
-    : PORTAL_APPLICATION_COLUMNS;
+  const columns = [PORTAL_APPLICATION_COLUMNS, workOrSchoolColumns && "employment_status", workspaceColumn && "workspace"]
+    .filter(Boolean).join(",");
   let response;
   try {
     response = await restRequest(
@@ -391,9 +412,15 @@ export async function fetchApplicationsByEmail(env, email) {
       "&order=created_at.desc&application_documents.order=created_at.asc"
     );
   } catch (error) {
-    if (!workOrSchoolColumns || !missingColumn(error) || !namesWorkOrSchool(error)) throw error;
-    workOrSchoolColumns = false;
-    return fetchApplicationsByEmail(env, email);
+    if (missingColumn(error) && workOrSchoolColumns && namesWorkOrSchool(error)) {
+      workOrSchoolColumns = false;
+      return fetchApplicationsByEmail(env, email);
+    }
+    if (missingColumn(error) && workspaceColumn && namesWorkspace(error)) {
+      workspaceColumn = false;
+      return fetchApplicationsByEmail(env, email);
+    }
+    throw error;
   }
   const rows = await response.json();
   return rows.filter((row) => String(row.email || "").trim().toLowerCase() === email);
@@ -572,18 +599,22 @@ function buildingColumns() {
   return signerEmailColumn ? `${BUILDING_BASE},landlord_signer_email` : BUILDING_BASE;
 }
 
-async function selectBuildings(env, filter) {
+async function selectBuildings(env, filter, includeIntake = true) {
   try {
-    return await restRequest(env, `buildings?select=${buildingColumns()}${filter}`);
+    return await restRequest(env, `buildings?select=${buildingColumns()}${includeIntake ? ",declared_units" : ""}${filter}`);
   } catch (error) {
+    // Optional display metadata; older properties remain readable before intake is enabled.
+    if (includeIntake && missingColumn(error) && /\bdeclared_units\b/i.test(String(error.message))) return selectBuildings(env, filter, false);
     if (!signerEmailColumn || !missingColumn(error) || !namesSignerEmail(error)) throw error;
     signerEmailColumn = false;
-    return selectBuildings(env, filter);
+    return selectBuildings(env, filter, includeIntake);
   }
 }
 
-export async function fetchBuildings(env) {
-  const response = await selectBuildings(env, "&order=name.asc");
+export async function fetchBuildings(env, { propertyIds } = {}) {
+  if (propertyIds && !propertyIds.length) return [];
+  const scope = propertyIds ? `&id=${encodeURIComponent(`in.(${propertyIds.join(",")})`)}` : "";
+  const response = await selectBuildings(env, `&order=name.asc${scope}`);
   return response.json();
 }
 
@@ -730,7 +761,9 @@ export function isMissingTable(error) {
   return /PGRST205|Could not find the table|relation .* does not exist/i.test(message);
 }
 
-const STAFF_COLUMNS = "email,role,name,active,created_at,updated_at";
+// Includes optional property_ids after the back-office migration. Older staff
+// tables remain readable so an admin can still sign in before migration.
+const STAFF_COLUMNS = "*";
 
 export async function fetchStaffMember(env, email) {
   const response = await restRequest(

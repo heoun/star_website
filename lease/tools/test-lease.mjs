@@ -97,7 +97,7 @@ check("a missing move-in date leaves the dates blank rather than inventing one",
 // -------------------------------------------------------- unanswered ≠ blank
 
 const sourceOf = (id) => LEASE_REGISTRY.fields.find((field) => field.id === id).source;
-const nothingStored = resolveValues({ layers: { company: {}, building: {}, unit: {} }, deal });
+const nothingStored = resolveValues({ layers: { building: {}, unit: {} }, deal });
 
 check("settings nobody filled in are reported missing, not silently blanked",
   nothingStored.missing.length > 0, `${nothingStored.missing.length} missing`);
@@ -110,15 +110,14 @@ check("an unanswered check box renders unchecked, never as an empty space",
 // ------------------------------------------------------------- the layers
 
 const layers = {
-  company: { "fee.returned_payment": "$25.00", "utility.water": "Landlord" },
-  building: { "utility.water": "Tenant", "bedbug.mark_none": true },
+  building: { "fee.returned_payment": "$25.00", "utility.water": "Tenant", "bedbug.mark_none": true },
   unit: { "utility.water": "N/A" }
 };
 const layered = resolveValues({ layers, deal });
 
-check("the unit layer beats the building layer beats the company layer",
+check("the unit layer beats the property layer",
   layered.values["utility.water"] === "N/A", layered.values["utility.water"]);
-check("a company value survives where no later layer answers",
+check("a property value survives where the unit layer does not answer",
   layered.values["fee.returned_payment"] === "$25.00");
 check("a checked box renders its checked mark",
   layered.values["bedbug.mark_none"] === "[X]");

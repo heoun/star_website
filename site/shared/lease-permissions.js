@@ -16,7 +16,7 @@ export const AGENT_WRITABLE = [
   "lease.end_date",
   // Defaults from the listing.
   "rent.monthly",
-  // Defaults from the company settings a manager keeps.
+  // Defaults from the property settings a manager keeps.
   "rent.due_day",
   // Defaults to one month of rent.
   "deposit.amount",

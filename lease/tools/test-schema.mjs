@@ -12,16 +12,17 @@
 // it when you need it and let it go again.
 //
 // What it guards: that an unanswered setting cannot be stored as a blank, that
-// the three layers merge company < building < unit, that saving part of a layer
+// the two layers merge property < unit, that saving part of a layer
 // does not wipe the rest, that every change is audited, that the anon key
 // cannot read any of it, and that the staff table cannot hold a row the Worker
 // would then have to guess about.
 
-import { PGlite } from '@electric-sql/pglite';
+const { PGlite } = await import(process.env.PGLITE_MODULE || '@electric-sql/pglite');
 import { readFileSync } from 'node:fs';
+import { STATUSES } from '../../site/admin/application-view.js';
 
-const SQL = readFileSync('/Users/seaxu/Downloads/star_website/supabase/schema.sql', 'utf8');
-const FIELDS = JSON.parse(readFileSync('/Users/seaxu/Downloads/star_website/lease/schema/fields.json', 'utf8'));
+const SQL = readFileSync(new URL('../../supabase/schema.sql', import.meta.url), 'utf8');
+const FIELDS = JSON.parse(readFileSync(new URL('../schema/fields.json', import.meta.url), 'utf8'));
 
 const db = new PGlite();
 const ok = [], bad = [];
@@ -61,43 +62,45 @@ t('all 130 registry ids are accepted', await shape(JSON.stringify(all)), `${FIEL
 
 // 4. scope constraints
 const scoped = async (sql, params) => { try { await db.query(sql, params); return true; } catch { return false; } };
-t('company row may not carry a listing',
-  !(await scoped(`insert into lease_settings (scope, listing_id) values ('company',$1)`, [l.id])));
+t('the company layer is gone, and its scope refused',
+  !(await scoped(`insert into lease_settings (scope) values ('company')`, [])));
+t('building row may not carry a listing',
+  !(await scoped(`insert into lease_settings (scope, building_id, listing_id) values ('building',$1,$2)`,
+    [b.id, l.id])));
 t('building row requires a building',
   !(await scoped(`insert into lease_settings (scope) values ('building')`, [])));
-await db.query(`insert into lease_settings (scope) values ('company')`);
-t('a second company row is refused',
-  !(await scoped(`insert into lease_settings (scope) values ('company')`, [])));
 t('a second building row for one building is refused',
   (await scoped(`insert into lease_settings (scope, building_id) values ('building',$1)`, [b.id]))
   && !(await scoped(`insert into lease_settings (scope, building_id) values ('building',$1)`, [b.id])));
 await db.query(`delete from lease_settings where scope='building'`);
 
 // 5. apply RPC: merge, then clear
-await db.query(`select lease_settings_apply('company', null, null, $1::jsonb, 'a@x.com')`,
-  ['{"fee.returned_payment":"$25.00","rent.due_day":"1"}']);
-await db.query(`select lease_settings_apply('company', null, null, $1::jsonb, 'a@x.com')`,
-  ['{"rent.due_day":"5"}']);
-let { rows: [c] } = await db.query(`select field_values from lease_settings where scope='company'`);
+await db.query(`select lease_settings_apply('building', $1, null, $2::jsonb, 'a@x.com')`,
+  [b.id, '{"fee.returned_payment":"$25.00","rent.due_day":"1"}']);
+await db.query(`select lease_settings_apply('building', $1, null, $2::jsonb, 'a@x.com')`,
+  [b.id, '{"rent.due_day":"5"}']);
+let { rows: [c] } = await db.query(`select field_values from lease_settings where scope='building'`);
 t('apply merges without dropping untouched keys',
   c.field_values['fee.returned_payment'] === '$25.00' && c.field_values['rent.due_day'] === '5',
   JSON.stringify(c.field_values));
-await db.query(`select lease_settings_apply('company', null, null, $1::jsonb, 'a@x.com')`,
-  ['{"rent.due_day":null}']);
-({ rows: [c] } = await db.query(`select field_values from lease_settings where scope='company'`));
+await db.query(`select lease_settings_apply('building', $1, null, $2::jsonb, 'a@x.com')`,
+  [b.id, '{"rent.due_day":null}']);
+({ rows: [c] } = await db.query(`select field_values from lease_settings where scope='building'`));
 t('a json null unanswers a field (key removed, not blanked)',
   !('rent.due_day' in c.field_values), JSON.stringify(c.field_values));
 
-// 6. three-layer merge order
+// 6. two-layer merge order
 await db.query(`select lease_settings_apply('building', $1, null, $2::jsonb, 'a@x.com')`,
   [b.id, '{"utility.water":"Landlord","bedbug.mark_none":true}']);
 await db.query(`select lease_settings_apply('unit', null, $1, $2::jsonb, 'a@x.com')`,
   [l.id, '{"utility.water":"Tenant"}']);
 const { rows: [m] } = await db.query(`select lease_settings_for_listing($1) as layers`, [l.id]);
-const merged = { ...m.layers.company, ...m.layers.building, ...m.layers.unit };
-t('unit overrides building', merged['utility.water'] === 'Tenant', merged['utility.water']);
-t('building value survives where the unit is silent', merged['bedbug.mark_none'] === true);
-t('company value survives', merged['fee.returned_payment'] === '$25.00');
+const merged = { ...m.layers.building, ...m.layers.unit };
+t('unit overrides the property', merged['utility.water'] === 'Tenant', merged['utility.water']);
+t('property value survives where the unit is silent', merged['bedbug.mark_none'] === true);
+t('a value nothing later answers survives', merged['fee.returned_payment'] === '$25.00');
+t('the merge has two layers and no third',
+  Object.keys(m.layers).sort().join(',') === 'building,unit', Object.keys(m.layers).join(','));
 
 // 7. audit
 const { rows: [a1] } = await db.query(`select count(*)::int n from lease_settings_audit`);
@@ -162,13 +165,9 @@ t('authenticated cannot read staff — an applicant is signed in as that role',
 
 // 9. an application's status, and the record of who set it
 //
-// The Worker's list of statuses and the table's CHECK constraint are two
-// declarations of one thing. A status the console offers and the database
-// refuses is a 500 in front of somebody making a decision, so they are read
-// against each other rather than kept in step by hand.
-const workerSource = readFileSync('/Users/seaxu/Downloads/star_website/worker/admin.js', 'utf8');
-const statuses = /const APPLICATION_STATUSES = \[([\s\S]*?)\];/.exec(workerSource)[1]
-  .match(/"([a-z_]+)"/g).map((s) => s.slice(1, -1));
+// Every status exposed by the application view must be accepted by storage.
+// Import the shared list; the Worker now advances status through workspace actions.
+const statuses = STATUSES.map(([value]) => value);
 
 const insertStatus = async (status) => {
   try {
@@ -181,7 +180,7 @@ const insertStatus = async (status) => {
 
 const refused = [];
 for (const status of statuses) if (!(await insertStatus(status))) refused.push(status);
-t('every status the Worker accepts is a status the table accepts', refused.length === 0,
+t('every displayed application status is accepted by the table', refused.length === 0,
   refused.length ? `refused: ${refused.join(', ')}` : `${statuses.length} statuses`);
 t('"needs information" is one of them', statuses.includes('needs_info'));
 t('a status neither of them knows is still refused', !(await insertStatus('maybe')));

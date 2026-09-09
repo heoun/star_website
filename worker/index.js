@@ -1,3 +1,4 @@
+import { handlePublicOnboarding } from "./administration.js";
 import { guardAdminPage, handleAdminRequest } from "./admin.js";
 import { handleApplication, handleRoommateInvites } from "./apply.js";
 import { handleInquiry, renderPage } from "./contact.js";
@@ -39,6 +40,8 @@ export default {
       }
       return handleBackendRequest(request, env);
     }
+
+    if (pathname === "/api/landlord-onboarding") return handlePublicOnboarding(request, env);
 
     if (pathname === "/api/admin" || pathname.startsWith("/api/admin/")) {
       return handleAdminRequest(request, env, ctx, pathname);

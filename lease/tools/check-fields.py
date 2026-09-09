@@ -141,8 +141,10 @@ def main():
         problems.append(f"registered but absent from the template: {orphan}")
 
     for field in fields:
-        if field["source"] == "manager" and field.get("scope") not in ("company", "building"):
-            problems.append(f"{field['id']}: manager field without a company/building scope")
+        if field["source"] == "manager" and field.get("scope") != "building":
+            problems.append(f"{field['id']}: manager field not scoped to a property. "
+                            "There is one settings layer a manager writes and it is the "
+                            "property's; see supabase/drop-company-layer.sql")
         if field["source"] not in VALID_SOURCES:
             problems.append(f"{field['id']}: unknown source {field['source']!r}")
         if field["group"] not in groups:
@@ -172,8 +174,8 @@ def main():
         for field_id in pending:
             print(f"  - {field_id}")
     per_building = [f["id"] for f in fields if f.get("scope") == "building"]
-    print(f"\n{len(per_building)} setting(s) are per-building: their defaults came "
-          "from one specific building and need reviewing before reuse.")
+    print(f"\n{len(per_building)} setting(s) are set per property. The defaults shipped "
+          "here came from one specific building, so review them before reuse.")
     by_source = {}
     for field in fields:
         by_source[field["source"]] = by_source.get(field["source"], 0) + 1

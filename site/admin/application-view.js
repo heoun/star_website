@@ -22,7 +22,8 @@ export const STAGES = [
   { key: "review", label: "Under review", tone: "busy",
     values: ["contacted", "fee_pending", "screening", "review", "sent_to_landlord"] },
   { key: "needs_info", label: "Needs information", tone: "warn", values: ["needs_info"] },
-  { key: "approved", label: "Approved", tone: "good", values: ["approved"] },
+  { key: "approved", label: "Staff approved", tone: "good", values: ["approved"] },
+  { key: "landlord_approved", label: "Landlord confirmed", tone: "good", values: ["landlord_approved"] },
   { key: "declined", label: "Declined", tone: "bad", values: ["declined"] },
   { key: "lease", label: "Lease created", tone: "good", values: ["lease_sent", "lease_signed"] }
 ];
@@ -36,7 +37,8 @@ export const STATUSES = [
   ["review", "In review"],
   ["sent_to_landlord", "Sent to landlord"],
   ["needs_info", "Needs information"],
-  ["approved", "Approved"],
+  ["approved", "Staff approved"],
+  ["landlord_approved", "Landlord confirmed"],
   ["declined", "Declined"],
   ["lease_sent", "Lease sent"],
   ["lease_signed", "Lease signed"]

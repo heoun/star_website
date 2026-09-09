@@ -514,10 +514,12 @@ function toPortalDocument(row) {
 // Everything the portal shows an applicant, and nothing it must not: no
 // screening notes, no SSN digits, no income detail. The office's own
 // vocabulary for statuses is translated by the page.
-async function handleList(env, session) {
-  const rows = await fetchApplicationsByEmail(env, session.email);
-
-  const applications = rows.map((row) => ({
+// One application as its applicant sees it: their own answers, the listing,
+// their documents, and what the leasing team has asked them for. Nothing else
+// on the row is theirs to read.
+export function toPortalApplication(row) {
+  const asked = row.workspace?.info_request;
+  return {
     id: row.id,
     name: row.name,
     status: row.status,
@@ -531,9 +533,18 @@ async function handleList(env, session) {
       unit: row.listings.unit,
       location: row.listings.location
     } : null,
-    documents: (row.application_documents || []).map(toPortalDocument)
-  }));
+    documents: (row.application_documents || []).map(toPortalDocument),
+    // Only while the request stands. Once the status has moved on, what was
+    // asked is history, not an instruction.
+    request: row.status === "needs_info" && asked && asked.message
+      ? { message: String(asked.message), at: asked.at || null }
+      : null
+  };
+}
 
+async function handleList(env, session) {
+  const rows = await fetchApplicationsByEmail(env, session.email);
+  const applications = rows.map(toPortalApplication);
   return json({ email: session.email, document_types: DOCUMENT_TYPES, applications });
 }
 
