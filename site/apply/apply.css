@@ -114,11 +114,11 @@
   flex-shrink: 0;
 }
 
-.app-brand .brand-mark img {
+.app-brand .brand-mark svg {
   width: 100%;
   height: 100%;
-  object-fit: cover;
-  transform: scale(1.2);
+  display: block;
+  color: #0d3b52;
 }
 
 .app-brand b {

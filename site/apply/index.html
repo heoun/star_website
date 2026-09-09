@@ -5,10 +5,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="format-detection" content="telephone=no,address=no">
   <meta name="robots" content="noindex">
-  <link rel="icon" href="/favicon.ico" sizes="48x48">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
-  <link rel="apple-touch-icon" href="/apple-touch-icon.png">
   <title>Rental Application | Star Real Estate</title>
+  <!-- INLINE_BRAND_ICON -->
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -18,13 +16,12 @@
   <!-- The application header, not the site one. Rent / Buy / Sell / Commercial
        have no use to somebody part-way through an application, and every one of
        them is a way to lose the form; what is here instead is where you are,
-       how far along you are, and the two ways out that keep the work. The brand
-       mark is the same artwork as site/partials/site-header.html — the two are
-       separate files because this header is not that header, so a change to the
-       logo is a change in both. -->
+       how far along you are, and the two ways out that keep the work. The header
+       keeps its own navigation but receives the shared inline brand component
+       at build time. -->
   <header class="app-header">
     <a class="app-brand" href="../" aria-label="Star Real Estate homepage">
-      <span class="brand-mark"><img src="../jpg/logo-primary.jpg" alt="Star Real Estate logo"></span>
+      <span class="brand-mark"><!-- INLINE_LOGO --></span>
       <b>Star Real Estate</b>
     </a>
 

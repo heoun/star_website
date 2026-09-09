@@ -3,6 +3,7 @@ const path = require("path");
 
 const root = path.resolve(__dirname, "..");
 const headerTemplatePath = path.join(root, "site", "partials", "site-header.html");
+const brandTemplatePath = path.join(root, "site", "partials", "brand-logo.html");
 const sharedHeaderPattern = /^([ \t]*)<!--\s*SHARED_HEADER\s*(\{[\s\S]*?\})\s*-->$/gm;
 
 const NAV_ITEMS = [
@@ -24,7 +25,7 @@ function renderHtmlFile(filePath) {
 }
 
 function renderHtml(source, filePath = "<inline>") {
-  return source.replace(sharedHeaderPattern, (_, indent, rawOptions) => {
+  const withHeader = source.replace(sharedHeaderPattern, (_, indent, rawOptions) => {
     let options;
 
     try {
@@ -35,6 +36,13 @@ function renderHtml(source, filePath = "<inline>") {
 
     return indentBlock(renderSharedHeader(options, filePath), indent);
   });
+  // Build-time inclusion: the delivered HTML contains the paths themselves,
+  // with no runtime image request or dependency on the designer's source file.
+  const logo = fs.readFileSync(brandTemplatePath, "utf8").trim();
+  const icon = logo.replace('fill="currentColor"', 'fill="#000000"');
+  return withHeader
+    .replace(/<!--\s*INLINE_LOGO\s*-->/g, () => logo)
+    .replace(/<!--\s*INLINE_BRAND_ICON\s*-->/g, () => `<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,${encodeURIComponent(icon)}">`);
 }
 
 function renderSharedHeader(options, filePath) {
@@ -49,8 +57,6 @@ function renderSharedHeader(options, filePath) {
         return context.brandHref;
       case "brandLabel":
         return context.brandLabel;
-      case "logoSrc":
-        return context.logoSrc;
       case "desktopNavLinks":
         return desktopNavLinks;
       case "mobileNavLinks":
@@ -80,8 +86,7 @@ function buildHeaderContext(options, filePath) {
     currentNav,
     basePrefix,
     brandHref: depth === 0 ? "#home" : basePrefix,
-    brandLabel: depth === 0 ? "Back to top" : "Go to homepage",
-    logoSrc: `${basePrefix}jpg/logo-primary.jpg`
+    brandLabel: depth === 0 ? "Back to top" : "Go to homepage"
   };
 }
 
