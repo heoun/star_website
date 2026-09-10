@@ -4,6 +4,7 @@ import { fetchListings, fetchListing, toAdminListing, requireConfig, fetchStaff,
 import { dealValues, resolveValues, LEASE_REGISTRY } from "./lease.js";
 import { parseDate } from "../site/shared/lease-dates.js";
 import { DOCUMENT_TYPES, requireDocsBucket } from "./portal.js";
+import { documentSummary } from "../site/admin/application-view.js";
 import { sendEmail } from "./email.js";
 
 const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
@@ -14,7 +15,13 @@ const json = (data, status = 200) => new Response(JSON.stringify(data), {
   status, headers: { "Content-Type": "application/json", "Cache-Control": "no-store" }
 });
 export const propertyIdsOf = (identity) => (identity.property_ids || []).filter(id => UUID.test(id));
-export const caseWorkspace = env => workspaceFor(requireConfig(env));
+export const caseWorkspace = env => workspaceFor(requireConfig(env), {
+  missingDocuments(row) {
+    const summary = documentSummary(row, DOCUMENT_TYPES);
+    if (!summary) return ["Document checklist unavailable"];
+    return summary.rows.filter(item => item.needed && ["missing", "partial"].includes(item.state)).map(item => item.type.label);
+  }
+});
 
 export async function handleCaseWorkspace(request, env, identity, id, subresource) {
   const workspace = caseWorkspace(env);
@@ -51,10 +58,13 @@ export async function handleCaseWorkspace(request, env, identity, id, subresourc
         command.lease_snapshot = result.values;
       }
       const saved = await workspace.execute(identity, id, command);
-      // A recommendation is only sent once the landlord knows it is there.
-      // The email carries the terms and a link, never the application, and
-      // replies go to the agent who sent it.
-      const notified = command.action === "recommend" ? await notifyLandlord(request, env, identity, saved) : undefined;
+      // The decision is already committed. A notification failure must not
+      // turn that success into an apparent failed save that invites a retry.
+      let notified;
+      if (["recommend", "review_and_recommend"].includes(command.action)) {
+        try { notified = await notifyLandlord(request, env, identity, saved); }
+        catch { notified = false; }
+      }
       return json({ case: saved, ...(notified === undefined ? {} : { notified }) });
     }
     if (subresource === "signed-lease" && request.method === "GET") {

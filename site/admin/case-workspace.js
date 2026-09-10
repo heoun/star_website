@@ -1,3 +1,4 @@
+import { PIPELINE, selectQueueCases } from "./case-queue-state.js";
 // The case workspace, from the agent's chair.
 //
 // An agent's day is a list of people waiting on them, and then one case at a
@@ -31,7 +32,7 @@ const STAGE_TONES = {
 const ACTION_LABELS = {
   assign: "Assignment changed", checks: "Verification recorded", approve: "Application approved",
   request_info: "Information requested", decline: "Application declined", terms: "Terms updated",
-  recommend: "Recommendation sent to the landlord", landlord_accept: "Landlord agreed to the terms",
+  review_and_recommend: "Reviewed and recommended to the landlord", recommend: "Recommendation sent to the landlord", landlord_accept: "Landlord agreed to the terms",
   landlord_changes: "Landlord requested changes", landlord_decline: "Landlord declined",
   note: "Team note saved", admin_note: "Admin note updated", prepare_lease: "Final lease prepared",
   record_tenant_signature: "Tenant signatures recorded", record_landlord_signature: "Landlord signature recorded",
@@ -50,15 +51,7 @@ const OWNER_TEXT = {
 
 // The pipeline an agent glances at before opening anything: how many cases
 // sit at each stage, each chip a filter.
-const PIPELINE = [
-  { key: "review", label: "Reviewing", statuses: ["new", "contacted", "fee_pending", "screening", "review", "needs_info"] },
-  { key: "approved", label: "Approved", statuses: ["approved"] },
-  { key: "landlord", label: "With the Landlord", statuses: ["sent_to_landlord"] },
-  { key: "lease", label: "Lease", statuses: ["landlord_approved"] },
-  { key: "signing", label: "Signing", statuses: ["lease_sent"] },
-  { key: "closed", label: "Closed", statuses: ["lease_signed", "declined"] }
-];
-const STEPS = ["Verify", "Approve", "Landlord", "Lease", "Sign", "Done"];
+const STEPS = ["Review", "Landlord", "Lease & signing", "Done"];
 
 // ------------------------------------------------------------- reading a row
 
@@ -185,6 +178,7 @@ function generation(host) { const id = (generations.get(host) || 0) + 1; generat
 
 export async function renderCaseQueue(host, { api, session, overview = false, files = false }) {
   const current = generation(host);
+  host.onchange = host.oninput = host.onkeydown = host.onsubmit = null;
   const landlord = session.role === "landlord", manager = session.role === "manager";
   const title = files ? "Lease Documents"
     : overview ? (landlord ? "Your Next Decision" : manager ? "What Needs Attention" : "My Tasks")
@@ -199,6 +193,7 @@ export async function renderCaseQueue(host, { api, session, overview = false, fi
   try {
     const { cases, document_types: types = [] } = await api("/cases");
     if (!current()) return;
+    if (!landlord && !files) return renderStaffQueue(host, { cases, types, session, overview, title, note, again });
     let bucket = overview ? "attention" : "all", stage = "", query = "";
     const count = key => cases.filter(row => row.next_step?.bucket === key).length;
     const inStage = (row, key) => PIPELINE.find(group => group.key === key)?.statuses.includes(row.status);
@@ -262,6 +257,82 @@ export async function renderCaseQueue(host, { api, session, overview = false, fi
   }
 }
 
+// Remember navigation choices for this identity only, in memory, never in shared storage.
+const queueViews = new Map();
+const detailViews = new Map();
+function renderStaffQueue(host, { cases, types, session, overview, title, note, again }) {
+  const manager = session.role === "manager";
+  const key = JSON.stringify([session.role, session.email, overview]);
+  if (!queueViews.has(key)) queueViews.set(key, { bucket: overview ? "attention" : "all", stage: "", person: "", query: "" });
+  const view = queueViews.get(key);
+  const people = [...new Set(cases.map(row => row.responsible_email).filter(Boolean))].sort();
+  const tabs = [["all", "All Rentals"], ["attention", "Needs Attention"], ["waiting", "Waiting on Others"]];
+  const count = bucket => bucket === "all" ? cases.length : cases.filter(row => row.next_step?.bucket === bucket).length;
+  host.innerHTML = heading(session.role, title, manager
+    ? "See who owns each rental and where the team needs to act."
+    : "Your assigned and shared rentals, with the next action ready to open.") + `
+    <section class="cw-queue-tools" aria-label="Rental filters">
+      <div class="cw-tabs" role="group" aria-label="Work queue">${tabs.map(([bucket,label]) => `<button type="button" data-bucket="${bucket}" aria-pressed="${view.bucket === bucket}">${esc(label)} <b>${count(bucket)}</b></button>`).join("")}</div>
+      <div class="cw-filters">
+        <label class="cw-search">Search rentals<input type="search" value="${esc(view.query)}" placeholder="Applicant, property or unit…"></label>
+        <label>Stage<select data-queue-stage><option value="">All stages</option>${PIPELINE.map(p => `<option value="${p.key}"${view.stage === p.key ? " selected" : ""}>${esc(p.label)}</option>`).join("")}</select></label>
+        <label>${manager ? "Assigned to" : "My involvement"}<select data-queue-person>
+          <option value="">${manager ? "Everyone" : "All my rentals"}</option>
+          ${manager ? '<option value="unassigned">Unassigned</option>' + people.map(email => `<option value="${esc(email)}">${esc(email === session.email ? "Me" : email)}</option>`).join("")
+            : '<option value="lead">I am responsible</option><option value="collaborating">I am collaborating</option>'}
+        </select></label>
+      </div>
+    </section>
+    <div class="cw-results"><p data-queue-result role="status"></p><button type="button" data-clear-filters>Clear filters</button></div>
+    <article class="panel cw-queue-table">
+      <div class="cw-table-head" aria-hidden="true"><span>Applicant / property</span><span>Next step</span><span>${manager ? "Responsible" : "Your involvement"}</span><span>Waiting</span></div>
+      <div class="cw-rows"></div>
+    </article>`;
+  host.querySelector('[data-queue-person]').value = view.person;
+  if (!host.querySelector('[data-queue-person]').value) view.person = "";
+  const draw = () => {
+    const rows = selectQueueCases(cases, view, session);
+    host.querySelector('.cw-rows').innerHTML = rows.length ? rows.map(row => staffQueueRow(row,types,session)).join("")
+      : empty("No rentals in this view", cases.length ? "Change or clear the filters to see more rentals." : manager ? "Submitted applications will appear here." : "An admin can assign an application to you or add you as a collaborator.");
+    host.querySelector('[data-queue-result]').textContent = `${rows.length} of ${cases.length} rentals · ${view.bucket === "all" ? "Action needed first, then longest waiting" : "Longest waiting first"}`;
+    host.querySelector('[data-clear-filters]').hidden = !(view.stage || view.person || view.query || view.bucket !== "all");
+    host.querySelectorAll('[data-bucket]').forEach(el => el.setAttribute('aria-pressed',String(el.dataset.bucket === view.bucket)));
+  };
+  draw();
+  host.querySelector('input[type="search"]').addEventListener('input',event => {view.query=event.target.value;draw();});
+  host.onchange = event => {
+    if (event.target.matches('[data-queue-stage]')) view.stage=event.target.value;
+    if (event.target.matches('[data-queue-person]')) view.person=event.target.value;
+    draw();
+  };
+  host.onclick = event => {
+    if (event.target.closest('[data-case-refresh]')) return again();
+    const tab=event.target.closest('[data-bucket]');
+    if (tab) {view.bucket=tab.dataset.bucket;draw();}
+    if (event.target.closest('[data-clear-filters]')) {
+      Object.assign(view,{bucket:'all',stage:'',person:'',query:''});
+      host.querySelector('input[type="search"]').value='';
+      host.querySelector('[data-queue-stage]').value='';
+      host.querySelector('[data-queue-person]').value='';
+      draw();
+    }
+  };
+}
+function staffQueueRow(row,types,session) {
+  const manager=session.role === "manager", step=row.next_step || {};
+  const closed=["lease_signed","declined"].includes(row.status);
+  const when=age(step.since || row.updated_at || row.created_at);
+  const flag=rowFlags(row,row.application_documents ? documentSummary(row,types) : null,false)[0];
+  const responsible=row.responsible_email || "Unassigned";
+  const involvement=manager ? responsible : responsible === session.email ? "Responsible" : "Collaborator";
+  return `<a class="cw-row cw-staff-row" href="#/applications/${esc(row.id)}">
+    <span class="cw-who"><span class="desk-initial">${esc((row.name || "A").slice(0,1))}</span><span class="cw-who-text"><b>${esc(row.name || "Application")}</b><small>${esc(home(row))}</small>${stagePill(row.status)}</span></span>
+    <span class="cw-next"><b>${esc(step.label || "Open rental")}</b>${flag ? `<small class="cw-flags">${esc(flag)}</small>` : ""}</span>
+    <span class="cw-responsible"><small class="cw-mobile-label">${manager ? "Responsible" : "Your involvement"}</small><b>${esc(involvement)}</b>${manager && !row.responsible_email && !closed ? '<small class="cw-flags">Assign a team member →</small>' : ""}</span>
+    <span class="cw-age ${closed ? "" : when.tone}"><b>${esc(closed ? "—" : when.text)}</b><small>${closed ? "Closed" : "in this step"}</small></span>
+  </a>`;
+}
+
 function queueRow(row, types, viewer) {
   const step = row.next_step || {};
   const when = age(step.since);
@@ -288,6 +359,7 @@ function queueRow(row, types, viewer) {
 
 export async function renderCaseDetail(host, { api, session, id }) {
   const current = generation(host);
+  host.onchange = host.oninput = host.onkeydown = host.onsubmit = null;
   host.innerHTML = '<p role="status">Loading this rental…</p>';
   try {
     const { case: row, document_types: types = [] } = await api(`/cases/${encodeURIComponent(id)}`);
@@ -296,14 +368,14 @@ export async function renderCaseDetail(host, { api, session, id }) {
 
     const allowed = row.allowed_actions || [], w = row.workspace || {};
     let people = { team: [], landlords: [] };
-    if (allowed.includes("assign") || allowed.includes("recommend")) {
+    if (allowed.includes("assign") || allowed.includes("recommend") || allowed.includes("review_and_recommend")) {
       people = await api(`/cases/${encodeURIComponent(id)}/participants`);
       if (!current()) return;
     }
     // Whether the final lease could be produced right now, asked only when
     // that is the next thing to do. The answer names what is still short.
     let readiness = null;
-    if (allowed.includes("prepare_lease")) {
+    if (allowed.includes("prepare_lease") || allowed.includes("review_and_recommend")) {
       try {
         readiness = await api(`/lease/document/${encodeURIComponent(id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "values" }) });
       } catch (error) { readiness = { error: error.message }; }
@@ -311,46 +383,133 @@ export async function renderCaseDetail(host, { api, session, id }) {
     }
 
     const ctx = { row, w, allowed, people, session, types, readiness, id, api,
-      docs: documentSummary(row, types), terms: initialTerms(row), mail: drafts(row, session) };
+      docs: documentSummary(row, types), terms: { ...Object.fromEntries(TERM_IDS.filter(key => key !== "lease.effective_date" && readiness?.values?.[key] != null).map(key => [key, String(readiness.values[key])])), ...initialTerms(row) }, mail: drafts(row, session) };
+    ctx.reviewing = allowed.includes("review_and_recommend");
+    ctx.viewKey = JSON.stringify([session.role, session.email, id]);
+    const activeSection = detailViews.get(ctx.viewKey) || "application";
     const step = row.next_step || {};
+    const sections = [
+      ["application", ctx.reviewing ? "Review & decide" : "Application", ctx.reviewing ? reviewDesk(ctx) : `<div class="cw-grid"><div>${applicantPanel(ctx)}${verificationPanel(ctx)}</div><aside>${session.role === "manager" ? caseOwnerSummary(ctx) : teamPanel(ctx)}${propertyPanel(ctx)}</aside></div>`],
+      ["documents", ctx.docs ? `Documents · ${ctx.docs.requiredMet}/${ctx.docs.required}` : "Documents", documentsPanel(ctx)],
+      ["lease", "Lease & landlord", `<div class="cw-grid"><div>${termsPanel(ctx)}</div><aside>${landlordPanel(ctx)}${leasePanel(ctx)}</aside></div>`],
+      ["activity", "Notes & activity", `<div class="cw-grid"><div>${notesPanel(ctx)}</div><aside>${activityPanel(ctx)}</aside></div>`],
+      ...(session.role === "manager" ? [["team", "Team & admin", `<div class="cw-grid"><div>${teamPanel(ctx)}</div><aside>${privateNotePanel(ctx)}</aside></div>`]] : [])
+    ];
     host.innerHTML = `
       <a class="link" href="#/applications">← Rentals</a>
       ${heading(session.role, row.name || "Rental", home(row), `<a class="desk-button" href="#/dossier/${esc(id)}">Open Full Application</a>`)}
       ${stepper(row)}
-      ${applicantStrip(ctx)}
-      ${panel(step.label || "Next step", nextNote(ctx), primaryFor(ctx), stagePill(row.status), "cw-next-panel")}
-      <div class="cw-grid">
-        <div>${verificationPanel(ctx)}${documentsPanel(ctx)}${termsPanel(ctx)}${notesPanel(ctx)}${activityPanel(ctx)}</div>
-        <aside>${landlordPanel(ctx)}${leasePanel(ctx)}${teamPanel(ctx)}${propertyPanel(ctx)}</aside>
-      </div>`;
+      ${ctx.reviewing ? "" : applicantStrip(ctx)}
+      ${ctx.reviewing ? "" : panel(step.label || "Next step", nextNote(ctx), primaryFor(ctx) + (allowed.includes("checks") ? '<div class="cw-actions"><button type="button" data-case-tab-target="documents">Review documents →</button></div>' : ""), stagePill(row.status), "cw-next-panel")}
+      <nav class="cw-detail-tabs" role="tablist" aria-label="Rental information">${sections.map(([key,label],index) => `<button type="button" role="tab" id="cw-tab-${key}" data-case-tab="${key}" aria-controls="cw-section-${key}" aria-selected="${key === activeSection}" tabindex="${key === activeSection ? 0 : -1}">${esc(label)}</button>`).join("")}</nav>
+      ${sections.map(([key,label,body],index) => `<section class="cw-detail-section" role="tabpanel" id="cw-section-${key}" aria-labelledby="cw-tab-${key}" ${key === activeSection ? "" : "hidden"}>${body}</section>`).join("")}`;
     bindCase(host, ctx, () => renderCaseDetail(host, { api, session, id }));
   } catch (error) {
     if (current()) host.innerHTML = `<a class="link" href="#/overview">← My workspace</a><p role="alert" class="status">${esc(error.message)}</p>`;
   }
 }
 
+// Review is a decision surface: evidence on the left, one recommendation on the right.
+function reviewDesk(ctx) {
+  const {row, w, docs, types, people, terms, allowed} = ctx;
+  const missing = requestedItems(row, types);
+  const annual = String(row.income_note || "").trim();
+  const annualNumber = annual && /^\$?[\d,]+(?:\.\d+)?$/.test(annual) ? Number(annual.replace(/[$,]/g,"")) : null;
+  const roommates = Array.isArray(row.roommates) ? row.roommates : [];
+  const names = roommates.map(m => [m.first_name,m.last_name].filter(Boolean).join(" ")).filter(Boolean);
+  const employment = row.employment_status === "student" ? `Student${row.student?.school_name ? ` · ${row.student.school_name}` : ""}`
+    : ({employed:"Employed",self_employed:"Self-employed",unemployed:"Not employed",retired:"Retired"}[row.employment_status] || row.employment_status || "Not stated");
+  const issueList = missing.map(item => item.label);
+  if (!people.landlords.length) issueList.push("No active landlord is bound to this property — ask Admin to update Properties");
+  const fact = (label,value,source) => `<div class="cw-review-fact"><span class="k">${esc(label)}</span><b>${esc(value || "Not given")}</b><small>${esc(source)}</small></div>`;
+  const proof = (label,value,done) => `<div class="cw-proof"><span>${esc(label)}</span><b class="${done ? 'is-good' : ''}">${esc(value)}</b></div>`;
+  const proposed = w.landlord_decision?.proposed_terms;
+  const offerCtx = { ...ctx, terms: {...terms, ...(proposed || {})} };
+  const issues = issueList.length ? `<details class="cw-review-alert"><summary>${issueList.length} item${issueList.length === 1 ? '' : 's'} to follow up</summary><ul>${issueList.map(item=>`<li>${esc(item)}</li>`).join('')}</ul><p>Required uploads must be present before recommending. Check the other unanswered items with the applicant.</p></details>`
+    : '<p class="cw-review-ready">Required uploads and key application answers are present. Review the evidence before deciding.</p>';
+  const request = actionForm("request_info", reasonField("What the Applicant Needs to Provide",requestDraft(row,types),{rows:5}),"Save request & open email");
+  const decision = `<p class="cw-note">Review the applicant, then confirm the terms and send one recommendation.</p>
+    <details class="cw-decision is-primary"><summary>Recommend to landlord <span>→</span></summary>
+      ${!docs || docs.missing ? '<p class="cw-review-alert">Required uploads are missing. Use Request information below; you can still review the proposed terms here.</p>' : ''}
+      ${recommendationForm(offerCtx)}
+    </details>
+    ${allowed.includes("request_info") ? `<details class="cw-decision"><summary>Request information <span>+</span></summary>${request}<p class="cw-note">The request is saved. Send the prepared email from your mail app.</p></details>` : ''}
+    ${allowed.includes("decline") ? `<details class="cw-decision"><summary>Decline application <span>+</span></summary>${actionForm("decline",reasonField("Internal Reason"),"Decline Application")}</details>` : ''}`;
+  return `<div class="cw-review-jump"><span><b>${esc(termText('rent.monthly', offerCtx.terms['rent.monthly']) || 'Rent not set')}</b> / month · ${esc(row.lease_term_months || '—')} months</span><button type="button" data-review-jump>Your decision ↓</button></div><div class="cw-review-layout"><div class="cw-review-evidence">
+    ${issues}
+    ${w.info_request && row.status === 'needs_info' ? `<div class="cw-quote"><b>Requested from the applicant</b>\n${esc(w.info_request.message)}</div>` : ''}
+    ${w.landlord_decision?.outcome === 'changes' ? `<div class="cw-quote"><b>Landlord requested changes</b>\n${esc(w.landlord_decision.comment)}${proposed ? `\n${esc(proposedText(proposed))}` : ''}</div>` : ''}
+    ${panel("Applicant at a glance","From the application · supporting evidence is below.",`<div class="cw-review-facts">
+      ${fact("Annual income",annualNumber !== null ? money(annualNumber) : annual,"Applicant reported")}
+      ${fact("Employment / school",employment,"Applicant reported")}
+      ${fact("People on the application",[row.name,...names].filter(Boolean).join(' · '),`${roommates.length} roommate${roommates.length===1?'':'s'} listed · confirm lease signers`)}
+      ${fact("Requested move-in",row.move_in,row.lease_term_months ? `${row.lease_term_months} month term · applicant requested` : "Term not given")}
+      ${fact("Pets",Array.isArray(row.pets) ? (row.pets.map(p=>p.type).filter(Boolean).join(', ') || "None listed") : "Not stated","Applicant reported")}
+      ${fact("Current address",row.current_address,"Applicant reported")}
+    </div><div class="cw-review-contact">${row.email ? `<a href="mailto:${esc(row.email)}">${esc(row.email)}</a>` : ''}${row.phone ? `<a href="tel:${esc(String(row.phone).replace(/[^\d+]/g,''))}">${esc(row.phone)}</a>` : ''}<a href="#/dossier/${esc(row.id)}">Full application →</a></div>`)}
+    ${panel("Evidence & verification","Uploaded files are not automatically verified.",`
+      ${proof("Application fee",w.checks?.fee === 'paid' ? 'Payment verified' : w.checks?.fee === 'waived' ? 'Waiver verified' : 'Needs verification',['paid','waived'].includes(w.checks?.fee))}
+      ${proof("Screening report",w.checks?.screening === 'received' ? 'Reviewed by staff' : 'Needs review',w.checks?.screening === 'received')}
+      ${proof("Credit score",w.checks?.credit_score ? `${w.checks.credit_score} · recorded from report` : 'Not recorded',false)}
+      ${proof("Supporting documents",w.checks?.documents === 'verified' ? 'Verified by staff' : docs ? `${docs.requiredMet}/${docs.required} required uploads present · not verified` : 'Checklist unavailable',w.checks?.documents === 'verified')}
+      ${w.checks?.reference ? `<p class="cw-note">${esc(w.checks.reference)}<br>Recorded by ${esc(w.checks.by)} · ${esc(shortDay(w.checks.at))}</p>` : ''}
+      <details class="cw-evidence-files"><summary>Open supporting files & checklist</summary>${documentsPanel(ctx)}</details>
+      <details class="cw-evidence-files"><summary>Save verification progress</summary>${checksForm(w)}</details>`)}
+  </div><aside class="cw-review-decision">
+    ${panel("Proposed lease","From the application, listing and property defaults, or saved terms. Confirm before sending.",`<div class="lines">${['rent.monthly','lease.commencement_date','lease.end_date','deposit.amount','concession.terms'].map(key=>line(TERM_LABELS[key],`<b>${esc(termText(key,offerCtx.terms[key]) || 'Not set')}</b>`)).join('')}</div><p class="cw-note">${people.landlords.length === 1 ? `Landlord: ${esc(people.landlords[0].name || people.landlords[0].email)} · linked to this property` : people.landlords.length ? 'Select a linked landlord when recommending.' : 'A linked landlord is required.'}</p>`)}
+    ${panel("Your decision","",decision,stagePill(row.status),"cw-decision-panel")}
+  </aside></div>`;
+}
+function recommendationForm(ctx) {
+  const {people,w,docs} = ctx;
+  const recipient = people.landlords.length === 1
+    ? `<input type="hidden" name="landlord_email" value="${esc(people.landlords[0].email)}"><p><b>To ${esc(people.landlords[0].name || people.landlords[0].email)}</b><br>${esc(people.landlords[0].email)}</p>`
+    : `<label>Landlord<select name="landlord_email" required><option value="">Choose a linked landlord</option>${people.landlords.map(p=>`<option value="${esc(p.email)}">${esc(p.name || p.email)}</option>`).join('')}</select></label>`;
+  return `<form class="cw-form case-action-form" data-action="review_and_recommend">
+    ${recipient}
+    <h3>Confirm the lease terms</h3>${termsFields(ctx, TERM_IDS.filter(key => key !== "lease.effective_date"))}
+    <h3>Confirm your review</h3>${checksFields(w)}
+    <p class="cw-note">The landlord receives the applicant summary, recorded credit score and these terms. Original documents, contact details and internal notes stay with staff.</p>
+    <label class="cw-check"><input type="checkbox" name="confirmed" required><span>I have reviewed the application and evidence and approve this recommendation on the terms above.</span></label>
+    <button type="submit" class="primary" ${!docs || docs.missing || !people.landlords.length ? 'disabled' : ''}>Confirm & send recommendation</button><p role="status"></p>
+  </form>`;
+}
+
 function stepper(row) {
   const w = row.workspace || {};
-  const at = row.status === "declined" ? -1 : row.status === "lease_signed" ? STEPS.length : row.status === "lease_sent" ? 4
-    : row.status === "landlord_approved" ? 3 : ["approved", "sent_to_landlord"].includes(row.status) ? 2 : checksDone(w) ? 1 : 0;
+  const at = row.status === "declined" ? -1 : row.status === "lease_signed" ? 3
+    : ["landlord_approved", "lease_sent"].includes(row.status) ? 2 : row.status === "sent_to_landlord" ? 1 : 0;
   return `<ol class="cw-steps" aria-label="Progress">${STEPS.map((label, index) => `<li class="${index < at ? "is-done" : index === at ? "is-now" : ""}${at === -1 ? " is-closed" : ""}">${esc(label)}</li>`).join("")}</ol>`;
 }
 
 // Who the applicant is and what they asked for, in one strip: the things an
 // agent looks up mid-call.
-function applicantStrip({ row, docs }) {
-  const stat = (label, value, small = "") => `<div class="stat"><span class="k">${esc(label)}</span><b>${value || '<span class="soft">Not given</span>'}</b>${small ? `<small>${esc(small)}</small>` : ""}</div>`;
-  const income = row.income_note ? (money(String(row.income_note).replace(/[$,\s]/g, "")) || String(row.income_note)) : "";
-  const household = [Array.isArray(row.roommates) && row.roommates.length && `${row.roommates.length} roommate${row.roommates.length === 1 ? "" : "s"}`,
-    Array.isArray(row.pets) && row.pets.length && `${row.pets.length} pet${row.pets.length === 1 ? "" : "s"}`].filter(Boolean).join(" · ") || "No roommates or pets";
-  return `<section class="cw-strip" aria-label="Applicant">
-    ${stat("Email", row.email ? `<a href="mailto:${esc(row.email)}">${esc(row.email)}</a>` : "")}
-    ${stat("Phone", row.phone ? `<a href="tel:${esc(String(row.phone).replace(/[^\d+]/g, ""))}">${esc(row.phone)}</a>` : "")}
-    ${stat("Move In", esc(row.move_in || ""), row.lease_term_months ? `${row.lease_term_months} months` : "")}
-    ${stat("Annual Income", esc(income), row.employment_status === "student" ? "Student" : "Employed")}
-    ${stat("Asking Rent", row.listings?.price_amount == null ? "" : esc(money(row.listings.price_amount)), household)}
-    ${stat("Applied", esc(shortDay(row.created_at)), docs ? `${docs.requiredMet} of ${docs.required} documents` : "")}
+function applicantStrip({ row }) {
+  const offer = row.workspace?.recommendation?.terms || row.workspace?.terms;
+  const rent = offer?.["rent.monthly"] ?? row.listings?.price_amount;
+  const agreed = ["landlord_approved", "lease_sent", "lease_signed"].includes(row.status);
+  return `<section class="cw-strip cw-brief" aria-label="Applicant">
+    <div class="stat"><span class="k">Move in</span><b>${esc(row.move_in || "Not given")}</b><small>${esc(row.lease_term_months ? `${row.lease_term_months} months` : "Term not given")}</small></div>
+    <div class="stat"><span class="k">${offer?.["rent.monthly"] ? agreed ? "Agreed rent" : "Proposed rent" : "Asking rent"}</span><b>${esc(rent == null ? "Not set" : money(rent))}</b><small>per month</small></div>
+    <div class="stat"><span class="k">Contact applicant</span>${row.email ? `<a href="mailto:${esc(row.email)}">${esc(row.email)}</a>` : '<span class="soft">Email not given</span>'}${row.phone ? `<a href="tel:${esc(String(row.phone).replace(/[^\d+]/g,""))}">${esc(row.phone)}</a>` : ""}</div>
   </section>`;
+}
+function applicantPanel({ row, docs }) {
+  const income=row.income_note ? money(String(row.income_note).replace(/[$,\s]/g,"")) || String(row.income_note) : "Not given";
+  const employment={employed:"Employed",self_employed:"Self-employed",student:"Student",unemployed:"Not employed",retired:"Retired"}[row.employment_status] || row.employment_status || "Not given";
+  const household=[Array.isArray(row.roommates) ? `${row.roommates.length} roommate${row.roommates.length === 1 ? "" : "s"}` : "Roommates not stated",Array.isArray(row.pets) ? `${row.pets.length} pet${row.pets.length === 1 ? "" : "s"}` : "Pets not stated"].join(" · ");
+  return panel("Applicant summary", "As submitted by the applicant. Open the full application for detailed review.", `<div class="lines">
+    ${line("Annual income",`<b>${esc(income)}</b>`)}${line("Employment",`<b>${esc(employment)}</b>`)}
+    ${line("Household",esc(household))}${line("Current address",esc(row.current_address || "Not given"))}
+    ${line("Submitted",esc(shortDay(row.created_at)))}
+    ${line("Documents",`<button type="button" class="cw-inline-link" data-case-tab-target="documents">${docs ? `${docs.requiredMet} of ${docs.required} required documents` : "Open document checklist"} →</button>`)}
+  </div>`);
+}
+function caseOwnerSummary({ row }) {
+  return panel("Responsible team", "", `<div class="lines">${line("Responsible",`<b>${esc(row.responsible_email || "Unassigned")}</b>`)}</div><button type="button" class="cw-inline-link" data-case-tab-target="team">Manage assignment →</button>`);
+}
+function privateNotePanel({ w, allowed }) {
+  return panel("Admin Private Note", "Visible only to Admins. Never shared with Agents or Landlords.", allowed.includes("admin_note") ? actionForm("admin_note",reasonField("Only Admins Can Read This",w.admin_note || "",{required:false}),"Save Private Note") : `<p>${esc(w.admin_note || "No private note.")}</p>`);
 }
 
 function nextNote({ row, w, allowed }) {
@@ -398,11 +557,11 @@ function primaryFor(ctx) {
       : "<p>The signed lease is archived by the case team.</p>";
   }
   if (status === "approved") {
-    if (!w.review) return `<p>This application was approved before verification was recorded. Record what was checked, then approve it again.</p>${allowed.includes("checks") ? checksForm(w) : ""}`;
+    if (!w.review) return `<p>This application was approved before verification was recorded. Record what was checked, then approve it again.</p>${allowed.includes("checks") ? edit("Record verification",checksForm(w)) : ""}`;
     if (!allowed.includes("recommend")) return "<p>The assigned team sends the recommendation.</p>";
-    return `<p>The landlord receives the tenant's name and the terms below, nothing from the application itself.</p>
+    return `<p>The landlord receives the tenant summary and proposed terms. The full application and internal notes stay with the leasing team.</p>
       ${actionForm("recommend", `<label>Landlord<select name="landlord_email" required><option value="">Choose a landlord</option>${people.landlords.map(p => `<option value="${esc(p.email)}">${esc(p.name || p.email)}</option>`).join("")}</select></label>
-        ${people.landlords.length ? "" : `<p class="cw-note">No active landlord is assigned to this property. ${session.role === "manager" ? '<a href="#/staff">Assign one under Accounts and access.</a>' : "Ask an admin to assign one."}</p>`}`, "Send to the Landlord")}`;
+        ${people.landlords.length ? "" : `<p class="cw-note">No active landlord is assigned to this property. ${session.role === "manager" ? '<a href="#/properties">Review the property’s landlord binding.</a>' : "Ask an admin to assign one."}</p>`}`, "Send to the Landlord")}`;
   }
   if (status === "needs_info") {
     const fresh = row.next_step?.label === "Review New Documents";
@@ -416,7 +575,7 @@ function primaryFor(ctx) {
   }
   if (status === "fee_pending" || status === "screening") {
     parts.push(`<p>${status === "fee_pending" ? "The application fee is paid to the screening provider directly." : "The screening report comes from the provider."} Record it here when it arrives.</p>`);
-    if (allowed.includes("checks")) parts.push(checksForm(w));
+    if (allowed.includes("checks")) parts.push(edit("Record verification", checksForm(w)));
     return parts.join("");
   }
 
@@ -436,7 +595,7 @@ function primaryFor(ctx) {
   } else {
     const short = [!["paid", "waived"].includes(w.checks?.fee) && "the fee", w.checks?.screening !== "received" && "the screening report", w.checks?.documents !== "verified" && "the documents"].filter(Boolean);
     parts.push(`<p>Verify ${esc(short.join(", ").replace(/, ([^,]*)$/, " and $1"))} outside this system, then record it here.${docs && docs.missing ? ` ${docs.missing} required document${docs.missing === 1 ? " has" : "s have"} not arrived yet.` : ""}</p>`);
-    if (allowed.includes("checks")) parts.push(checksForm(w));
+    if (allowed.includes("checks")) parts.push(edit("Record verification", checksForm(w)));
   }
   if (allowed.includes("request_info")) parts.push(edit("Request Information", actionForm("request_info", reasonField("What the Applicant Needs to Provide", requestDraft(row, types), { rows: 5 }), "Request Information") + '<p class="cw-note">Saving records the request. Your mail client opens with the same text afterwards.</p>'));
   if (allowed.includes("decline")) parts.push(edit("Decline the Application", actionForm("decline", reasonField("Internal Reason"), "Decline Application")));
@@ -457,27 +616,32 @@ function prepareLease({ row, readiness, allowed }) {
     ${theirs.length ? '<p class="cw-note">Property values are maintained by the admin on the property page. The request reaches them with this case named.</p>' : ""}`;
 }
 
-function checksForm(w, label = "Save Verification") {
+function checksFields(w) {
   const option = (value, text, selected) => `<option value="${value}"${selected ? " selected" : ""}>${text}</option>`;
-  return actionForm("checks", `
+  return `
     <div class="cw-form-grid">
       <label>Application Fee<select name="fee">${option("pending", "Not verified", !w.checks || w.checks.fee === "pending")}${option("paid", "Payment verified", w.checks?.fee === "paid")}${option("waived", "Waiver verified", w.checks?.fee === "waived")}</select></label>
       <label>Credit Check<select name="screening">${option("pending", "Report pending", w.checks?.screening !== "received")}${option("received", "Report received and reviewed", w.checks?.screening === "received")}</select></label>
       <label>Supporting Documents<select name="documents">${option("pending", "Not yet verified", w.checks?.documents !== "verified")}${option("verified", "Reviewed and verified", w.checks?.documents === "verified")}</select></label>
       <label>Credit Score<input name="credit_score" type="number" min="300" max="850" step="1" value="${esc(w.checks?.credit_score ?? "")}" placeholder="From the report, if any"></label>
     </div>
-    ${reasonField("Provider Reference and Note", w.checks?.reference || "", { rows: 2 })}`, label);
+    ${reasonField("Provider Reference and Note", w.checks?.reference || "", { rows: 2 })}`;
 }
+const checksForm = (w, label = "Save Verification") => actionForm("checks", checksFields(w), label);
 const approveForm = (label = "Approve Application") => actionForm("approve", "<p>Payment, the screening report and the documents are verified. Approving prepares the landlord recommendation.</p>", label);
 function assignForm(row, people) {
   return actionForm("assign", `<label>Responsible Team Member<select name="responsible_email"><option value="">Unassigned</option>${people.team.map(p => `<option value="${esc(p.email)}" ${p.email === row.responsible_email ? "selected" : ""}>${esc(p.name || p.email)}</option>`).join("")}</select></label>
     <fieldset><legend>Collaborators</legend>${people.team.map(p => `<label class="desk-check"><input type="checkbox" name="collaborator_emails" value="${esc(p.email)}" ${(row.collaborator_emails || []).includes(p.email) ? "checked" : ""}>${esc(p.name || p.email)}</label>`).join("")}</fieldset>`, "Save Assignment");
 }
-function termsForm({ terms, row }) {
+function termsFields({ terms, row }, fields = TERM_IDS) {
   const field = key => key === "concession.terms"
     ? `<label class="cw-span">${esc(TERM_LABELS[key])}<textarea name="${key}" rows="2" maxlength="2000">${esc(terms[key] || "")}</textarea></label>`
     : `<label>${esc(TERM_LABELS[key])}<input name="${key}" type="${key.startsWith("lease.") ? "date" : "number"}" ${key.startsWith("lease.") ? "" : `min="${key === "rent.due_day" ? 1 : 0}" step="${key === "rent.due_day" ? 1 : "0.01"}"`} value="${esc(terms[key] || "")}"${key === "lease.end_date" && !row.workspace?.terms?.["lease.end_date"] ? ' data-auto="1"' : ""}></label>`;
-  return actionForm("terms", `<div class="cw-form-grid">${TERM_IDS.map(field).join("")}</div><p class="cw-note">The end date follows the start date and the ${esc(String(row.lease_term_months || ""))} month term until you change it. Saving asks for a fresh approval and a new landlord recommendation.</p>`, "Save Terms");
+  return `<div class="cw-form-grid">${fields.map(field).join("")}</div>`;
+}
+function termsForm(ctx) {
+  const {row} = ctx;
+  return actionForm("terms", `${termsFields(ctx)}<p class="cw-note">The end date follows the start date and the ${esc(String(row.lease_term_months || ""))} month term until you change it. Saving asks for a fresh approval and a new landlord recommendation.</p>`, "Save Terms");
 }
 
 // ------------------------------------------------------------- panels
@@ -525,8 +689,7 @@ function notesPanel({ row, w, session, allowed }) {
   const team = allowed.includes("note")
     ? actionForm("note", reasonField("Team Note", row.notes || "", { required: false }), "Save Team Note")
     : `<p class="desk-prewrap">${esc(row.notes || "No team note.")}</p>`;
-  const admin = session.role === "manager" ? edit("Admin Private Note", actionForm("admin_note", reasonField("Only Admins Can Read This", w.admin_note || "", { required: false }), "Save Private Note")) : "";
-  return panel("Notes", "Seen by the assigned team and admins.", team + admin);
+  return panel("Team note", "Seen by the assigned team and admins.", team);
 }
 
 function activityPanel({ w }) {
@@ -565,8 +728,8 @@ function teamPanel({ row, people, allowed }) {
   return panel("Case Team", "", body + (allowed.includes("assign") && row.responsible_email ? edit("Change Assignment", assignForm(row, people)) : ""));
 }
 
-function propertyPanel({ row }) {
-  return panel("Property", "", `<p class="cw-note">Property defaults and landlord details are maintained by the admin and printed on every lease for ${esc(row.listings?.property_name || "this property")}.</p><div class="cw-actions"><a class="desk-button" href="#/requests/${esc(row.listing_id || "")}">Request a Change</a></div>`);
+function propertyPanel({ row, session }) {
+  return panel("Property", "", `<p class="cw-note">Property defaults and landlord details are maintained by the admin and printed on every lease for ${esc(row.listings?.property_name || "this property")}.</p><div class="cw-actions">${session?.role === "manager" && row.listings?.building_id ? `<a class="desk-button" href="#/properties/${esc(row.listings.building_id)}">Manage property settings</a>` : `<a class="desk-button" href="#/requests/${esc(row.listing_id || "")}">Request a Change</a>`}</div>`);
 }
 
 function lastDetail(w, action) {
@@ -694,7 +857,34 @@ function renderLandlordCase(host, { api, session, id, row }) {
 
 function bindCase(host, ctx, reload) {
   const { row, id, api, session } = ctx;
+  const selectTab = key => {
+    if (!host.querySelector(`[data-case-tab="${key}"]`)) return;
+    if (ctx.viewKey) detailViews.set(ctx.viewKey, key);
+    host.querySelectorAll('[data-case-tab]').forEach(tab => { const active=tab.dataset.caseTab === key; tab.setAttribute('aria-selected',String(active)); tab.tabIndex=active ? 0 : -1; });
+    host.querySelectorAll('.cw-detail-section').forEach(section => {section.hidden=section.id !== `cw-section-${key}`;});
+  };
+  host.onkeydown = event => {
+    const tab=event.target.closest('[data-case-tab]');
+    if (!tab || !['ArrowLeft','ArrowRight','Home','End'].includes(event.key)) return;
+    event.preventDefault();
+    const tabs=[...host.querySelectorAll('[data-case-tab]')], at=tabs.indexOf(tab);
+    const next=event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length-1 : (at+(event.key === 'ArrowRight' ? 1 : -1)+tabs.length)%tabs.length;
+    selectTab(tabs[next].dataset.caseTab);tabs[next].focus();
+  };
   host.onclick = async event => {
+    const tab=event.target.closest('[data-case-tab], [data-case-tab-target]');
+    if (tab) {
+      const key=tab.dataset.caseTab || tab.dataset.caseTabTarget;
+      selectTab(key);
+      if (tab.dataset.caseTabTarget) { const target=host.querySelector(`[data-case-tab="${key}"]`); target?.focus(); target?.scrollIntoView({block:'nearest'}); }
+      return;
+    }
+    if (event.target.closest("[data-review-jump]")) {
+      const decision = host.querySelector('.cw-decision-panel');
+      decision?.scrollIntoView({block:'start',behavior:'smooth'});
+      decision?.querySelector('summary')?.focus({preventScroll:true});
+      return;
+    }
     if (event.target.closest("[data-case-refresh]")) return reload();
     const button = event.target.closest("[data-download-lease]");
     if (!button) return;
@@ -714,7 +904,7 @@ function bindCase(host, ctx, reload) {
   // The end date follows the start date and the applied-for term until the
   // agent types an end date of their own.
   host.oninput = event => {
-    const form = event.target.closest('form[data-action="terms"]');
+    const form = event.target.closest('form[data-action="terms"], form[data-action="review_and_recommend"]');
     if (!form) return;
     const end = form.elements["lease.end_date"];
     if (event.target === end) { end.dataset.auto = "0"; return; }
@@ -737,6 +927,11 @@ function bindCase(host, ctx, reload) {
       } else {
         const command = { ...Object.fromEntries(data), action: form.dataset.action, version: row.workspace_version };
         if (command.action === "terms") { command.terms = Object.fromEntries(data); TERM_IDS.forEach(key => delete command[key]); }
+        if (command.action === "review_and_recommend") {
+          command.terms = Object.fromEntries(TERM_IDS.map(key => [key, data.get(key)]).filter(([,value])=>value !== null));
+          TERM_IDS.forEach(key => delete command[key]);
+          command.confirmed = data.get("confirmed") === "on";
+        }
         if (command.action === "assign") command.collaborator_emails = data.getAll("collaborator_emails");
         if (command.action === "landlord_changes") {
           // Blank figures mean "no proposal on this one", not a proposal of nothing.

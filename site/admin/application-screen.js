@@ -61,8 +61,8 @@ export function initApplicationScreen(deps) {
 // lease/schema/fields.json's `applications.*` sources — is on the first tab,
 // and everything the applicant answered for screening is on the second.
 const TABS = [
-  ["lease", "INFO ON LEASE"],
-  ["screening", "INFO NOT ON LEASE"]
+  ["lease", "APPLICANT & TENANCY"],
+  ["screening", "SCREENING DETAILS"]
 ];
 
 const IDENTITY_FIELDS = [
@@ -827,7 +827,7 @@ export function renderApplicationScreen(host, app) {
       <span class="pill is-${stage.tone} is-large">${escapeHtml(stage.label)}</span>
     </div>
 
-    <div class="statbar is-wide">
+    <div class="statbar is-wide appl-summary">
       <div class="stat is-lead">
         <span class="dot${stage.tone === "good" ? "" : stage.tone === "bad" ? " is-bad" : " is-warn"}"></span>
         <div>

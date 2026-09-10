@@ -46,19 +46,22 @@ try {
   // queue. The queue itself is opened by address when a test needs it.
   const signIn = async role => { await page.goto(`${base}/__demo?role=${role}`); await page.locator(".pagehead").first().waitFor(); };
   const openQueue = async () => { await page.goto(`${base}/admin/#/applications`); await page.locator("#route-cases .cw-rows").waitFor(); };
-  const openCase = async id => { await page.goto(`${base}/admin/#/applications/${id}`); await page.locator(".cw-next-panel").waitFor(); };
+  const openCase = async id => { await page.goto(`${base}/admin/#/applications/${id}`); await page.locator(".cw-next-panel, .cw-review-layout").first().waitFor(); };
   const nextStep = () => page.locator(".cw-next-panel h2").first().innerText();
   // Submits one of the case's action forms the way a person does: opening the
   // disclosure it sits in, filling what it asks, and waiting for the page to
   // say it saved.
   const submit = async (action, fill = {}) => {
     await page.locator(".cw-saved").evaluateAll(nodes => nodes.forEach(node => node.remove()));
-    const form = page.locator(`form[data-action="${action}"]`);
+    const form = page.locator(`form[data-action="${action}"]`).first();
+    const section = form.locator('xpath=ancestor::section[@role="tabpanel"][1]');
+    if (await section.count() && !(await section.isVisible())) await page.locator(`#${await section.getAttribute('aria-labelledby')}`).click();
     const details = form.locator("xpath=ancestor::details[1]");
     if (await details.count()) await details.locator(":scope > summary").click();
     for (const [name, value] of Object.entries(fill)) {
       const field = form.locator(`[name="${name}"]`);
-      if (await field.evaluate(node => node.tagName) === "SELECT") await field.selectOption(value); else await field.fill(value);
+      if (await field.getAttribute("type") === "checkbox") await field.setChecked(Boolean(value));
+      else if (await field.evaluate(node => node.tagName) === "SELECT") await field.selectOption(value); else await field.fill(value);
     }
     await form.locator('button[type="submit"]').click();
     await page.locator(".cw-saved").waitFor();
@@ -70,31 +73,23 @@ try {
   check(await page.locator(".cw-row").count() === 4, "Admin sees all four cases");
   check(await page.getByText("Assign a Responsible Agent").count() === 1, "The unassigned case asks the admin for an agent");
 
-  // Agent A: assigned cases only, each row saying what is short. The demo
-  // server files sample documents for every application it sees, so the
-  // first case is emptied through the same route staff use, to be short again.
-  const staffCall = (path, init = {}) => fetch(`${base}/api/admin${path}`, { ...init, headers: { cookie: "star_demo_role=agent-a", ...init.headers } });
-  const { case: filed } = await (await staffCall(`/cases/${ids.a}`)).json();
-  for (const doc of filed.application_documents) assert((await staffCall(`/documents/${doc.id}`, { method: "DELETE" })).ok, "a staff member can remove a wrong upload");
-  checks++;
+  // Agent A: only assigned cases, with the complete synthetic uploads.
   await signIn("agent-a");
   check(await page.getByRole("heading", { name: "My Tasks" }).isVisible(), "The agent's home is My Tasks");
   await page.locator("#route-overview .cw-rows").waitFor();
   await page.getByRole("button", { name: /^All Rentals/ }).click();
   check(await page.locator(".cw-row").count() === 2, "Agent A sees two assigned cases");
-  check(await page.locator(".cw-flags", { hasText: "documents missing" }).count() === 1, "A row says which documents are missing");
-  await page.getByRole("button", { name: /^With the Landlord/ }).click();
-  check(await page.locator(".cw-row").count() === 1, "Pipeline chips filter the queue");
+
+  await page.getByLabel(/^Stage/).selectOption("landlord");
+  check(await page.locator(".cw-row").count() === 1, "Stage selection filters the queue");
 
   // The case page: the applicant in one strip, the next step first, the
   // request already drafted.
   await openCase(ids.a);
-  check(await nextStep() === "Verify Payment, Screening and Documents", "The next step leads the page");
-  check(await page.locator('.cw-strip a[href^="mailto:"]').count() === 1, "The applicant's email is a link");
+  check(await page.getByRole("heading", {name:"Applicant at a glance"}).isVisible(), "The review summary leads the page");
+  check(await page.locator('.cw-review-contact a[href^="mailto:"]').count() === 1, "The applicant's email is a link");
   check(await page.getByText("Admin Private Note", { exact: true }).count() === 0, "The admin note is absent for an agent");
-  const ask = page.locator("a.desk-button", { hasText: "Ask for Missing Documents" });
-  const askHref = decodeURIComponent(await ask.getAttribute("href"));
-  check(askHref.startsWith("mailto:casey.morgan@example.test?") && askHref.includes("Government ID (Back)"), "The missing-documents email is drafted with what is missing");
+  check(await page.locator('.cw-decision > summary').count() === 3, "The reviewer has three decisions");
   await page.getByRole("link", { name: "Open Full Application" }).first().click();
   await page.locator("#appl-panel").waitFor(); checks++;
   await page.goto(`${base}/admin/#/applications/${ids.b}`);
@@ -102,11 +97,7 @@ try {
 
   // The chain, as the agent works it.
   await openCase(ids.a);
-  await submit("checks", { fee: "paid", screening: "received", documents: "verified", reason: "Provider report REF-001, fee receipt F-001, documents reviewed." });
-  check(await nextStep() === "Approve or Request Information", "A verified case moves to approval");
-  await submit("approve");
-  check(await nextStep() === "Send the Recommendation to the Landlord", "Approval leads to the recommendation");
-  await submit("recommend", { landlord_email: "owner@example.test" });
+  await submit("review_and_recommend", { fee: "paid", screening: "received", documents: "verified", reason: "Provider report REF-001, fee receipt F-001, documents reviewed.", landlord_email: "owner@example.test", confirmed: true });
   check((await page.locator(".cw-saved").innerText()).includes("emailed"), "The agent is told the landlord was emailed");
   check(await nextStep() === "Waiting for the Landlord", "A sent recommendation waits on the landlord");
   check((await page.locator("a.desk-button", { hasText: "Email the Landlord" }).first().getAttribute("href")).startsWith("mailto:owner@example.test?"), "The landlord reminder is drafted");
@@ -142,8 +133,8 @@ try {
   // Agent: the final lease, the signatures, the archive.
   await signIn("agent-a");
   await openCase(ids.shared);
-  check(await nextStep() === "Review the Landlord's Requested Changes", "A counter-offer comes back to the agent");
-  check(await page.locator('form[data-action="terms"] input[name="rent.monthly"]').inputValue() === "2900", "with the proposed rent already in the form");
+  check(await page.getByLabel("Review & decide", {exact:true}).getByText("Landlord requested changes", {exact:true}).isVisible(), "A counter-offer comes back to the agent");
+  check(await page.locator('form[data-action="review_and_recommend"] input[name="rent.monthly"]').inputValue() === "2900", "with the proposed rent already in the form");
   await openCase(ids.a);
   check(await nextStep() === "Prepare the Final Lease", "Landlord consent leads to the lease");
   await page.getByText("Every value the lease needs is answered").waitFor();

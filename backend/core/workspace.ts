@@ -1,5 +1,5 @@
 import type { WorkspacePrincipal, WorkspaceProperty, WorkspaceApplication, WorkspaceCommand, WorkspaceRepository,
-  WorkspaceAction, WorkspaceState, WorkspaceTerms, RecommendationSummary } from "../contracts/workspace.ts";
+  WorkspaceAction, WorkspaceState, WorkspaceTerms, RecommendationSummary, WorkspaceReviewPolicy } from "../contracts/workspace.ts";
 
 export class WorkspaceError extends Error {
   status: number;
@@ -71,6 +71,7 @@ export function allowedCaseActions(p: WorkspacePrincipal, row: WorkspaceApplicat
     actions.push("terms", "checks", "request_info", "decline");
     if (row.status !== "sent_to_landlord" && checksComplete(w)) actions.push("approve");
   }
+  if (![...SHARED, ...CLOSED].includes(row.status)) actions.push("review_and_recommend");
   if (row.status === "approved" && w.review) actions.push("recommend");
   if (row.status === "landlord_approved") actions.push(w.lease_preparation ? "record_tenant_signature" : "prepare_lease");
   if (row.status === "lease_sent" && w.tenant_signature && !w.landlord_signature) actions.push("record_landlord_signature");
@@ -216,7 +217,21 @@ function normalizedTerms(raw: unknown): WorkspaceTerms {
   return result;
 }
 
-export function makeWorkspace(repo: WorkspaceRepository) {
+function normalizedChecks(command: WorkspaceCommand, actor: string, now: string): NonNullable<WorkspaceState["checks"]> {
+  const reason = text(command.reason, 2000);
+  const fee = text(command.fee), screening = text(command.screening), documents = text(command.documents);
+  if (!["pending", "paid", "waived"].includes(fee) || !["pending", "received"].includes(screening) || !["pending", "verified"].includes(documents)) throw new WorkspaceError("Choose a valid verification status.");
+  if (!reason) throw new WorkspaceError("Record the external provider/report reference and verification note.");
+  // The score off the report, typed by the person who read it. It is
+  // the one figure a landlord sees of the screening, so it is optional
+  // and bounded rather than free text.
+  const scoreText = text(command.credit_score, 10);
+  const creditScore = scoreText ? Number(scoreText) : null;
+  if (scoreText && (!Number.isInteger(creditScore) || creditScore! < 300 || creditScore! > 850)) throw new WorkspaceError("Enter a credit score between 300 and 850, or leave it blank.");
+  return { fee, screening, documents, reference: reason, by: actor, at: now, credit_score: creditScore };
+}
+
+export function makeWorkspace(repo: WorkspaceRepository, reviewPolicy?: WorkspaceReviewPolicy) {
   const load = async (p: WorkspacePrincipal, id: string) => {
     const row = await repo.get(id);
     if (!row || !canAccessCase(p, row)) throw new WorkspaceError("Application not found.", 404);
@@ -248,18 +263,9 @@ export function makeWorkspace(repo: WorkspaceRepository) {
           break;
         }
         case "checks": {
-          const fee = text(command.fee), screening = text(command.screening), documents = text(command.documents);
-          if (!["pending", "paid", "waived"].includes(fee) || !["pending", "received"].includes(screening) || !["pending", "verified"].includes(documents)) throw new WorkspaceError("Choose a valid verification status.");
-          if (!reason) throw new WorkspaceError("Record the external provider/report reference and verification note.");
-          // The score off the report, typed by the person who read it. It is
-          // the one figure a landlord sees of the screening, so it is optional
-          // and bounded rather than free text.
-          const scoreText = text(command.credit_score, 10);
-          const creditScore = scoreText ? Number(scoreText) : null;
-          if (scoreText && (!Number.isInteger(creditScore) || creditScore! < 300 || creditScore! > 850)) throw new WorkspaceError("Enter a credit score between 300 and 850, or leave it blank.");
-          w.checks = { fee, screening, documents, reference: reason, by: p.email, at: now, credit_score: creditScore };
+          w.checks = normalizedChecks(command, p.email, now);
           delete w.review; delete w.recommendation; delete w.landlord_decision;
-          patch.status = fee === "pending" ? "fee_pending" : screening === "pending" ? "screening" : "review";
+          patch.status = w.checks.fee === "pending" ? "fee_pending" : w.checks.screening === "pending" ? "screening" : "review";
           break;
         }
         case "terms": {
@@ -277,9 +283,27 @@ export function makeWorkspace(repo: WorkspaceRepository) {
           if (command.action === "request_info") w.info_request = { message: reason, by: p.email, at: now };
           delete w.review; delete w.recommendation; delete w.landlord_decision;
           break;
+        case "review_and_recommend":
         case "recommend": {
-          const recipient = email(command.landlord_email);
+          if (command.action === "review_and_recommend") {
+            if (command.confirmed !== true) throw new WorkspaceError("Confirm that you reviewed this application and its proposed terms.");
+            if (!reviewPolicy) throw new WorkspaceError("The document checklist is unavailable. Try again later.", 503);
+            const missing = reviewPolicy.missingDocuments(row);
+            if (missing.length) throw new WorkspaceError(`Required documents are missing: ${missing.join(", ")}.`);
+            if (!text(row.name)) throw new WorkspaceError("Complete the applicant's legal name before recommending.");
+            w.checks = normalizedChecks(command, p.email, now);
+            if (!checksComplete(w)) throw new WorkspaceError("Verify payment or waiver, review the screening report and supporting documents before recommending.");
+            w.terms = normalizedTerms({ ...w.terms, ...normalizedTerms(command.terms) });
+            // The agreement date is resolved when the lease is prepared. An
+            // empty optional input must not erase that generated default.
+            if (!w.terms["lease.effective_date"]) delete w.terms["lease.effective_date"];
+            if (!w.terms["rent.due_day"]) delete w.terms["rent.due_day"];
+            w.review = { by: p.email, at: now };
+            if (!row.responsible_email) patch.responsible_email = p.email;
+          }
           const roster = await repo.staff();
+          const landlords = roster.filter(member => member.role === "landlord" && member.active && (member.property_ids || []).includes(row.listings?.building_id || ""));
+          const recipient = email(command.landlord_email) || (command.action === "review_and_recommend" && landlords.length === 1 ? email(landlords[0].email) : "");
           if (!row.listings?.building_id || !roster.some(member => same(member.email, recipient) && member.role === "landlord" && member.active && (member.property_ids || []).includes(row.listings!.building_id!))) throw new WorkspaceError("Choose an active landlord assigned to this property.");
           const terms = w.terms || {};
           if (!terms["lease.commencement_date"] || !terms["lease.end_date"] || !terms["rent.monthly"] || !terms["deposit.amount"]) throw new WorkspaceError("Save the lease dates, monthly rent and deposit before sending.");
@@ -287,6 +311,12 @@ export function makeWorkspace(repo: WorkspaceRepository) {
             landlord_email: recipient, tenant_name: text(row.name, 200), property_title: row.listings.title || "", unit: row.listings.unit || "", terms: { ...terms },
             summary: recommendationSummary(row, w, now) };
           delete w.landlord_decision;
+          if (command.action === "review_and_recommend") {
+            w.activity = [...(w.activity || []),
+              { action: "checks", by: p.email, at: now, detail: "Verification confirmed during recommendation" },
+              { action: "terms", by: p.email, at: now, detail: "Proposed terms confirmed during recommendation" },
+              { action: "approve", by: p.email, at: now, detail: "Approved during recommendation" }];
+          }
           patch.status = "sent_to_landlord"; break;
         }
         case "landlord_accept":

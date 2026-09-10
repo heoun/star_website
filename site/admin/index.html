@@ -989,6 +989,10 @@
       .row .thumb { width: 64px; height: 52px; }
       .statbar, .statbar.is-wide { grid-template-columns: 1fr; }
       .stat { border-left: 0 !important; box-shadow: inset 0 -1px 0 var(--line); }
+      .statbar.appl-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .appl-summary .stat.is-lead { grid-column: 1 / -1; }
+      .appl-summary .stat:nth-child(odd):not(.is-lead) { border-left: 1px solid var(--line) !important; }
+      .appl-summary .stat:nth-last-child(-n+2) { box-shadow: none; }
       .line { grid-template-columns: minmax(0, 1fr); gap: 3px; }
 
 

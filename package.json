@@ -21,7 +21,9 @@
     "demo:workspace": "npm run build && node scripts/demo-workspace.mjs",
     "test:property": "node scripts/test-property-flow.mjs",
     "test:listings": "node scripts/test-listing-editor.mjs",
-    "test:listings:db": "node scripts/test-listing-schema.mjs"
+    "test:listings:db": "node scripts/test-listing-schema.mjs",
+    "test:case-review": "node scripts/test-case-review.mjs",
+    "test:case-queue": "node scripts/test-case-queue.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

@@ -18,6 +18,10 @@ jobs:
         run: npm run gate
       - name: Type check # tsconfig arrives with Ring 0
         run: npm run typecheck
+      - name: Atomic application review and recommendation
+        run: npm run test:case-review
+      - name: Rental queue filters and priority
+        run: npm run test:case-queue
       - name: Workspace access and workflow
         run: npm run test:workspace
       - name: Applicant portal request visibility

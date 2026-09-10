@@ -10,7 +10,7 @@ export interface WorkspaceProperty {
   zip?: string; declared_units?: number | null; [key: string]: unknown;
 }
 export type WorkspaceAction = "assign" | "checks" | "approve" | "request_info" | "decline"
-  | "terms" | "recommend" | "landlord_accept" | "landlord_changes" | "landlord_decline"
+  | "terms" | "review_and_recommend" | "recommend" | "landlord_accept" | "landlord_changes" | "landlord_decline"
   | "note" | "admin_note" | "prepare_lease" | "record_tenant_signature" | "record_landlord_signature" | "archive_lease";
 export interface LeaseFile { path: string; name: string; size: number; uploaded_at: string }
 export interface WorkspaceTerms {
@@ -72,3 +72,6 @@ export interface WorkspaceCommand {
   action: WorkspaceAction; version: number;
   [key: string]: unknown;
 }
+
+// A review must check the current uploads using the same checklist as intake.
+export interface WorkspaceReviewPolicy { missingDocuments(row: WorkspaceApplication): string[] }

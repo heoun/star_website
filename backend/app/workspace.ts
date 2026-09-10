@@ -3,4 +3,5 @@
 export { makeWorkspace, canAccessCase, projectCase, projectLandlordProperty, allowedCaseActions, WorkspaceError } from "../core/workspace.ts";
 import { makeWorkspace } from "../core/workspace.ts";
 import { makeWorkspaceRepository } from "../adapters/workspace-supabase/index.ts";
-export const workspaceFor = (config: { url: string; key: string }) => makeWorkspace(makeWorkspaceRepository(config));
+import type { WorkspaceReviewPolicy } from "../contracts/workspace.ts";
+export const workspaceFor = (config: { url: string; key: string }, policy?: WorkspaceReviewPolicy) => makeWorkspace(makeWorkspaceRepository(config), policy);
