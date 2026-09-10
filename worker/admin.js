@@ -30,6 +30,7 @@ import {
   fetchListings,
   fetchMediaRow,
   insertBuilding,
+  createPropertyWithDefaults,
   insertListing,
   insertMedia,
   toAdminListing,
@@ -736,6 +737,13 @@ async function handleBuildings(request, env, identity, id) {
         if (body[field] !== undefined) values[field] = cleanLine(body[field], 200) || null;
       }
       if (!values.name) return json({ error: "A building needs a name." }, 422);
+      if (body.initial_settings !== undefined || body.creation_token !== undefined) {
+        if (!UUID_PATTERN.test(body.creation_token || '') || body.id || body.building_id) return json({error:'A new property requires a creation token, not an existing property ID.'},422);
+        if (!body.initial_settings || typeof body.initial_settings !== 'object' || Array.isArray(body.initial_settings)) return json({error:'Initial settings must be an object.'},422);
+        const {patch,errors} = normalizeSettingsPatch(body.initial_settings);
+        if (errors.length) return json({error:`Invalid fields: ${errors.join(', ')}`},422);
+        return json({building:await createPropertyWithDefaults(env,{token:body.creation_token,property:values,defaults:patch,actor:identity.email})},201);
+      }
       return json({ building: await insertBuilding(env, values) }, 201);
     }
 

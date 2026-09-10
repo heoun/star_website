@@ -1,3 +1,4 @@
+import { openNewProperty } from "./property-import.js";
 import { syncListingKind, syncListingProperty } from "./listing-editor.js";
 import { renderAdminDashboard } from "./admin-dashboard.js";
 import { renderOnboarding } from "./onboarding.js";
@@ -1584,25 +1585,17 @@ ROUTE_HOSTS.overview.addEventListener("click", event => {
 ROUTE_HOSTS.listing.addEventListener("click", event => {
   if (event.target.closest("[data-desk-edit-listing]")) openEditor(listings.find(row => row.id === routeId));
 });
-ROUTE_HOSTS.properties.addEventListener("click", event => {
-  if (event.target.closest("[data-desk-new-property]") && isManager()) {
-    document.getElementById("new-property-form").reset();
-    document.getElementById("new-property-feedback").textContent = "";
-    document.getElementById("new-property-dialog").showModal();
-  }
-});
-document.getElementById("new-property-cancel").addEventListener("click", () => document.getElementById("new-property-dialog").close());
-document.getElementById("new-property-form").addEventListener("submit", async event => {
-  event.preventDefault();
-  const form = event.currentTarget, button = form.querySelector('[type="submit"]');
+ROUTE_HOSTS.properties.addEventListener("click", async event => {
+  const button = event.target.closest("[data-desk-new-property]");
+  if (!button || !isManager()) return;
   button.disabled = true;
   try {
-    const { building } = await api("/buildings", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(Object.fromEntries(new FormData(form))) });
-    buildingRowsLoaded = false;
-    document.getElementById("new-property-dialog").close();
-    location.hash = `#/properties/${building.id}`;
-  } catch (error) { document.getElementById("new-property-feedback").textContent = error.message; }
-  finally { button.disabled = false; }
+    const {registry} = await api('/lease/fields');
+    openNewProperty({fields:registry.fields.filter(field=>field.source==='manager'),api,escapeHtml,setStatus,
+      onSaved: async building => { buildingRowsLoaded=false; location.hash=`#/properties/${building.id}`; }
+    });
+  } catch(error) {setStatus(error.message,'error');}
+  finally {button.disabled=false;}
 });
 load();
 

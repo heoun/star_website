@@ -7,10 +7,12 @@ const EOCD_SIGNATURE = 0x06054b50;
 const CENTRAL_SIGNATURE = 0x02014b50;
 
 export async function readDocxText(file) {
+  if (file.size > 20 * 1024 * 1024) throw new Error("Choose a Word file smaller than 20 MB.");
   const buffer = await file.arrayBuffer();
   const entry = findEntry(new DataView(buffer), "word/document.xml");
   if (!entry) throw new Error("This .docx has no word/document.xml — is it a real Word file?");
 
+  if (entry.uncompressedSize > 8 * 1024 * 1024) throw new Error("This Word document contains too much text to read safely.");
   const bytes = await inflate(new Uint8Array(buffer, entry.dataOffset, entry.compressedSize), entry.method);
   return extractText(new TextDecoder().decode(bytes));
 }
@@ -40,6 +42,7 @@ function findEntry(view, wantedName) {
       return {
         method: view.getUint16(offset + 10, true),
         compressedSize: view.getUint32(offset + 20, true),
+        uncompressedSize: view.getUint32(offset + 24, true),
         dataOffset: localOffset + 30 + localNameLength + localExtraLength
       };
     }
@@ -64,7 +67,18 @@ async function inflate(bytes, method) {
   if (method !== 8) throw new Error(`Unsupported compression in .docx (method ${method}).`);
 
   const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream("deflate-raw"));
-  return new Uint8Array(await new Response(stream).arrayBuffer());
+  const reader = stream.getReader(), chunks = []; let size = 0;
+  try {
+    while (true) {
+      const {done, value} = await reader.read(); if (done) break;
+      size += value.length;
+      if (size > 8 * 1024 * 1024) throw new Error("This Word document contains too much text to read safely.");
+      chunks.push(value);
+    }
+  } finally { await reader.cancel(); }
+  const result = new Uint8Array(size); let offset = 0;
+  for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.length; }
+  return result;
 }
 
 function extractText(xml) {
@@ -77,7 +91,14 @@ function extractText(xml) {
   for (const paragraph of paragraphs) {
     const runs = paragraph.getElementsByTagNameNS(WORD_NAMESPACE, "t");
     let line = "";
-    for (const run of runs) line += run.textContent;
+    for (const run of runs) {
+      // Tracked deletions are not part of the current agreement.
+      let deleted = false;
+      for (let parent = run.parentElement; parent; parent = parent.parentElement) {
+        if (parent.namespaceURI === WORD_NAMESPACE && parent.localName === "del") { deleted = true; break; }
+      }
+      if (!deleted) line += run.textContent;
+    }
     lines.push(line.trim());
   }
 

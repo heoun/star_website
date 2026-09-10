@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex, nofollow">
   <title>Star Admin</title>
+  <link rel="stylesheet" href="./property-import.css">
   <!-- INLINE_BRAND_ICON -->
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -1886,19 +1887,6 @@
   <script type="importmap">
     { "imports": { "jszip": "/admin/vendor/jszip.shim.mjs" } }
   </script>
-  <dialog id="new-property-dialog" aria-labelledby="new-property-title">
-    <form id="new-property-form" class="desk-form">
-      <h2 id="new-property-title">New property</h2>
-      <p>Create the property first, then add landlord details and lease defaults.</p>
-      <label>Property name<input name="name" required maxlength="200"></label>
-      <label>Street<input name="street" required maxlength="200"></label>
-      <label>City<input name="city" required maxlength="200"></label>
-      <label>State<input name="state_abbr" value="NY" required maxlength="2"></label>
-      <label>ZIP code<input name="zip" required pattern="[0-9]{5}(-[0-9]{4})?"></label>
-      <div class="actions"><button type="submit" class="primary">Create property</button><button type="button" id="new-property-cancel">Cancel</button></div>
-      <p id="new-property-feedback" role="status"></p>
-    </form>
-  </dialog>
   <link rel="stylesheet" href="workspace.css">
   <link rel="stylesheet" href="case-workspace.css">
   <script type="module" src="admin.js"></script>

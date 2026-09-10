@@ -627,6 +627,12 @@ export async function insertBuilding(env, values) {
   return row;
 }
 
+export async function createPropertyWithDefaults(env, {token, property, defaults, actor}) {
+  return callRpc(env, "create_property_with_defaults", {
+    p_token: token, p_property: property, p_defaults: defaults, p_actor: actor
+  });
+}
+
 export async function updateBuilding(env, id, values) {
   const send = async (body) => {
     const response = await restRequest(env, `buildings?id=eq.${encodeURIComponent(id)}`, {

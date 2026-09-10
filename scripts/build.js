@@ -33,6 +33,18 @@ if (fs.existsSync(leaseTemplate)) {
 
 fs.writeFileSync(path.join(dist, ".assetsignore"), "*.php\n");
 
+// Self-host the PDF reader; lease contents never leave the browser to extract text.
+const pdfjs = path.join(root, "node_modules", "pdfjs-dist");
+const pdfDest = path.join(dist, "admin", "vendor", "pdfjs");
+fs.mkdirSync(pdfDest, { recursive: true });
+for (const name of ["pdf.min.mjs", "pdf.worker.min.mjs"]) {
+  fs.copyFileSync(path.join(pdfjs, "build", name), path.join(pdfDest, name));
+}
+fs.copyFileSync(path.join(pdfjs, "LICENSE"), path.join(pdfDest, "LICENSE"));
+for (const name of ["cmaps", "standard_fonts", "wasm"]) {
+  fs.cpSync(path.join(pdfjs, name), path.join(pdfDest, name), { recursive: true });
+}
+
 console.log("Build complete. Deploy files from ./dist");
 
 function copyRendered(source, destination) {

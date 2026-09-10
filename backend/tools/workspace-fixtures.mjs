@@ -81,6 +81,20 @@ export function createWorkspaceFixtures(saved) {
       if (q.get("order") === "created_at.desc,id.desc") rows.sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)) || b.id.localeCompare(a.id));
       return response(rows);
     }
+    if (table === "create_property_with_defaults") {
+      const requests = state.property_creation_requests ||= {};
+      const payload = JSON.stringify({property:body.p_property,defaults:body.p_defaults});
+      const prior = requests[body.p_token];
+      if (prior) {
+        if (prior.actor !== body.p_actor || prior.payload !== payload) return response({message:'This creation request was already submitted with different information'},409);
+        return response(state.buildings.find(row=>row.id===prior.building_id));
+      }
+      const row = {id:crypto.randomUUID(),...body.p_property};
+      state.buildings.push(row);
+      if(Object.keys(body.p_defaults).length) state.settings[row.id] = {...body.p_defaults};
+      requests[body.p_token] = {actor:body.p_actor,payload,building_id:row.id};
+      return response(row);
+    }
     if (table === "buildings") {
       if (method === "POST") { const row = {id:crypto.randomUUID(),...body}; state.buildings.push(row); return response([row]); }
       const rows = state.buildings.filter(row => match(row, q, "id"));
