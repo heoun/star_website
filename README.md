@@ -42,9 +42,8 @@ markup and styling.
 
 Three environment-specific behaviours, all decided in `worker/env.js`:
 
-**`/admin` without Cloudflare Access.** Access does not exist on your machine
-and the Worker fails closed, so admin routes would answer 403. A local
-administrator identity opens them, behind two independent locks that must both
+**Local role simulation.** With `DEV_ADMIN_EMAIL` unset, workspace users sign
+in through Supabase. An optional local administrator identity opens the console, behind two independent locks that must both
 hold: `DEV_ADMIN_EMAIL` has a value, and the request arrived on a loopback
 hostname. `DEV_ADMIN_EMAIL` can only come from `.dev.vars`, which is gitignored,
 is never uploaded by `wrangler deploy`, and does not exist in GitHub Actions;
@@ -115,7 +114,7 @@ into `dist/`, so deployed URLs never contain the `site/` prefix.
 │   ├── portal/                    Applicant portal (sign-in, status, document uploads)
 │   ├── contact-us/                Contact page (form posts to /api/contact)
 │   ├── our-team/                  Team page
-│   ├── admin/                     Listings admin page (behind Cloudflare Access)
+│   ├── admin/                     Workspace (Supabase login + business permissions)
 │   ├── partials/                  Shared HTML fragments (not deployed)
 │   ├── shared/                    Design system, page runtime, listing and property scripts, vendored browser libraries
 │   ├── video/                     Background films and their poster frames
@@ -146,20 +145,22 @@ Pages that use the shared navigation contain a `SHARED_HEADER` marker. The rende
 
 ### Listings data
 
-Listing data lives in Supabase Postgres; media bytes (photos, floor plans, videos) live in the Cloudflare R2 bucket `listing-media` and are served at `/media/<key>` by the Worker with long-lived caching and Range support. The Worker answers `GET /data/listings.json` by querying the database, shaping rows into the JSON the pages already expect, and caching the result at the edge for 60 seconds. The listing pages were not changed: they still fetch that same path.
+Listing data lives in Supabase Postgres; media bytes (photos, floor plans, videos) live in the Supabase Storage bucket `listing-media` and are served at `/media/<key>` by the Worker with long-lived caching and Range support. The Worker answers `GET /data/listings.json` by querying the database, shaping rows into the JSON the pages already expect, and caching the result at the edge for 60 seconds. The listing pages were not changed: they still fetch that same path.
 
-- `supabase/schema.sql` creates the `listings` table (structured columns: numeric price, integer bedrooms, building/unit, description, video URL) and the `listing_media` table that ties R2 object keys to listings with captions and ordering.
-- `worker/listings.js` serves the feed; `worker/supabase.js` maps database rows to the frontend contract; `worker/media.js` serves and manages R2 objects.
+- `supabase/schema.sql` creates the `listings` table (structured columns: numeric price, integer bedrooms, building/unit, description, video URL) and the `listing_media` table that ties storage object keys to listings with captions and ordering.
+- `worker/listings.js` serves the feed; `worker/supabase.js` maps database rows to the frontend contract; `worker/media.js` serves and manages files through `worker/storage.js`.
 - `supabase/import-folder.mjs` imports one marketing folder (docx copy + photos + floor plan + video) as a complete listing; `supabase/import-seed.mjs` loads the old sample data as placeholder inventory.
 - `site/data/listings.json` is no longer generated data. It stays in the repository as the offline fallback the Worker serves whenever Supabase is unreachable, so the site never renders an empty grid.
 - `shared/listings-page.js` contains shared browser-side listing behavior.
 - `buy/`, `rental/`, and `commercial/` filter the dataset for their respective views.
 
-Editors manage listings at `/admin/`: create, edit, publish, delete, multi-photo upload with in-browser compression and per-photo captions, photo ordering (first photo is the card cover), one floor plan, and one video (uploaded to R2 or an external link).
+Editors manage listings at `/admin/`: create, edit, publish, delete, multi-photo upload with in-browser compression and per-photo captions, photo ordering (first photo is the card cover), one floor plan, and one video (uploaded to Supabase Storage or an external link).
 
 ### Admin access
 
-`/admin/` and `/api/admin/*` are protected twice. A Cloudflare Access application gates the routes at the edge, and `worker/access.js` independently verifies the signature, audience, issuer, and expiry of the JSON Web Token that Access attaches. Verification fails closed: if `CF_ACCESS_TEAM_DOMAIN` or `CF_ACCESS_AUD` are unset, every admin request is rejected. That is also true on a developer's machine, which is why local work needs the two-lock development identity described under [Development](#development).
+`/login/` signs workspace users in through Supabase Auth. `/portal/` uses the same identity provider and HttpOnly session for applicants. `/admin/` redirects unauthenticated visitors to sign in; every `/api/admin/*` request checks the verified identity against the active staff directory. Role and property assignments are never taken from user-editable Auth metadata. Cloudflare Access is no longer required for application login.
+
+See [Supabase deployment and account setup](docs/backoffice/supabase-setup.md) for the migration order, Owner bootstrap, email templates, storage and verification checklist.
 
 The browser never talks to Supabase and never holds a database key. All reads and writes go through the Worker using the service role key, and the `listings` table has row-level security enabled with no policies, so the anon key cannot reach it either.
 
@@ -169,13 +170,13 @@ Required Worker secrets and variables:
 | --- | --- |
 | `SUPABASE_URL` | Project URL, e.g. `https://xxxx.supabase.co` |
 | `SUPABASE_SERVICE_ROLE_KEY` | Server-side database key (secret) |
-| `SUPABASE_PUBLISHABLE_KEY` | Auth API key for the applicant portal; kept server-side. The legacy `SUPABASE_ANON_KEY` is accepted under that name until Supabase retires it at the end of 2026 |
-| `CF_ACCESS_TEAM_DOMAIN` | Zero Trust team domain, e.g. `starrealty.cloudflareaccess.com` |
-| `CF_ACCESS_AUD` | Application Audience tag of the Access application |
+| `SUPABASE_PUBLISHABLE_KEY` | Auth API key for both portals; kept server-side. The legacy `SUPABASE_ANON_KEY` is also accepted |
+| `OWNER_AUTH_USER_ID` | Supabase Auth user UUID pinned to the platform owner (secret); required together with `OWNER_EMAIL` |
+| `STORAGE_BACKEND` | `supabase` in deployed configuration; `r2` for isolated local development |
 | `RESEND_API_KEY` | Contact form and application notification email (secret) |
 | `APP_ENCRYPTION_KEY` | AES-256 key for applicant SSNs, 32 random bytes base64 (secret) |
 | `TURNSTILE_SECRET_KEY` | Optional; enforces human verification on the application form (secret) |
-| `OWNER_EMAIL` | The platform owner and bootstrap Admin. Only this identity can grant/revoke Admin access. Always a manager, without a `staff` row — see below. Set it with `wrangler secret put OWNER_EMAIL`: a plain variable set in the dashboard is wiped by the next `wrangler deploy`, and this is the account that gets you back in |
+| `OWNER_EMAIL` | The permissions-only platform owner. Must match the verified email of `OWNER_AUTH_USER_ID`. Only this identity can appoint/remove Admins, and it cannot access business operations. Set it with `wrangler secret put OWNER_EMAIL`: a plain variable set in the dashboard is wiped by the next `wrangler deploy`, and this is the account that gets you back in |
 
 None of these are set locally except Supabase and `APP_ENCRYPTION_KEY`; `.dev.vars.example` says what a development machine needs instead.
 
@@ -209,7 +210,7 @@ nobody has confirmed yet and the other is never asked of an applicant.
 **Documents** is a checklist against the same registry the portal enforces:
 required, partly received, received, optional, with counts. *View* opens the
 file itself — `GET /api/admin/documents/<id>`, the endpoint that already
-streams the object out of R2 — in a window that switches between the files of a
+streams the object out of private storage — in a window that switches between the files of a
 multi-file entry. Replacing and removing live in a `⋯` menu behind a
 confirmation, because a red Delete beside every filename is one mis-click away
 from asking the applicant for their passport again.
@@ -271,7 +272,7 @@ already been asked to sign.
 
 The current role workflow and migration instructions are in [Backoffice implementation](docs/backoffice/implementation.md), including the September 9 Admin dashboard and landlord onboarding changes. `manager` is the stored value for **Admin**.
 
-Cloudflare Access verifies identity; `staff` determines business permissions. Unknown or inactive accounts are refused. The configured `OWNER_EMAIL` is the protected platform owner and remains an Admin without a staff row. Only the Owner can appoint, demote or suspend another Admin, with an authorization reason and audit record. Ordinary Admins manage Agents and Landlords; they cannot alter peer Admins. Account type is fixed during ordinary editing, and Landlord accounts cannot become internal staff accounts.
+Supabase Auth verifies identity; `staff` determines business permissions and pins each workspace account to its Auth user ID. Unknown or inactive accounts are refused. The configured `OWNER_EMAIL` and `OWNER_AUTH_USER_ID` identify the protected permissions-only Owner without a staff row. Only the Owner can appoint, demote or suspend another Admin, with an authorization reason and audit record. Ordinary Admins manage Agents and Landlords; they cannot alter peer Admins. Account type is fixed during ordinary editing, and Landlord accounts cannot become internal staff accounts.
 
 Agents see applications assigned to them or in which they collaborate. Landlords see assigned properties and explicitly shared rental recommendations, without original application material. Property defaults remain Admin controlled; Agents may edit only the allowed transaction fields for their own cases. The complete permission matrix is in `docs/backoffice/implementation.md`.
 
@@ -279,7 +280,7 @@ Property default writes land in `lease_settings_audit`. Per-lease overrides are 
 
 The admin page renders an agent's view read-only rather than hiding it: an agent has to be able to review what the lease will print. That is convenience only — the Worker refuses the write whatever the browser sends.
 
-**Order matters when deploying this the first time.** Run `supabase/schema.sql`, `supabase/backoffice.sql`, `supabase/workspace.sql`, then `supabase/administration.sql`; configure `OWNER_EMAIL` with `wrangler secret put OWNER_EMAIL`, *then* deploy the Worker. The Owner can create an Agent account and separately grant Admin access through Accounts & access. Deploy first and everyone is refused until the table exists — the Worker says so in as many words rather than reporting a permissions problem, but nobody can work in the meantime.
+**Order matters when deploying this the first time.** Run `supabase/schema.sql`, `supabase/backoffice.sql`, `supabase/workspace.sql`, then `supabase/administration.sql`, `supabase/identity.sql` and `supabase/storage.sql`; configure `OWNER_EMAIL` and `OWNER_AUTH_USER_ID` with `wrangler secret put OWNER_EMAIL`, *then* deploy the Worker. The Owner can create an Agent account and separately grant Admin access through Accounts & access. Deploy first and everyone is refused until the table exists — the Worker says so in as many words rather than reporting a permissions problem, but nobody can work in the meantime.
 
 Three doors reach a landlord value and all three are closed to an agent: `PUT /lease/settings`, an `overrides` entry on either lease route, and the `building_id` on a listing — re-pointing a unit at another building swaps all 93 per-building values at once, which is the same write by another name.
 
@@ -425,10 +426,10 @@ applicant-facing status, and a document checklist:
 
 Files are PDF or photos (JPEG, PNG, WebP, HEIC), 10 MB each; the Worker
 checks a file's first bytes against its declared type before storing it.
-The bytes land in the **private `applicant-docs` R2 bucket** — never in
+The bytes land in the **private `applicant-docs` Supabase Storage bucket** — never in
 `listing-media`, whose objects anyone can fetch at `/media/` — and only ever
 leave through the Worker: `/api/portal/documents/<id>` for the applicant's
-own session, `/api/admin/documents/<id>` behind Cloudflare Access for staff.
+own session, `/api/admin/documents/<id>` after workspace permission checks for staff.
 
 The admin Applications tab shows the same checklist in each application's
 panel (with a `Docs: 3/6` tally on the row) and staff can open or delete any
@@ -451,7 +452,7 @@ where noted):
    `npx wrangler secret put <name>` (locally: `.dev.vars`). It stays
    server-side; the portal answers 503 without it.
 4. In the Supabase dashboard, Authentication → Emails → Templates: edit
-   **Confirm signup** and **Reset password** so the body shows
+   **Confirm signup**, **Magic Link** and **Reset password** so the body shows
    `{{ .Token }}` — the 6-digit code — instead of (or beside) the
    confirmation link. The portal verifies codes; it has no page for the
    link to land on.
@@ -652,18 +653,10 @@ The contact form endpoint `/api/contact` is implemented in `worker/index.js` and
 
 ## First-time Supabase and admin setup
 
-1. Create a Supabase project, then run `supabase/schema.sql` in the SQL editor.
-2. Create a Cloudflare Access application (Zero Trust > Access > Applications) for `starreusa.com/admin*` and `starreusa.com/api/admin*`, with a policy allowing the staff email addresses. Copy its Application Audience tag.
-3. Set the Worker configuration (the R2 buckets `listing-media` and `applicant-docs` must exist; their bindings are in `wrangler.jsonc`):
-
-   ```bash
-   npx wrangler secret put SUPABASE_SERVICE_ROLE_KEY
-   npx wrangler secret put SUPABASE_URL
-   npx wrangler secret put CF_ACCESS_TEAM_DOMAIN
-   npx wrangler secret put CF_ACCESS_AUD
-   ```
-
-4. Deploy, then open `https://starreusa.com/admin/` and confirm the sign-in prompt appears before the page loads.
+1. Follow [Supabase setup](docs/backoffice/supabase-setup.md): apply the six SQL files in order and create the private storage buckets.
+2. Bootstrap the Owner in Supabase Auth and set both Owner secrets. Configure email confirmation, SMTP and code templates.
+3. Set `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_PUBLISHABLE_KEY`, `OWNER_EMAIL` and `OWNER_AUTH_USER_ID` as Worker secrets. Production uses `STORAGE_BACKEND=supabase`; R2 bindings remain only for local compatibility.
+4. Deploy to a test environment and verify `/login/` and each role. If a Cloudflare Access application previously covered these paths, remove that application gate as part of the tested cutover; it is separate from the Worker and will otherwise keep showing the old login.
 5. Import inventory. Real listings from marketing folders:
 
    ```bash
@@ -794,3 +787,9 @@ Also verify that:
 ## Repository maintenance
 
 See [repository layout and delivery checkpoints](docs/repository.md) for source-file retention, local artifacts, validation commands and the ordered delivery history.
+
+### Listing metadata cleanup
+
+Existing databases: deploy code that no longer references the removed listing columns, then run [`supabase/drop-listing-presentation-fields.sql`](supabase/drop-listing-presentation-fields.sql). This permanently deletes Price override, Neighborhood, Card badge and listing Sort order data. Photo ordering is retained. New databases use the updated `supabase/schema.sql`.
+
+Run `npm run test:listings` for the save/read flow and `npm run test:listings:db` with PGlite installed (or `PGLITE_MODULE` set) for the database migration checks.

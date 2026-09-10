@@ -29,7 +29,7 @@ Agent 的物业营销权限与申请权限分开：分配一个物业不会让 A
 - 推荐绑定条款版本和明确收件人。条款或原始申请变化会作废旧审核；补件也会触发重新核验。已进入签署的资料不能从员工入口随意改写。
 - 最终 Word 文件生成成功时保存全部租约值；之后修改物业默认条款，不改变已准备的租约。签署回执绑定这个保存版本。最终 PDF 是外部签署完成后上传的文件，系统没有冒充供应商验证签名真实性。
 - 写入采用版本比较，重复点击或并发修改返回冲突提示。决定、分配和备注有操作记录。
-- 租约 PDF 保存在私有 R2 路径，每次下载重新检查访问权；取消分配后不能通过旧下载地址继续读取。
+- 租约 PDF 保存在私有 Supabase Storage 路径（本地 demo 使用模拟存储），每次下载重新检查访问权；取消分配后不能通过旧下载地址继续读取。
 - 房东/Agent 的结构化建议由 Admin 一次审批发布到物业默认值，并在同一数据库事务关闭请求。已被别人改过的旧建议会要求重新确认。首版支持租金到期日、结束时间和 utilities；其他内容通过一般修改请求处理。
 
 ## 架构与扩展位置
@@ -50,7 +50,7 @@ Agent 的物业营销权限与申请权限分开：分配一个物业不会让 A
 
 1. 已有项目确认执行过 `supabase/schema.sql` 和 `supabase/backoffice.sql` 后，在目标 Supabase SQL Editor 执行 **`supabase/workspace.sql`**，再执行 **`supabase/administration.sql`**。新项目按这四个文件的顺序初始化。迁移是增量、可重复执行的，不给旧申请猜测负责人或房东决定。
 2. `npm run build`，再用原有 `npm run dev` 或部署流程运行 Worker。不能用 `file://` 打开后台 HTML 代替 Worker。
-3. 配置 `OWNER_EMAIL`（建议作为 Worker secret 保留）。只有这个经过 Cloudflare Access 验证的身份能授予/撤销 Admin 权限；Owner 不存成可编辑角色。Admin 在 Accounts & access 管理 Agent / Landlord 账号和物业权限，在申请内分配负责人/协作者。正式登录仍需 Cloudflare Access 与 active staff 记录，Owner 是配置中的例外。
+3. 配置 `OWNER_EMAIL` 和 `OWNER_AUTH_USER_ID`，将平台 Owner 绑定到 Supabase Auth 用户。后台统一从 `/login/` 登录，每次请求检查 active staff、固定用户 ID 与业务权限。Owner 只管理账号和权限；Admin 管理 Agent / Landlord，Landlord 物业绑定只能通过入驻审核创建。详见 [Supabase 部署配置](supabase-setup.md)。
 4. 真实信用检查、费用核验、签署服务仍按外部流程操作并登记凭证。
 
 **2026-09-08 验证状态：**对当前开发 Supabase 只做了 `limit=0` 字段探测，返回 `42703`，新增字段尚未可用。迁移已在隔离 PostgreSQL 兼容运行时验证，**未执行到真实数据库，也未部署**。当前环境只有 REST 服务密钥，没有 SQL 管理连接，不能用 REST 密钥直接执行迁移。
@@ -99,7 +99,7 @@ SQL 回归：安装可选的 `@electric-sql/pglite` 后运行 `npm run test:work
 
 邮件沿用现有 Resend 发送适配器；未引入新付费服务。`email_state=sent` 仅表示发送服务接受请求，不能证明最终送达。失败保留邀请并提供重发；当前没有后台自动重试队列。邮件链接打开普通网页表单，不依赖收件箱对嵌入式互动表单的支持。
 
-生产环境需要已验证的发信地址和 `RESEND_API_KEY`。`/landlord-onboarding/` 和 `/api/landlord-onboarding` 必须可公开到达，后者依靠不可猜测的邀请令牌；`/admin/` 与 `/api/admin/` 仍由 Cloudflare Access 保护。房东批准后还必须符合 Access 登录策略；本次不会自动调用 Cloudflare 修改用户或准入策略。后台数据库只保存令牌哈希，浏览器链接中的令牌不进入查询参数或 localStorage。
+生产环境需要已验证的发信地址和 `RESEND_API_KEY`。`/landlord-onboarding/` 和 `/api/landlord-onboarding` 必须可公开到达，后者依靠不可猜测的邀请令牌；`/admin/` 与 `/api/admin/` 由 Supabase 会话和后台权限检查保护。房东批准后自动请求账号激活邮件，失败可以在 Accounts & access 重发。现有 Cloudflare Access 应用需要在部署切换时单独调整，代码不会自动修改云端配置。后台数据库只保存令牌哈希，浏览器链接中的令牌不进入查询参数或 localStorage。
 
 开发演示把邮件写到 `http://127.0.0.1:8792/__demo/inbox`，不会投递真实收件箱。生产发信、真实 Access 登录和目标 Supabase 迁移均未执行或验收。此前目标开发库缺少 workspace 字段，此次的 administration 迁移也尚未应用。
 
@@ -121,7 +121,7 @@ SQL 验证：`npm run test:administration:db`，可选依赖及 `PGLITE_MODULE` 
 
 - Platform Owner 只进入 Accounts & access，负责账户权限、Admin 任免及停用/启用。Owner 不是业务 Admin，旧业务页面会回到权限页；申请、租约、入驻、房源和私密文件接口拒绝 Owner，v2 身份适配器也不再把 Owner 当业务管理员。权限分配需要的物业目录只返回 ID 和名称。
 - Landlord 的 Registered properties 为只读。Admin/Owner 均不能通过账户保存增减房东绑定；保存姓名或账户状态时保留已有绑定。新房东及新增物业统一通过 Admin 审核入驻建立，不再提供手动创建并绑定房东的入口。
-- 租赁队列按 All Rentals → Needs Attention → Waiting on Others 排列（Agent 的待办标签保留 Needs Me）。
+- 租赁队列按 All Rentals → Needs Attention → Waiting on Others 排列，Admin 和 Agent 使用一致的待办标签。
 
 此轮通过 107 项账户/入驻 HTTP 检查、40 项 SQL 检查、158 项工作台检查、66 项 mock 检查、类型检查、依赖检查与构建。SQL 仅在本地隔离运行时验证；真实环境部署需要重新执行更新后的 `supabase/administration.sql`，尚未对真实数据库执行或部署。
 
@@ -138,3 +138,37 @@ The provided checklist also identifies data-model work beyond this layout: stand
 Verification: `node scripts/test-property-flow.mjs` covers complete field mapping, 15-step rendering, readiness for every required field, scoped save, atomic paired choices and protection against losing edits. The 66 demo/lease-generation checks and build passed. Browser checks covered actual save/reload/restoration on mock data, Good Cause's four questions, desktop/mobile layout and the unsaved-step guard. No production deployment or schema mutation was made.
 
 The compact lease-step navigation retains its horizontal button layout. After changing sections, the current step is scrolled into view within the navigation strip; editing/cancelling preserves its scroll position. Footer Previous/Next returns the reader to the start of the new section. Local section redraws reuse loaded property data instead of clearing and fetching the entire page. Browser verification covered sequential steps 1–5 at 1000px, preserved horizontal position through Edit/Cancel, and active-step visibility at 390px. The temporary dropdown approach was removed.
+
+## Listing editor — 2026-09-09
+
+- The editor follows Property & unit → Price & specifications → Website content → Publication. An optional external details link stays with Website content; the four obsolete presentation controls and the More settings foldout are removed.
+- A linked property supplies the building name and the separate street/city/state/ZIP display. The listing title remains independent marketing copy. Standalone listings retain a manually entered full address.
+- On every listing save, the Worker copies the current property's name and formatted address, including partial edits that omit `building_id`. This updates the listing copy when saved; it is not a bulk backfill of historical records.
+- Commercial fields and rental terms appear only for the corresponding category/transaction. Toggling visibility preserves entered and legacy values.
+- New listings default to unpublished drafts; editing preserves the existing publication state. Property creation is handled through property management or approved landlord onboarding, rather than creating an empty property inside the listing form.
+- The isolated demo repository now supports listing creation and deletion instead of answering creation with pre-existing rows. `npm run test:listings` covers draft persistence, re-reading, inherited addresses, removed-field handling, numeric price formatting, newest-first order and publication through the actual HTTP handlers.
+- Verified browser flow in an isolated mock state: create draft → see it in the list → reopen → change price → save; category/transaction visibility and retained advanced fields were also checked. Media controls were retained; upload transport was not changed or re-tested in this change.
+
+### Removed listing metadata — 2026-09-09
+
+`price_display`, `neighborhood`, `kind_label` and listing `position` are removed from the editor, API reads/writes, imports, fixtures and fresh schema. Prices derive from `price_amount`; card labels derive from property/transaction type; listing order is `created_at DESC, id DESC`. The separate `listing_media.position` column remains for covers and photo ordering.
+
+For an existing Supabase database, deploy the updated application first, then run `supabase/drop-listing-presentation-fields.sql`. It permanently removes these four columns and replaces the feed index without a cascading drop. `npm run test:listings:db` (PGlite) verifies a populated old schema can migrate twice and that applying the fresh schema does not reintroduce the columns. Remote database execution and production deployment are separate from the local demo update.
+
+## Rental queue and application review — 2026-09-10
+
+Admin and Agent queues now emphasize the applicant/property, next action, responsible team and time in the current step. All Rentals surfaces unassigned active cases for Admin, then actionable cases, waiting cases and closed cases. Search, stage and responsibility filters combine with the selected queue; they persist within the session when opening a case and returning. Admin can filter by responsible Agent or unassigned cases; Agent can filter lead versus collaborative involvement. API access scoping remains authoritative.
+
+Staff case details keep the current next step above Application, Documents, Lease & landlord, and Notes & activity tabs. Admin alone receives Team & admin for assignment and private notes. Recording verification is expandable; document review is directly accessible from the next action. Switching context tabs keeps unsaved form inputs. The full dossier uses Applicant & tenancy and Screening details labels, with a compact mobile summary. Landlord's separate recommendation view remains unchanged.
+
+Validation: 12 queue checks, 158 workspace/role/workflow checks, 154 administration HTTP checks and 92 lease permission checks passed, plus typecheck, architecture gate and build. Browser verification on the local synthetic demo covered Admin assignment filters and return navigation, document checklist and attachment links, unsaved note preservation across tabs, Agent scope and absence of Admin-only tabs/notes, and narrow-screen layout. This round did not send messages, make application decisions or test a complete signing flow.
+
+## One-page review and combined recommendation — 2026-09-10
+
+Review-stage staff cases now open on Review & decide: applicant-reported facts, uploaded evidence versus staff verification, unanswered items, proposed lease conditions, and three decisions. Supporting files expand in place. Recommendation preloads existing deal/property values and the sole linked landlord; multiple landlords still require selection. Admin-only team/private notes stay in their own tab. Staff progress is Review → Landlord → Lease & signing → Done.
+
+`review_and_recommend` is one version-checked command, not a browser sequence of independent saves. It validates current required uploads through an injected checklist policy, explicit human confirmation, payment/waiver, report/document review, provider reference, permitted terms and the currently active bound landlord. It records verification, terms, approval and the recommendation snapshot in one repository save. If a successful Admin review had no responsible person, the reviewer becomes responsible. Failed validation changes nothing; a stale retry cannot send twice. A notification error returns a saved result with `notified:false` rather than a failed-save response. Reliable asynchronous notification retry is still future work.
+
+Agreement date is resolved when preparing the lease; a blank review input does not override that generated date. Confirmed recommendation terms feed the existing lease resolver, and the staff header shows proposed/agreed rent instead of the listing's original asking rent. The new action needs no schema migration. Existing separate commands remain compatible; older saved recommendations are not rewritten.
+
+Validation: 71 new combined-review HTTP checks, 158 existing workspace checks, 12 queue checks, 70 complete-demo/lease checks and 92 permission checks passed, plus typecheck, architecture gate and build. Browser checks on a separate synthetic state exercised both Admin and Agent review, single-landlord selection, a changed rent, one-submit recommendation, landlord acceptance and final lease generation without another data-entry step. The active 8792 demo was restarted against its existing state; test decisions were made on 8794 only. No real email, credit check, payment or signature was initiated.
