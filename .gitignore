@@ -33,3 +33,10 @@ coverage/
 
 # Requirement spreadsheets belong under ignored notes/, not the repository root.
 /lease-information*.xlsx
+
+# Generated artifacts and patch scratch files; keep source assets under site/.
+/tmp/
+/output/
+*.tmp
+*.orig
+*.rej
