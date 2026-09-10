@@ -1,3 +1,4 @@
+import { inviteWorkspaceAccount } from "./workspace-auth.js";
 import { administrationFor } from "../backend/app/administration.ts";
 import { requireConfig } from "./supabase.js";
 const json = (body, status = 200) => new Response(JSON.stringify(body), { status, headers: {
@@ -23,15 +24,33 @@ export async function handleAdministration(request, env, identity, resource, id,
     if (resource === "staff") {
       if (!id && request.method === "GET") return json(await accounts.list(identity));
       if (id && subresource === "history" && request.method === "GET") return json({ history: await accounts.history(identity, decodeURIComponent(id)) });
-      if (!id && request.method === "PUT") return json({ member: await accounts.execute(identity, { ...await bodyOf(request), action: "save" }) });
-      if (id && subresource === "actions" && request.method === "POST") return json({ member: await accounts.execute(identity, { ...await bodyOf(request), email: decodeURIComponent(id) }) });
+      if (!id && request.method === "PUT") {
+        const command = { ...await bodyOf(request), action: "save" };
+        const member = await accounts.execute(identity, command);
+        return json({ member, ...(command.version === -1 && member.active ? { invitation: await inviteWorkspaceAccount(request, env, member.email) } : {}) });
+      }
+      if (id && subresource === "invite" && request.method === "POST") {
+        const { staff } = await accounts.list(identity);
+        const member = staff.find(person => person.email === decodeURIComponent(id).toLowerCase());
+        if (!member?.active || !member.allowed_actions.includes("save")) return json({ error: "You cannot invite this account." }, 403);
+        return json({ invitation: await inviteWorkspaceAccount(request, env, member.email) });
+      }
+      if (id && subresource === "actions" && request.method === "POST") {
+        const command = { ...await bodyOf(request), email: decodeURIComponent(id) };
+        const member = await accounts.execute(identity, command);
+        return json({ member, ...(command.action === "create_admin" ? { invitation: await inviteWorkspaceAccount(request, env, member.email) } : {}) });
+      }
       if (request.method === "DELETE") return json({ error: "Suspend an account to preserve its history. Accounts are not deleted." }, 409);
     }
     if (resource === "onboarding") {
       if (!id && request.method === "GET") return json({ invitations: await onboarding.list(identity) });
       if (!id && request.method === "POST") return json({ invitation: await onboarding.invite(identity, await bodyOf(request)) }, 201);
       if (id && !subresource && request.method === "GET") return json({ invitation: await onboarding.get(identity, id) });
-      if (id && subresource === "actions" && request.method === "POST") return json({ invitation: await onboarding.act(identity, id, await bodyOf(request)) });
+      if (id && subresource === "actions" && request.method === "POST") {
+        const command = await bodyOf(request);
+        const invitation = await onboarding.act(identity, id, command);
+        return json({ invitation, ...(command.action === "approve" ? { account_invitation: await inviteWorkspaceAccount(request, env, invitation.email) } : {}) });
+      }
     }
     return json({ error: "Unknown administration endpoint." }, 404);
   } catch (error) { return errorResponse(error); }

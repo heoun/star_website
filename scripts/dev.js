@@ -33,7 +33,7 @@ const extraArgs = process.argv.slice(2);
 // because one edit there changes every page.
 const COPIED = new Set([
   "index.html", "buy", "rental", "commercial", "listings", "new-development",
-  "contact-us", "our-team", "property", "apply", "admin", "png", "video",
+  "contact-us", "our-team", "property", "apply", "portal", "login", "landlord-onboarding", "admin", "png", "video",
   "data", "shared", "favicon.ico", "favicon.svg", "apple-touch-icon.png"
 ]);
 
@@ -74,7 +74,7 @@ function checkConfiguration() {
   }
 
   const wanted = [
-    ["DEV_ADMIN_EMAIL", "/admin will answer 403"],
+
     ["SUPABASE_URL", "listings fall back to the bundled file"],
     ["SUPABASE_SERVICE_ROLE_KEY", "listings fall back to the bundled file"],
     ["APP_ENCRYPTION_KEY", "the apply form will refuse to submit"]

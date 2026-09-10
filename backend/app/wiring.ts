@@ -1,3 +1,4 @@
+import { makeSupabaseStorage } from "../adapters/storage-supabase/index.ts";
 // The composition root. The ONLY file that may import adapters. Swapping an
 // implementation is one line here — that is the whole point of the fence.
 
@@ -25,11 +26,10 @@ interface WorkerEnv {
   [key: string]: unknown;
 }
 
-// Ring 3: real identities whenever a way to verify them exists — Cloudflare
-// Access in production, the two-lock dev identity locally. CI has neither and
-// keeps the fake.
+// Supabase identities, or explicit local role simulation. The prototype is
+// restricted to loopback by app/index.ts; CI without credentials uses fake auth.
 export function authKind(env: WorkerEnv): "real" | "fake" {
-  const access = String(env.CF_ACCESS_TEAM_DOMAIN || "") && String(env.CF_ACCESS_AUD || "");
+  const access = /^https?:\/\//.test(String(env.SUPABASE_URL || "")) && String(env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || "");
   const dev = String(env.DEV_ADMIN_EMAIL || "");
   return access || dev ? "real" : "fake";
 }
@@ -45,7 +45,8 @@ export function emailKind(env: WorkerEnv): "resend" | "log" {
 // Ring 5: the R2 bindings exist wherever the Worker runs (wrangler dev
 // simulates them), so the real adapter is the default; memory remains for a
 // bare environment without bindings.
-export function storageKind(env: WorkerEnv): "r2" | "memory" {
+export function storageKind(env: WorkerEnv): "supabase" | "r2" | "memory" {
+  if (env.STORAGE_BACKEND === "supabase") return "supabase";
   return env.MEDIA && env.APPLICANT_DOCS ? "r2" : "memory";
 }
 
@@ -76,7 +77,7 @@ export function buildDeps(env: WorkerEnv, request: Request): Deps {
     screening: makeFakeScreening(),
     esign: makeFakeEsign(),
     email,
-    storage: storageKind(env) === "r2"
+    storage: storageKind(env) === "supabase" ? makeSupabaseStorage(env) : storageKind(env) === "r2"
       ? makeR2Storage(env as unknown as Parameters<typeof makeR2Storage>[0])
       : makeMemoryStorage(),
     leasegen: makeRealLeaseGen(repos, env, request),

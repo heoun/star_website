@@ -23,7 +23,11 @@
     "test:listings": "node scripts/test-listing-editor.mjs",
     "test:listings:db": "node scripts/test-listing-schema.mjs",
     "test:case-review": "node scripts/test-case-review.mjs",
-    "test:case-queue": "node scripts/test-case-queue.mjs"
+    "test:case-queue": "node scripts/test-case-queue.mjs",
+    "test:identity": "node scripts/test-identity.mjs",
+    "test:identity:db": "node scripts/test-identity-schema.mjs",
+    "test:identity:ui": "node scripts/test-identity-ui.mjs",
+    "test:storage": "node scripts/test-storage.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

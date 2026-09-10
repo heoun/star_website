@@ -57,7 +57,7 @@ async function run() {
   // database credentials — the zero-secrets path CI exercises.
   if (process.env.SMOKE_DB === "memory") {
     // CI parity: no database and no identity secrets, whatever .dev.vars holds.
-    vars.push("--var", "SUPABASE_URL:disabled", "--var", "DEV_ADMIN_EMAIL:", "--var", "CF_ACCESS_TEAM_DOMAIN:", "--var", "RESEND_API_KEY:");
+    vars.push("--var", "SUPABASE_URL:disabled", "--var", "DEV_ADMIN_EMAIL:", "--var", "SUPABASE_PUBLISHABLE_KEY:", "--var", "SUPABASE_ANON_KEY:", "--var", "STORAGE_BACKEND:r2", "--var", "RESEND_API_KEY:");
   }
 
   let wrangler = null;

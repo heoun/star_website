@@ -1,18 +1,10 @@
-// The real identities, behind the same contract the fake implements.
-//
-//   staff      Cloudflare Access JWT (verified again in the Worker), or the
-//              two-lock local dev identity — then the staff table decides the
-//              role. All reused from worker/, unchanged; legacy "manager"
-//              surfaces as v2 "admin".
-//   applicant  the portal's HttpOnly Supabase session cookie.
-//   landlord   an HMAC-signed, expiring link token. Single-use enforcement
-//              arrives with the landlord tables ring; until then the token is
-//              stateless, like every other part of this ring.
+// Supabase identity and business directory resolution behind the Auth port.
+// The experimental landlord link path remains separate from account login.
 
-import { verifyAccessRequest } from "../../../worker/access.js";
+import { fetchStaffMember } from "../../../worker/supabase.js";
 import { devIdentity } from "../../../worker/env.js";
 import { resolveStaff } from "../../../worker/staff.js";
-import { readSession } from "../../../worker/portal.js";
+import { readSession } from "../../../worker/auth.js";
 import type { Principal } from "../../contracts/domain.ts";
 import type { AuthPort } from "../../contracts/auth.ts";
 
@@ -80,7 +72,13 @@ async function verifyLink(secret: string, token: string): Promise<LinkClaims | n
 }
 
 export function makeRealAuth(env: AuthEnv, baseUrl = ""): AuthPort {
+  let refreshedCookie: string | undefined;
   return {
+    decorateResponse(response) {
+      if (refreshedCookie) response.headers.append("Set-Cookie", refreshedCookie);
+      response.headers.set("Cache-Control", "no-store");
+      return response;
+    },
     async resolve(request): Promise<Principal | null> {
       // 1. A landlord link names its own bearer.
       const url = new URL(request.url);
@@ -93,27 +91,22 @@ export function makeRealAuth(env: AuthEnv, baseUrl = ""): AuthPort {
         return { kind: "landlord_link", landlordId: claims.landlordId, contactId: claims.contactId, purpose: claims.purpose };
       }
 
-      // 2. Staff: Access first, then the two-lock dev identity; either way the
-      //    staff table (or the dev role) decides what they are.
-      const identity = (await verifyAccessRequest(request, env)) || devIdentity(request, env);
-      if (identity) {
+      // All users share Supabase identity. Directory members cannot fall back
+      // to applicant privileges when their workspace access is suspended.
+      const session = await readSession(request, env);
+      refreshedCookie = session?.setCookie;
+      const identity = session || devIdentity(request, env);
+      if (!identity) return null;
+      const member = "development" in identity && identity.development ? true : await fetchStaffMember(env, identity.email);
+      if (member || identity.email === String(env.OWNER_EMAIL || "").trim().toLowerCase()) {
         const resolved = await resolveStaff(env, identity) as { identity?: { email: string; role: string; owner?: boolean } };
         if (resolved.identity && !resolved.identity.owner && ["manager", "agent"].includes(resolved.identity.role)) {
-          return {
-            kind: "staff",
-            id: resolved.identity.email,
-            role: resolved.identity.role === "manager" ? "admin" : "agent",
-            email: resolved.identity.email,
-          };
+          return { kind: "staff", id: resolved.identity.email,
+            role: resolved.identity.role === "manager" ? "admin" : "agent", email: resolved.identity.email };
         }
-        return null; // authenticated at the edge but not staff: refused, not demoted
+        return null;
       }
-
-      // 3. An applicant's portal session.
-      const session = await readSession(request, env) as { email: string } | null;
-      if (session?.email) {
-        return { kind: "applicant", id: session.email, email: session.email };
-      }
+      if (session) return { kind: "applicant", id: session.email, email: session.email };
 
       return null;
     },

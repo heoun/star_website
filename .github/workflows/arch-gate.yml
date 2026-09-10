@@ -26,6 +26,12 @@ jobs:
         run: npm run test:workspace
       - name: Applicant portal request visibility
         run: npm run test:portal
+      - name: Unified Supabase identities and invitations
+        run: npm run test:identity
+      - name: Verified identity binding and private storage SQL
+        run: npm run test:identity:db
+      - name: Supabase Storage upload and download
+        run: npm run test:storage
       - name: Owner governance and landlord onboarding
         run: npm run test:administration
       - name: Property lease sections and save behavior

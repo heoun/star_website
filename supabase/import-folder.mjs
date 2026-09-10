@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Imports one marketing folder as a listing: parses the .docx copy, resizes the
-// photos, uploads all media to R2 through wrangler, and inserts the rows into
+// photos, uploads all media to Supabase Storage, and inserts the rows into
 // Supabase. macOS only (uses the built-in textutil and sips tools).
 //
 //   SUPABASE_URL=https://xxxx.supabase.co \
@@ -15,6 +15,9 @@
 
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, readFileSync, readdirSync, rmSync, statSync } from "node:fs";
+import { storageBucket } from "../worker/storage.js";
+import { Readable } from "node:stream";
+import { createReadStream } from "node:fs";
 import { readFile } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -28,7 +31,7 @@ import {
 
 const BUCKET = "listing-media";
 
-// Child processes (wrangler, sips, textutil) have no business seeing the
+// Child processes (sips, textutil) have no business seeing the
 // database key, so they run with it stripped from their environment.
 const SAFE_ENV = { ...process.env };
 delete SAFE_ENV.SUPABASE_SERVICE_ROLE_KEY;
@@ -107,7 +110,7 @@ if (dryRun) {
   process.exit(0);
 }
 
-// ---- Helpers: Supabase REST + R2 upload via wrangler ----
+// ---- Helpers: Supabase database and Storage ----
 
 const headers = { apikey: key, Authorization: `Bearer ${key}`, "Content-Type": "application/json" };
 
@@ -119,11 +122,9 @@ async function rest(pathname, init = {}) {
   return response;
 }
 
-function uploadToR2(objectKey, filePath, contentType) {
-  execFileSync("npx", [
-    "--yes", "wrangler@4", "r2", "object", "put", `${BUCKET}/${objectKey}`,
-    "--file", filePath, "--content-type", contentType, "--remote"
-  ], { stdio: ["ignore", "ignore", "inherit"], env: SAFE_ENV });
+async function uploadMedia(objectKey, filePath, contentType) {
+  await storageBucket({ STORAGE_BACKEND: "supabase", SUPABASE_URL: url, SUPABASE_SERVICE_ROLE_KEY: key }, BUCKET)
+    .put(objectKey, Readable.toWeb(createReadStream(filePath)), { httpMetadata: { contentType } });
 }
 
 function resizeImage(sourcePath, maxDimension) {
@@ -160,7 +161,7 @@ const mediaRows = [];
 for (const [index, name] of photos.entries()) {
   const resized = resizeImage(path.join(folder, name), 1600);
   const objectKey = `${listing.id}/${crypto.randomUUID()}.jpg`;
-  uploadToR2(objectKey, resized, "image/jpeg");
+  await uploadMedia(objectKey, resized, "image/jpeg");
   mediaRows.push({ listing_id: listing.id, kind: "photo", path: objectKey, caption: captionFromFilename(name), position: index });
   console.log(`Uploaded photo: ${name} (${Math.round(statSync(resized).size / 1024)} KB)`);
 }
@@ -168,7 +169,7 @@ for (const [index, name] of photos.entries()) {
 if (floorPlan) {
   const resized = resizeImage(path.join(folder, floorPlan), 2000);
   const objectKey = `${listing.id}/${crypto.randomUUID()}.jpg`;
-  uploadToR2(objectKey, resized, "image/jpeg");
+  await uploadMedia(objectKey, resized, "image/jpeg");
   mediaRows.push({ listing_id: listing.id, kind: "floor_plan", path: objectKey, caption: "Floor plan", position: 0 });
   console.log(`Uploaded floor plan: ${floorPlan}`);
 }
@@ -180,7 +181,7 @@ if (mediaRows.length > 0) {
 if (video) {
   const extension = path.extname(video).toLowerCase();
   const objectKey = `${listing.id}/${crypto.randomUUID()}${extension}`;
-  uploadToR2(objectKey, path.join(folder, video), VIDEO_TYPES[extension] || "video/mp4");
+  await uploadMedia(objectKey, path.join(folder, video), VIDEO_TYPES[extension] || "video/mp4");
   await rest(`listings?id=eq.${listing.id}`, {
     method: "PATCH",
     body: JSON.stringify({ video_url: `/media/${objectKey}` })

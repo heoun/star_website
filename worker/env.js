@@ -1,33 +1,6 @@
-// Tells a developer's machine apart from production.
-//
-// Two different questions live here, and they deliberately have two different
-// answers, because getting either one wrong in production costs something
-// different.
-//
-//   isLocalRequest  — "is this a loopback address?"  Governs side effects that
-//                     must not escape a laptop: notification email, reading
-//                     media from the live site.  A deployed Worker only ever
-//                     receives requests routed to its own hostname, so this is
-//                     false in production without any configuration to forget.
-//
-//   devIdentity     — "may this request act as an administrator without
-//                     Cloudflare Access?"  This grants the whole admin API, so
-//                     it needs more than a hostname.
-//
-// Cloudflare Access protects /admin in production and fails closed: with no
-// CF_ACCESS_* configuration verifyAccessRequest returns null and every admin
-// route answers 403. That is correct, and it is also why a local Worker needs a
-// deliberate way in. This is that way, behind two independent locks:
-//
-//   1. DEV_ADMIN_EMAIL has a value. It can only reach the Worker through
-//      .dev.vars, which is gitignored, is never uploaded by `wrangler deploy`,
-//      and does not exist in the GitHub Actions environment.
-//   2. The request arrived on a loopback hostname.
-//
-// Either lock on its own keeps this shut in production. Both would have to fail
-// at once — someone deliberately running `wrangler secret put DEV_ADMIN_EMAIL`
-// *and* production traffic somehow arriving as localhost.
-
+// Local role simulation needs both a loopback request and DEV_ADMIN_EMAIL.
+// Production identities use Supabase Auth. These local overrides never apply
+// to a deployed hostname, even if accidentally configured there.
 const LOOPBACK_HOSTS = new Set(["localhost", "127.0.0.1", "[::1]", "::1"]);
 
 export function isLocalRequest(request) {
@@ -39,7 +12,7 @@ export function isLocalRequest(request) {
 }
 
 // The identity a local request acts as, or null. Shaped like the one
-// verifyAccessRequest returns so callers cannot tell them apart, except that it
+// the Supabase adapter returns so callers cannot tell them apart, except that it
 // states its own role: a laptop should not need rows in the staff table before
 // the admin console will open.
 //

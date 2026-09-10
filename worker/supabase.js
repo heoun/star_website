@@ -788,3 +788,11 @@ export async function upsertStaffMember(env, values) {
 export async function deleteStaffMember(env, email) {
   await restRequest(env, `staff?email=eq.${encodeURIComponent(email)}`, { method: "DELETE" });
 }
+
+// The database atomically pins the verified identity, including concurrent first logins.
+export async function bindStaffIdentity(env, email, userId) {
+  const response = await restRequest(env, "rpc/bind_staff_identity", {
+    method: "POST", body: JSON.stringify({ p_email: email, p_user_id: userId })
+  });
+  return (await response.json()) === true;
+}

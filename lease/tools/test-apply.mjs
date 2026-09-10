@@ -56,7 +56,7 @@ globalThis.fetch = async (url, init = {}) => {
     new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
 
   if (target.includes("/auth/v1/user")) {
-    return reply({ email: ACCOUNT });
+    return reply({ id: "applicant-auth-id", email: ACCOUNT, email_confirmed_at: "2026-09-01T00:00:00Z" });
   }
 
   if (target.includes("/rest/v1/listings")) {

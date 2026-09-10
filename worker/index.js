@@ -1,3 +1,5 @@
+import { handleAuthRequest } from "./auth.js";
+import { handleWorkspaceAuth } from "./workspace-auth.js";
 import { handlePublicOnboarding } from "./administration.js";
 import { guardAdminPage, handleAdminRequest } from "./admin.js";
 import { handleApplication, handleRoommateInvites } from "./apply.js";
@@ -41,6 +43,12 @@ export default {
       return handleBackendRequest(request, env);
     }
 
+    if (pathname.startsWith("/api/auth/")) {
+      const resource = pathname.slice("/api/auth/".length);
+      if (["workspace-code", "workspace-activate"].includes(resource)) return handleWorkspaceAuth(request, env, resource);
+      return handleAuthRequest(request, env, ctx, resource);
+    }
+
     if (pathname === "/api/landlord-onboarding") return handlePublicOnboarding(request, env);
 
     if (pathname === "/api/admin" || pathname.startsWith("/api/admin/")) {
@@ -75,12 +83,14 @@ export default {
       return handleApplication(request, env, ctx);
     }
 
-    // Cloudflare Access already gates these routes; this is a second check so
-    // the admin page is never served if that policy is missing.
+    // Resolve the Supabase session and business role before serving workspace assets.
     if (pathname === "/admin" || pathname.startsWith("/admin/")) {
       const denied = await guardAdminPage(request, env);
       if (denied) return denied;
-      return env.ASSETS.fetch(request);
+      const asset = await env.ASSETS.fetch(request);
+      const response = new Response(asset.body, asset);
+      response.headers.set("Cache-Control", "no-store");
+      return response;
     }
 
     // /contact-us/submit-inquiry.php is kept as an alias so cached pages that

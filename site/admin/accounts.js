@@ -1,5 +1,6 @@
 import { esc, day, heading as pageHeading, empty, send, generation } from "./admin-ui.js";
 const titles = { manager: "Admins", agent: "Agents", landlord: "Landlords" };
+const invitationMessage = invitation => invitation?.status === "sent" ? "Account saved. An activation code has been emailed." : invitation?.status === "failed" ? "Account saved, but the activation email failed. Use Send activation code to retry." : invitation?.status === "preview" ? "Account saved in the local demo. No activation email was sent." : "Account saved.";
 const nameOf = role => ({ manager: "Admin", agent: "Agent", landlord: "Landlord" }[role]);
 export async function renderAccounts(host, { api, session, tab = "manager", selected = "" }) {
   const heading = (title, note, actions = "") => pageHeading(title, note, actions, session.owner ? "Access management" : "Admin workspace");
@@ -32,16 +33,26 @@ export async function renderAccounts(host, { api, session, tab = "manager", sele
         ${editable ? `<button type="submit" class="primary">${isNew && member.role === "manager" ? "Add Admin" : "Save account"}</button>` : ""}<p role="status"></p></form>
         ${member.allowed_actions?.some(a=>a==="grant_admin" || a==="revoke_admin") ? `<details class="case-disclosure account-authorization"><summary>${member.role==="manager" ? "Revoke Admin access" : "Grant Admin access"}</summary><p>${member.role==="manager" ? "The person will return to Agent access and see only assigned or collaborating rentals." : "Admin access includes all applications, private notes, property settings and team account management."}</p><form class="desk-form" id="account-authorize"><label>Authorization reason<textarea name="reason" required minlength="5" maxlength="1000"></textarea></label><button class="primary">${member.role==="manager" ? "Revoke Admin access" : "Grant Admin access"}</button><p role="status"></p></form></details>` : ""}
         ${member.allowed_actions?.some(action => ["remove_admin", "remove_account"].includes(action)) ? `<details class="case-disclosure account-authorization"><summary>Remove ${nameOf(member.role)}</summary><p>Removes this person's platform access. Historical rentals, property bindings and audit records are preserved. ${member.role === "agent" ? "Review their open rentals and reassign work to an active Agent." : member.role === "landlord" ? "Property ownership and lease records remain unchanged; this only removes account access." : "They will not retain Agent access."}</p><form id="account-remove" class="desk-form"><label>Removal reason<textarea name="reason" required minlength="5" maxlength="1000"></textarea></label><button type="submit">Remove ${nameOf(member.role)}</button><p role="status"></p></form></details>` : ""}
-        ${isNew ? '<p class="soft">Use this person’s work identity. The platform login policy must allow this email.</p>' : '<details class="case-disclosure"><summary>Access history</summary><div id="account-history">Loading history…</div></details>'}`;
+        ${!isNew && editable && member.active ? '<button type="button" id="account-invite">Send activation code</button><p id="invite-status" role="status"></p>' : ""}
+        ${isNew ? '<p class="soft">An activation code will be emailed to this person. They will choose their own password at /login/.</p>' : '<details class="case-disclosure"><summary>Access history</summary><div id="account-history">Loading history…</div></details>'}`;
       panel.querySelector("#account-form").onsubmit = async event => {
         event.preventDefault(); if (!editable) return;
         const form = event.currentTarget, button = form.querySelector("button"), values = new FormData(form); button.disabled = true;
         try {
-          await send(api, isNew && member.role === "manager" ? `/staff/${encodeURIComponent(values.get("email"))}/actions` : "/staff", { ...(isNew && member.role === "manager" ? {action:"create_admin"} : {}), email: values.get("email"), name: values.get("name"), role: member.role, active: values.has("active"), version: member.account_version || (isNew ? -1 : 0), ...(member.role === "agent" ? {property_ids: values.getAll("property_ids")} : {}), reason: values.get("reason") || "" }, isNew && member.role === "manager" ? "POST" : "PUT");
+          const result = await send(api, isNew && member.role === "manager" ? `/staff/${encodeURIComponent(values.get("email"))}/actions` : "/staff", { ...(isNew && member.role === "manager" ? {action:"create_admin"} : {}), email: values.get("email"), name: values.get("name"), role: member.role, active: values.has("active"), version: member.account_version || (isNew ? -1 : 0), ...(member.role === "agent" ? {property_ids: values.getAll("property_ids")} : {}), reason: values.get("reason") || "" }, isNew && member.role === "manager" ? "POST" : "PUT");
           if (!current() || ticket !== detailGeneration) return;
           await renderAccounts(host, { api, session, tab, selected: values.get("email") });
-          host.querySelector("#account-detail")?.insertAdjacentHTML("afterbegin", '<p class="case-saved" role="status">Account saved.</p>');
+          host.querySelector("#account-detail")?.insertAdjacentHTML("afterbegin", `<p class="case-saved" role="status">${invitationMessage(result.invitation)}</p>`);
         } catch(error) { form.querySelector('[role="status"]').textContent = error.message; button.disabled = false; }
+      };
+      const invite = panel.querySelector("#account-invite");
+      if (invite) invite.onclick = async () => {
+        invite.disabled = true;
+        try {
+          const result = await send(api, `/staff/${encodeURIComponent(member.email)}/invite`, {});
+          if (current() && ticket === detailGeneration) panel.querySelector("#invite-status").textContent = invitationMessage(result.invitation).replace("Account saved. ", "");
+        } catch (error) { if (current() && ticket === detailGeneration) panel.querySelector("#invite-status").textContent = error.message; }
+        finally { invite.disabled = false; }
       };
       const removal = panel.querySelector("#account-remove");
       if (removal) removal.onsubmit = async event => {

@@ -1,6 +1,6 @@
 import { propertyAddress } from "../site/shared/property-address.js";
 import { handleAdministration } from "./administration.js";
-import { verifyAccessRequest } from "./access.js";
+import { readSession, sameOriginMutation } from "./auth.js";
 import { handleLandlordRead, handleChangeRequests, handleCaseWorkspace, requireCaseAccess, caseWorkspace } from "./backoffice.js";
 import { projectCase } from "../backend/app/workspace.ts";
 import { describeEnvironment, devIdentity } from "./env.js";
@@ -94,7 +94,7 @@ function json(payload, status = 200) {
 }
 
 // Enough to catch a typo before it becomes an account nobody can sign in as.
-// Cloudflare Access is what actually decides an address is real.
+// Supabase email verification proves the address belongs to the account.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function cleanLine(value, maxLength = 300) {
@@ -239,26 +239,26 @@ async function handleUpload(request, env, listingId) {
 }
 
 export async function handleAdminRequest(request, env, ctx, pathname) {
-  // Access in production; on a developer's machine, the two-lock local
-  // identity from env.js. Both return the same shape, so nothing below here
-  // needs to know which one answered.
-  const authenticated = (await verifyAccessRequest(request, env)) || devIdentity(request, env);
-  if (!authenticated) {
-    return json({ error: "Not authorized." }, 403);
-  }
-
-  // Access proved who this is. public.staff says what they may do, and refuses
-  // an email it does not know rather than assuming the narrower role — see
-  // worker/staff.js for why there is no default.
-  let identity;
+  if (!sameOriginMutation(request)) return json({ error: "Use this website to submit the form." }, 403);
+  let authenticated;
   try {
+    authenticated = (await readSession(request, env)) || devIdentity(request, env);
+    if (!authenticated) return json({ error: "Please sign in." }, 401);
     const resolved = await resolveStaff(env, authenticated);
-    if (!resolved.identity) return json({ error: resolved.error }, resolved.status || 403);
-    identity = resolved.identity;
-  } catch (error) {
-    return json({ error: error.message }, 500);
+    const response = resolved.identity
+      ? await handleAuthenticatedAdmin(request, env, ctx, pathname, resolved.identity)
+      : json({ error: resolved.error }, resolved.status || 403);
+    response.headers.set("Cache-Control", "no-store");
+    if (authenticated.setCookie) response.headers.append("Set-Cookie", authenticated.setCookie);
+    return response;
+  } catch {
+    const response = json({ error: "The workspace could not check your account. Please try again." }, 503);
+    if (authenticated?.setCookie) response.headers.append("Set-Cookie", authenticated.setCookie);
+    return response;
   }
+}
 
+async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
   const segments = pathname.replace(/^\/api\/admin\/?/, "").split("/").filter(Boolean);
   const [resource, id, subresource] = segments;
 
@@ -670,23 +670,25 @@ async function handleMediaItem(request, env, ctx, mediaId) {
 
 // Account governance routes live in worker/administration.js.
 
-// The page itself, not the API behind it. Somebody who passes Access but has no
-// staff row would otherwise get the console shell and watch every request in it
-// fail — so they are told here, once, in words that say what to do.
+// Verify the session and directory membership before serving workspace assets.
 export async function guardAdminPage(request, env) {
-  const authenticated = (await verifyAccessRequest(request, env)) || devIdentity(request, env);
-  if (!authenticated) return deniedPage("Not authorized.");
-
   try {
+    const authenticated = (await readSession(request, env)) || devIdentity(request, env);
+    if (!authenticated) return new Response(null, { status: 302, headers: { Location: "/login/?next=admin", "Cache-Control": "no-store" } });
     const resolved = await resolveStaff(env, authenticated);
-    if (resolved.identity) return null;
-    return deniedPage(resolved.error, resolved.status || 403);
-  } catch (error) {
-    // Fail closed. The console cannot do anything useful without this database
-    // anyway, and guessing at a role because a query failed is the one outcome
-    // worth avoiding.
-    return deniedPage(`The admin console could not check your account: ${error.message}`, 503);
-  }
+    if (!resolved.identity) {
+      const response = deniedPage(resolved.error, resolved.status || 403);
+      if (authenticated.setCookie) response.headers.append("Set-Cookie", authenticated.setCookie);
+      return response;
+    }
+    // The caller may continue serving assets; refreshed cookies must survive page loads too.
+    if (!authenticated.setCookie) return null;
+    const asset = await env.ASSETS.fetch(request);
+    const response = new Response(asset.body, asset);
+    response.headers.set("Cache-Control", "no-store");
+    response.headers.append("Set-Cookie", authenticated.setCookie);
+    return response;
+  } catch { return deniedPage("The workspace could not check your account. Please try again.", 503); }
 }
 
 function deniedPage(message, status = 403) {

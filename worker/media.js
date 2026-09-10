@@ -1,3 +1,4 @@
+import { storageBucket } from "./storage.js";
 // Media bytes live in the R2 bucket bound as env.MEDIA. Objects are keyed
 // "<listing-id>/<uuid>.<ext>" and served at /media/<key>. Keys are random,
 // so responses can be cached forever.
@@ -24,10 +25,7 @@ export function isValidKey(key) {
 }
 
 export function requireBucket(env) {
-  if (!env.MEDIA) {
-    throw new Error("The MEDIA R2 bucket binding is not configured.");
-  }
-  return env.MEDIA;
+  return storageBucket(env, "listing-media");
 }
 
 export async function putObject(env, key, contentType, body) {
@@ -37,6 +35,7 @@ export async function putObject(env, key, contentType, body) {
 
 export async function deleteObjectsByPrefix(env, prefix) {
   const bucket = requireBucket(env);
+  if (bucket.deletePrefix) return bucket.deletePrefix(prefix);
   let cursor;
 
   do {
@@ -119,9 +118,12 @@ async function serveFromBucket(request, env, pathname) {
   let object;
   try {
     object = await bucket.get(key, range ? { range } : undefined);
-  } catch {
+  } catch (error) {
     // R2 throws when the requested range cannot be satisfied at all
     // (e.g. an offset at or past the end of the object).
+    if (env.STORAGE_BACKEND === "supabase" && error.status !== 416) {
+      return new Response("Media storage is temporarily unavailable.", { status: 503 });
+    }
     const head = await bucket.head(key);
     if (!head) return new Response("Not found.", { status: 404 });
     return new Response("Range not satisfiable.", {
@@ -136,7 +138,7 @@ async function serveFromBucket(request, env, pathname) {
 
   const headers = baseHeaders(object);
 
-  if (range) {
+  if (range && !object.rangeIgnored) {
     // R2 truncates a range that extends past the end of the object; the
     // window it actually returned is reported in object.range.
     const returned = object.range || {};

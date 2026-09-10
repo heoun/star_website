@@ -38,7 +38,8 @@ try{
   const version=fixture.state.staff.find(s=>s.email===agent).account_version;
   equal((await staff(owner,agent,"grant_admin",{reason:"Leads day-to-day operations"})).status,200);
   equal((await call(admin,"/api/admin/staff","PUT",{email:agent,role:"agent",name:"Stale admin edit",version})).status,403);
-  const principal=await resolveStaff(env,{email:agent});equal(principal.identity.role,"manager");
+  fixture.state.staff.find(s=>s.email===agent).auth_user_id="agent-auth-id";
+  const principal=await resolveStaff(env,{email:agent,subject:"agent-auth-id"});equal(principal.identity.role,"manager");
   equal((await staff(owner,agent,"revoke_admin",{reason:"Returns to leasing responsibilities"})).status,200);
   equal((await call(owner,`/api/admin/staff/${agent}/history`)).body.history.length,2);
   equal((await call(admin,`/api/admin/staff/${agent}`,"DELETE")).status,409);
@@ -122,7 +123,8 @@ try{
   const buildingId=getRow(record.id).building_ids[0];
   const partner=fixture.state.staff.find(s=>s.email===record.email);equal(partner.role,"landlord");equal(partner.property_ids,[buildingId]);
   equal(fixture.state.settings[buildingId]["utility.electricity"],"Tenant");
-  const resolved=await resolveStaff(env,{email:record.email});equal(resolved.identity.role,"landlord");equal(resolved.identity.property_ids,[buildingId]);
+  fixture.state.staff.find(s=>s.email===record.email).auth_user_id="landlord-auth-id";
+  const resolved=await resolveStaff(env,{email:record.email,subject:"landlord-auth-id"});equal(resolved.identity.role,"landlord");equal(resolved.identity.property_ids,[buildingId]);
   equal((await call(null,"/api/landlord-onboarding","GET",undefined,revisedToken)).body.invitation.status,"approved");
   equal((await call(null,"/api/landlord-onboarding","POST",{version:getRow(record.id).version,data,submit:false},revisedToken)).status,409);
   equal((await call(admin,"/api/admin/onboarding","POST",{id:crypto.randomUUID(),email:agent,contact_name:"Internal account"})).status,409);

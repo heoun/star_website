@@ -8,8 +8,7 @@
 # after a "#" looks filled in but is not. `npm run dev` says which of the two
 # it is finding.
 
-# Lets you into /admin locally. Cloudflare Access does not exist on your
-# machine, so without this every admin route answers 403. It is only honoured
+# Optional local role simulation. Leave blank to test real Supabase login. It is only honoured
 # on a loopback hostname, so setting it can never open production.
 # Use your own address: it is what the audit trail records for local changes.
 DEV_ADMIN_EMAIL=
@@ -30,9 +29,14 @@ DEV_ADMIN_ROLE=
 # Platform owner: the only identity that can grant/revoke Admin access.
 # Owner is configuration, not a selectable account type in Accounts & access.
 # For a local Owner session, match DEV_ADMIN_EMAIL and use manager above.
-# In production configure OWNER_EMAIL as a Worker secret and admit that address
-# through Cloudflare Access. Ordinary Admins cannot change it from the console.
+# In production pin both the verified email and Supabase Auth user UUID.
+# Ordinary Admins cannot change these from the console.
 OWNER_EMAIL=
+OWNER_AUTH_USER_ID=
+
+# Default local storage stays in the simulated R2 buckets. Use supabase only
+# with a dedicated development project after applying supabase/storage.sql.
+STORAGE_BACKEND=r2
 
 # The DEVELOPMENT Supabase project — not production. Create a second free
 # project and run supabase/schema.sql on it, then paste its details here.
@@ -43,13 +47,9 @@ SUPABASE_SERVICE_ROLE_KEY=
 
 # The same project's low-privilege key: the publishable key
 # (sb_publishable_…) if the project has one, otherwise the legacy anon key.
-# Supabase retires the legacy one at the end of 2026; set whichever name
-# matches what you copied and the Worker takes it — publishable wins if both
-# are set. The applicant portal signs people in through Supabase Auth and
-# this is the key its API expects; it stays in the Worker, the browser never
-# sees it. Tip for local work: turning OFF "Confirm email" in the dev
-# project's Auth settings skips the email-code step, so registering locally
-# signs straight in.
+# Set whichever name matches what you copied; publishable wins if both are set. The applicant portal signs people in through Supabase Auth and
+# this is the key its API expects; it stays in the Worker. Keep Confirm email
+# enabled: unverified identities cannot access either portal.
 SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_ANON_KEY=
 
@@ -78,8 +78,7 @@ RESEND_API_KEY=
 DEV_REAL_EMAIL=
 
 # Deliberately absent: TURNSTILE_SECRET_KEY. Human verification is skipped when
-# it is unset, which is what you want locally. CF_ACCESS_TEAM_DOMAIN and
-# CF_ACCESS_AUD are production-only.
+# it is unset, which is what you want locally. Cloudflare Access keys are not needed.
 
 # Turns on the rebuilt backend at /api/v2 (see backend/README.md). Leave off
 # in production until a ring is ready to take real traffic.

@@ -21,7 +21,7 @@ export async function renderOnboarding(host, { api, session, id = "" }) {
       host.onsubmit = async event => {
         const form=event.target.closest("[data-onboarding-action]");if(!form)return;event.preventDefault();
         const button=form.querySelector("button"), feedback=form.querySelector('[role="status"]');button.disabled=true;feedback.textContent="Saving…";
-        try { await send(api, `/onboarding/${id}/actions`, {action:form.dataset.onboardingAction,version:row.version,reason:new FormData(form).get("reason") || ""}); if(current()) await renderOnboarding(host,{api,session,id}); }
+        try { const result = await send(api, `/onboarding/${id}/actions`, {action:form.dataset.onboardingAction,version:row.version,reason:new FormData(form).get("reason") || ""}); if(current()) { await renderOnboarding(host,{api,session,id}); if (result.account_invitation) host.insertAdjacentHTML("afterbegin", `<p class="case-saved" role="status">${result.account_invitation.status === "sent" ? "Properties approved. The landlord has been emailed an account activation code." : result.account_invitation.status === "preview" ? "Properties approved in the local demo. No activation email was sent." : "Properties approved, but the activation email failed. Retry from Accounts & access."}</p>`); } }
         catch(error){feedback.textContent=error.message;button.disabled=false;}
       };
       return;

@@ -1,3 +1,4 @@
+import { storageBucket } from "./storage.js";
 // The applicant portal: /portal/ in the browser, /api/portal/* here.
 //
 // Applying for a home starts with an account, and the accounts are Supabase
@@ -24,7 +25,8 @@
 // bank statement must not be one bug away from that. Every document read or
 // write here checks the session email against the application's email first.
 
-import { isLocalRequest } from "./env.js";
+import { authConfig, readSession, handleAuthRequest, sameOriginMutation } from "./auth.js";
+export { readSession } from "./auth.js";
 import { sendEmail } from "./email.js";
 import {
   deleteApplicationDocument,
@@ -110,303 +112,14 @@ const EXTENSION_TYPES = {
 
 const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 
-const SESSION_COOKIE = "star_portal";
-const SESSION_SECONDS = 7 * 24 * 60 * 60;
-
-// Mirrors the minimum set in the Supabase dashboard, so the form's error and
-// the platform's agree.
-const PASSWORD_MIN = 8;
-
 function json(payload, status = 200, headers = {}) {
-  return new Response(JSON.stringify(payload), {
-    status,
-    headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...headers }
-  });
-}
-
-// ------------------------------------------------------- the Supabase side
-
-// The low-privilege key Supabase Auth expects public clients to present;
-// here it never leaves the Worker. Without it there is no portal, the same
-// fail-closed rule as everywhere else.
-//
-// Supabase is replacing the legacy `anon` JWT key with a publishable key
-// (`sb_publishable_…`), and retires the legacy one at the end of 2026. Both
-// are accepted here so that migrating is a change of configuration rather
-// than of code. Either only ever travels in the `apikey` header — the
-// `Authorization` header carries the applicant's own access token, which is
-// what the new keys, not being JWTs, may not be used for.
-function authConfig(env) {
-  const url = (env.SUPABASE_URL || "").replace(/\/+$/, "");
-  const key = env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || "";
-  return url && key ? { url, key } : null;
-}
-
-async function authRequest(env, path, { method = "POST", token, body } = {}) {
-  const config = authConfig(env);
-  const response = await fetch(`${config.url}/auth/v1/${path}`, {
-    method,
-    headers: {
-      apikey: config.key,
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {})
-    },
-    body: body === undefined ? undefined : JSON.stringify(body)
-  });
-  const payload = await response.json().catch(() => null);
-  return { ok: response.ok, status: response.status, payload };
-}
-
-// Supabase Auth's error strings are written for developers; the applicant
-// gets words, and anything unrecognized falls back to the caller's message
-// rather than leaking internals.
-function authErrorMessage(payload, fallback) {
-  const raw = String(payload?.msg || payload?.message || payload?.error_description || "");
-  if (/invalid login credentials/i.test(raw)) return "Email or password is incorrect.";
-  if (/email not confirmed/i.test(raw)) {
-    return "This email has not been confirmed yet. Create the account again to get a new code.";
-  }
-  if (/already registered|already been registered|user_already_exists/i.test(raw)) {
-    return "This email already has an account. Sign in instead, or reset your password.";
-  }
-  if (/password should be/i.test(raw)) return `Please choose a password of at least ${PASSWORD_MIN} characters.`;
-  if (/rate limit|too many|429/i.test(raw)) return "Too many attempts. Please wait a minute and try again.";
-  if (/expired|invalid/i.test(raw)) return "That code has expired or is not right. Request a new one.";
-  return fallback;
-}
-
-// ------------------------------------------------------------------ sessions
-
-// Both Supabase tokens ride in one HttpOnly cookie: the short-lived access
-// token, and the refresh token that mints its successor.
-function encodeSessionCookie(session) {
-  const packed = JSON.stringify({ at: session.access_token, rt: session.refresh_token });
-  return btoa(String.fromCharCode(...new TextEncoder().encode(packed)))
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
-}
-
-function decodeSessionCookie(value) {
-  try {
-    const padded = value.replace(/-/g, "+").replace(/_/g, "/") + "=".repeat((4 - (value.length % 4)) % 4);
-    const bytes = Uint8Array.from(atob(padded), (c) => c.charCodeAt(0));
-    const parsed = JSON.parse(new TextDecoder().decode(bytes));
-    return typeof parsed.at === "string" && parsed.at !== "" ? parsed : null;
-  } catch {
-    return null;
-  }
-}
-
-function cookieValue(request, name) {
-  const header = request.headers.get("Cookie") || "";
-  for (const part of header.split(/;\s*/)) {
-    const eq = part.indexOf("=");
-    if (eq > 0 && part.slice(0, eq).trim() === name) return part.slice(eq + 1).trim();
-  }
-  return "";
-}
-
-// `Secure` would make the browser drop the cookie on a plain-HTTP loopback,
-// which is exactly where development runs.
-function sessionCookie(request, value, maxAge) {
-  const attributes = [`${SESSION_COOKIE}=${value}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`];
-  if (!isLocalRequest(request)) attributes.push("Secure");
-  return attributes.join("; ");
-}
-
-function signedIn(request, session) {
-  return json({ ok: true, email: String(session.user?.email || "").toLowerCase() }, 200, {
-    "Set-Cookie": sessionCookie(request, encodeSessionCookie(session), SESSION_SECONDS)
-  });
-}
-
-// The session /api/apply and every portal route trust. The access token is
-// validated against Supabase on each request; when it has expired, the
-// refresh token buys its successor, and `setCookie` carries the rolled
-// cookie the response must set — Supabase rotates refresh tokens, so
-// dropping it would sign the applicant out a request later.
-export async function readSession(request, env) {
-  if (!authConfig(env)) return null;
-
-  const stored = decodeSessionCookie(cookieValue(request, SESSION_COOKIE));
-  if (!stored) return null;
-
-  const user = await authRequest(env, "user", { method: "GET", token: stored.at });
-  if (user.ok && user.payload?.email) {
-    return { email: String(user.payload.email).trim().toLowerCase(), token: stored.at };
-  }
-
-  if (!stored.rt) return null;
-  const refreshed = await authRequest(env, "token?grant_type=refresh_token", {
-    body: { refresh_token: stored.rt }
-  });
-  const session = refreshed.payload;
-  if (!refreshed.ok || !session?.access_token || !session.user?.email) return null;
-
-  return {
-    email: String(session.user.email).trim().toLowerCase(),
-    token: session.access_token,
-    setCookie: sessionCookie(request, encodeSessionCookie(session), SESSION_SECONDS)
-  };
-}
-
-// -------------------------------------------------------------------- account
-
-function cleanEmail(value) {
-  return String(value ?? "").trim().toLowerCase().slice(0, 180);
-}
-
-function validPassword(password) {
-  return typeof password === "string" && password.length >= PASSWORD_MIN && password.length <= 200;
-}
-
-// Step one of registration. Supabase stores the pending account and emails
-// the confirmation code; nothing works until the code comes back.
-async function handleRegister(request, env) {
-  const body = await request.json().catch(() => ({}));
-
-  // Honeypot, same as the application form: bots that fill the hidden field
-  // get a fake success.
-  if (String(body.website ?? "").trim() !== "") {
-    return json({ ok: true, confirm: true });
-  }
-
-  const email = cleanEmail(body.email);
-  if (!EMAIL_PATTERN.test(email)) {
-    return json({ error: "Please enter a valid email address." }, 422);
-  }
-  if (!validPassword(body.password)) {
-    return json({ error: `Please choose a password of at least ${PASSWORD_MIN} characters.` }, 422);
-  }
-
-  const result = await authRequest(env, "signup", { body: { email, password: body.password } });
-  if (!result.ok) {
-    return json({
-      error: authErrorMessage(result.payload, "The account could not be created. Please try again.")
-    }, result.status === 429 ? 429 : 400);
-  }
-
-  // An address that already has a confirmed account comes back looking like a
-  // success, just with no identities on the user. Saying so beats a code
-  // that never arrives.
-  const identities = result.payload?.identities ?? result.payload?.user?.identities;
-  if (Array.isArray(identities) && identities.length === 0) {
-    return json({ error: "This email already has an account. Sign in instead, or reset your password." }, 409);
-  }
-
-  // A project with email confirmation turned off (a development convenience)
-  // answers with the session itself, and there is no code step.
-  if (result.payload?.access_token) {
-    return signedIn(request, result.payload);
-  }
-
-  return json({ ok: true, confirm: true });
-}
-
-// "Send a new code", without asking for the password again.
-async function handleResend(request, env) {
-  const email = cleanEmail((await request.json().catch(() => ({}))).email);
-  if (!EMAIL_PATTERN.test(email)) {
-    return json({ error: "Please enter a valid email address." }, 422);
-  }
-
-  const result = await authRequest(env, "resend", { body: { type: "signup", email } });
-  if (!result.ok && result.status === 429) {
-    return json({ error: authErrorMessage(result.payload, "Too many codes requested. Please wait a minute.") }, 429);
-  }
-  return json({ ok: true });
-}
-
-async function handleVerifyRegister(request, env) {
-  const body = await request.json().catch(() => ({}));
-  const email = cleanEmail(body.email);
-  const code = String(body.code ?? "").replace(/\D/g, "");
-  if (!EMAIL_PATTERN.test(email) || code.length !== 6) {
-    return json({ error: "Please enter the 6-digit code from the email." }, 422);
-  }
-
-  const result = await authRequest(env, "verify", { body: { type: "signup", email, token: code } });
-  if (!result.ok || !result.payload?.access_token) {
-    return json({
-      error: authErrorMessage(result.payload, "That code has expired or is not right. Request a new one.")
-    }, 401);
-  }
-
-  return signedIn(request, result.payload);
-}
-
-async function handleLogin(request, env) {
-  const body = await request.json().catch(() => ({}));
-  const email = cleanEmail(body.email);
-  const password = String(body.password ?? "");
-  if (!EMAIL_PATTERN.test(email) || password === "") {
-    return json({ error: "Email or password is incorrect." }, 401);
-  }
-
-  const result = await authRequest(env, "token?grant_type=password", { body: { email, password } });
-  if (!result.ok || !result.payload?.access_token) {
-    return json({
-      error: authErrorMessage(result.payload, "Email or password is incorrect.")
-    }, result.status === 429 ? 429 : 401);
-  }
-
-  return signedIn(request, result.payload);
-}
-
-// Password reset: prove the inbox again, then choose the new password. The
-// answer here is the same whether or not the email has an account — only the
-// inbox learns which.
-async function handleRequestReset(request, env) {
-  const email = cleanEmail((await request.json().catch(() => ({}))).email);
-  if (!EMAIL_PATTERN.test(email)) {
-    return json({ error: "Please enter a valid email address." }, 422);
-  }
-
-  const result = await authRequest(env, "recover", { body: { email } });
-  if (!result.ok && result.status === 429) {
-    return json({ error: authErrorMessage(result.payload, "Too many codes requested. Please wait a minute.") }, 429);
-  }
-  return json({ ok: true });
-}
-
-async function handleVerifyReset(request, env) {
-  const body = await request.json().catch(() => ({}));
-  const email = cleanEmail(body.email);
-  const code = String(body.code ?? "").replace(/\D/g, "");
-  if (!EMAIL_PATTERN.test(email) || code.length !== 6) {
-    return json({ error: "Please enter the 6-digit code from the email." }, 422);
-  }
-  if (!validPassword(body.password)) {
-    return json({ error: `Please choose a password of at least ${PASSWORD_MIN} characters.` }, 422);
-  }
-
-  const verified = await authRequest(env, "verify", { body: { type: "recovery", email, token: code } });
-  if (!verified.ok || !verified.payload?.access_token) {
-    return json({
-      error: authErrorMessage(verified.payload, "That code has expired or is not right. Request a new one.")
-    }, 401);
-  }
-
-  const updated = await authRequest(env, "user", {
-    method: "PUT",
-    token: verified.payload.access_token,
-    body: { password: body.password }
-  });
-  if (!updated.ok) {
-    return json({
-      error: authErrorMessage(updated.payload, "The password could not be changed. Please try again.")
-    }, 400);
-  }
-
-  return signedIn(request, verified.payload);
+  return new Response(JSON.stringify(payload), { status, headers: { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...headers } });
 }
 
 // ----------------------------------------------------------------- documents
 
 export function requireDocsBucket(env) {
-  if (!env.APPLICANT_DOCS) {
-    throw new Error("The APPLICANT_DOCS R2 bucket binding is not configured.");
-  }
-  return env.APPLICANT_DOCS;
+  return storageBucket(env, "applicant-docs");
 }
 
 // Whether every required type has enough files, for the checklist this
@@ -486,8 +199,8 @@ export async function serveDocumentFile(env, row) {
 // Deleting an application must take its files with it; the database cascade
 // only reaches the rows.
 export async function deleteDocumentsByPrefix(env, prefix) {
-  if (!env.APPLICANT_DOCS) return;
-  const bucket = env.APPLICANT_DOCS;
+  const bucket = requireDocsBucket(env);
+  if (bucket.deletePrefix) return bucket.deletePrefix(prefix);
   let cursor;
 
   do {
@@ -666,22 +379,9 @@ export async function handlePortalRequest(request, env, ctx, pathname) {
   const [resource, id, subresource] = segments;
 
   try {
-    if (request.method === "POST" && !id) {
-      if (resource === "register") return await handleRegister(request, env);
-      if (resource === "resend") return await handleResend(request, env);
-      if (resource === "verify-register") return await handleVerifyRegister(request, env);
-      if (resource === "login") return await handleLogin(request, env);
-      if (resource === "request-reset") return await handleRequestReset(request, env);
-      if (resource === "verify-reset") return await handleVerifyReset(request, env);
-      if (resource === "sign-out") {
-        // Revoking the refresh token is a courtesy; the cookie leaving is
-        // what signs the browser out.
-        const stored = decodeSessionCookie(cookieValue(request, SESSION_COOKIE));
-        if (stored?.at) {
-          ctx.waitUntil(authRequest(env, "logout", { token: stored.at }).catch(() => {}));
-        }
-        return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(request, "", 0) });
-      }
+    if (!sameOriginMutation(request)) return json({ error: "Use this website to submit the form." }, 403);
+    if (!id && ["register", "resend", "verify-register", "login", "request-reset", "verify-reset", "sign-out"].includes(resource)) {
+      return handleAuthRequest(request, env, ctx, resource);
     }
 
     // Everything below is somebody's private data, so it needs a session.

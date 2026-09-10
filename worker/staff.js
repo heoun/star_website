@@ -1,32 +1,7 @@
-// What an authenticated person may do in the admin console.
-//
-// Two systems, two questions, deliberately kept apart:
-//
-//   Cloudflare Access   may this request reach the Worker at all?
-//   this module         now that it has, is it a manager or an agent?
-//
-// Access is the better answer to the first question because it refuses at the
-// edge, before any of our code runs, and because removing somebody from an
-// Access group ends every session they have at once. It is the wrong place for
-// the second: its application token carries an email and a subject but no group
-// membership — reading that needs a second call to /cdn-cgi/access/get-identity
-// on every request — and a role is business data a manager wants to read and
-// change in the console rather than in someone else's dashboard.
-//
-// So the role lives in public.staff, keyed by the email Access proved.
-//
-// Three rules this file exists to keep:
-//
-//   1. No default role. An email not in the table is refused, not demoted to
-//      agent. Somebody added to the Access group by mistake must gain nothing.
-//   2. The owner is not in the table. OWNER_EMAIL is always a manager, checked
-//      before any query, because a fresh database has no rows and somebody has
-//      to be able to add the first one.
-//   3. A missing table is reported as a missing table. It means the Worker was
-//      deployed ahead of its migration, and answering "not authorized" would
-//      send a person looking for a permissions problem that is not there.
+// Supabase proves identity; the staff directory controls business permissions.
+// No default role. Owner identity is pinned in deployment configuration.
 
-import { fetchStaffMember, isMissingTable } from "./supabase.js";
+import { fetchStaffMember, bindStaffIdentity, isMissingTable } from "./supabase.js";
 import { agentMayWriteField } from "../site/shared/lease-permissions.js";
 
 export const MANAGER = "manager";
@@ -78,6 +53,8 @@ export async function resolveStaff(env, identity) {
 
   const owner = ownerEmail(env);
   if (owner && email === owner) {
+    if (!env.OWNER_AUTH_USER_ID) return { error: "The platform owner identity has not been configured.", status: 503 };
+    if (identity.subject !== env.OWNER_AUTH_USER_ID) return { error: "Not authorized.", status: 403 };
     return { identity: { ...identity, email, role: MANAGER, owner: true } };
   }
 
@@ -104,6 +81,13 @@ export async function resolveStaff(env, identity) {
         + "An Admin can add the account under Accounts & access.",
       status: 403
     };
+  }
+
+  if (!identity.subject || (member.auth_user_id && member.auth_user_id !== identity.subject)) {
+    return { error: "This login is not linked to the invited account.", status: 403 };
+  }
+  if (!member.auth_user_id && !await bindStaffIdentity(env, email, identity.subject)) {
+    return { error: "This login could not be linked to the invited account.", status: 403 };
   }
 
   const role = normalizeRole(member.role);

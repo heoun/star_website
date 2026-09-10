@@ -8,7 +8,7 @@ const root = path.resolve(__dirname, "..");
 const site = path.join(root, "site");
 const dist = path.join(root, "dist");
 
-const copyTargets = ["index.html", "buy", "rental", "commercial", "listings", "new-development", "contact-us", "our-team", "property", "apply", "portal", "admin", "landlord-onboarding", "jpg", "png", "data", "shared", "favicon.ico", "favicon.svg", "apple-touch-icon.png"];
+const copyTargets = ["index.html", "buy", "rental", "commercial", "listings", "new-development", "contact-us", "our-team", "property", "apply", "portal", "login", "admin", "landlord-onboarding", "jpg", "png", "data", "shared", "favicon.ico", "favicon.svg", "apple-touch-icon.png"];
 
 fs.rmSync(dist, { recursive: true, force: true });
 fs.mkdirSync(dist, { recursive: true });
@@ -22,7 +22,7 @@ for (const target of copyTargets) {
 
 // The lease template ships as an asset so the Worker can fetch it when filling
 // a lease. It lands under /admin/, which wrangler.jsonc routes through the
-// Worker, so Cloudflare Access gates it like the rest of the admin.
+// Worker, so the workspace session guard protects it like other admin assets.
 const leaseTemplate = path.join(root, "lease", "template", "lease-template.docx");
 if (fs.existsSync(leaseTemplate)) {
   fs.mkdirSync(path.join(dist, "admin"), { recursive: true });

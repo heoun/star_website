@@ -18,5 +18,6 @@ export async function handleBackendRequest(request: Request, env: WorkerEnv): Pr
     });
   }
   const deps = buildDeps(env, request);
-  return route(deps, request, { db: dbKind(env), auth: authKind(env), email: emailKind(env), storage: storageKind(env) });
+  const response = await route(deps, request, { db: dbKind(env), auth: authKind(env), email: emailKind(env), storage: storageKind(env) });
+  return deps.auth.decorateResponse?.(response) || response;
 }

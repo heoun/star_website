@@ -149,12 +149,12 @@ const anonymous = await handleAdminRequest(
   new Request("http://localhost:8787/api/admin/me"),
   { SUPABASE_URL: ENV.SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY: "k" },
   { waitUntil(p) { Promise.resolve(p).catch(() => {}); } }, "/api/admin/me");
-check("no identity at all is refused", anonymous.status === 403);
+check("no identity at all is refused", anonymous.status === 401);
 
 const notLocal = await handleAdminRequest(
   new Request("https://star.example.com/api/admin/me"),
   env({ DEV_ADMIN_ROLE: "manager" }), { waitUntil(p) { Promise.resolve(p).catch(() => {}); } }, "/api/admin/me");
-check("the local identity does not work off a loopback host", notLocal.status === 403);
+check("the local identity does not work off a loopback host", notLocal.status === 401);
 
 const asManager = await call("/api/admin/me", { role: "manager" });
 check("a manager is told they are a manager",
@@ -340,14 +340,14 @@ check("a manager can", managerSeesStaff.status === 200);
 
 // ------------------------------------------- resolving a role from the table
 
-const production = { email: "Someone@Starreusa.com", subject: "cf-sub" };
+const production = { email: "Someone@Starreusa.com", subject: "supabase-sub" };
 
 staffRows = [];
 const unknown = await resolveStaff(env(), production);
 check("an email nobody has set up is refused, not treated as an agent",
   !unknown.identity && unknown.status === 403, JSON.stringify(unknown));
 
-staffRows = [{ email: "someone@starreusa.com", role: "agent", name: "Sam", active: true }];
+staffRows = [{ email: "someone@starreusa.com", role: "agent", name: "Sam", active: true, auth_user_id: "supabase-sub" }];
 const known = await resolveStaff(env(), production);
 check("a listed agent resolves, and the lookup is case-insensitive",
   known.identity?.role === "agent" && known.identity.email === "someone@starreusa.com");
@@ -357,14 +357,14 @@ const deactivated = await resolveStaff(env(), production);
 check("a deactivated account is refused even though the row is still there",
   !deactivated.identity && deactivated.status === 403);
 
-staffRows = [{ email: "someone@starreusa.com", role: "sysadmin", active: true }];
+staffRows = [{ email: "someone@starreusa.com", role: "sysadmin", active: true, auth_user_id: "supabase-sub" }];
 const nonsense = await resolveStaff(env(), production);
 check("a role the code does not know is refused rather than assumed",
   !nonsense.identity);
 
 staffRows = [];
-const owner = await resolveStaff(env({ OWNER_EMAIL: "Boss@Starreusa.com" }),
-  { email: "boss@starreusa.com", subject: "cf" });
+const owner = await resolveStaff(env({ OWNER_EMAIL: "Boss@Starreusa.com", OWNER_AUTH_USER_ID: "owner-id" }),
+  { email: "boss@starreusa.com", subject: "owner-id" });
 check("the owner is a manager with no row at all, which is what makes an empty table recoverable",
   owner.identity?.role === "manager" && owner.identity.owner === true);
 

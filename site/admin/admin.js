@@ -147,6 +147,7 @@ async function api(path, options = {}) {
   const payload = isJson ? await response.json() : null;
 
   if (!response.ok) {
+    if (response.status === 401) location.assign(`/login/?next=admin${location.hash}`);
     throw new Error(payload?.error || `Request failed (${response.status})`);
   }
 
@@ -1604,3 +1605,14 @@ document.getElementById("new-property-form").addEventListener("submit", async ev
   finally { button.disabled = false; }
 });
 load();
+
+// Both portals share the Supabase session; sign out clears that session.
+document.querySelectorAll("[data-sign-out]").forEach(link => link.addEventListener("click", async event => {
+  event.preventDefault();
+  if (session.demo) { location.assign("/__demo"); return; }
+  try {
+    const response = await fetch("/api/auth/sign-out", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}" });
+    if (!response.ok) throw new Error("Sign out failed. Please try again.");
+    location.replace("/login/");
+  } catch (error) { setStatus(error.message, "error"); }
+}));
