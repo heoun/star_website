@@ -65,7 +65,7 @@ globalThis.fetch = async (url, init = {}) => {
         id: LISTING_ID, category: "residential", transaction_type: "rental",
         title: "Evergarden 7A", property_name: "Evergarden", unit: "7A",
         location: "81-07 Kew Gardens Road, Kew Gardens, NY", price_amount: 4500,
-        published: true, position: 0, building_id: null, listing_media: [],
+        published: true, building_id: null, listing_media: [],
         ...(bedroomsValue === null ? {} : { bedrooms: bedroomsValue })
       }]
       : []);

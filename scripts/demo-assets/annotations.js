@@ -9,7 +9,7 @@ banner.className = "demo-mock-banner";
 banner.innerHTML = '<strong>MOCK DEMO</strong> · Applicant, property and lease fields are mock. Example terms are for testing only.';
 const environment = document.getElementById("environment");
 if (environment) environment.after(banner); else document.body.prepend(banner);
-const selectors = '.prop-mobile-caption,.prop-listing-count,.prop-signer-label,dt,label,[data-setting-row] > .lbl,.prop-row.is-head > span:not(:empty),.desk-table th,.case-facts .k,.stat .k,.line > .lbl,.line > .k,.docrow > div:first-child > b';
+const selectors = '.cw-review-fact .k,.cw-proof > span,.prop-mobile-caption,.prop-listing-count,.prop-signer-label,dt,label,[data-setting-row] > .lbl,.prop-row.is-head > span:not(:empty),.desk-table th,.case-facts .k,.stat .k,.line > .lbl,.line > .k,.docrow > div:first-child > b';
 function annotate(root) {
   const elements = [...(root.matches?.(selectors) ? [root] : []), ...root.querySelectorAll(selectors)];
   for (const node of elements) {

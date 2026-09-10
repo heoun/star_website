@@ -26,6 +26,8 @@ jobs:
         run: npm run test:administration
       - name: Property lease sections and save behavior
         run: npm run test:property
+      - name: Listing drafts and property address inheritance
+        run: npm run test:listings
       - name: Complete mock properties and leases
         run: npm run test:demo
       - name: Build all public and staff screens

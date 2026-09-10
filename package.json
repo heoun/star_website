@@ -19,10 +19,13 @@
     "test:administration:db": "node backend/tools/test-administration-schema.mjs",
     "test:demo": "node scripts/test-demo-data.mjs",
     "demo:workspace": "npm run build && node scripts/demo-workspace.mjs",
-    "test:property": "node scripts/test-property-flow.mjs"
+    "test:property": "node scripts/test-property-flow.mjs",
+    "test:listings": "node scripts/test-listing-editor.mjs",
+    "test:listings:db": "node scripts/test-listing-schema.mjs"
   },
   "devDependencies": {
-    "typescript": "^5.6.0",
-    "dependency-cruiser": "^16.0.0"
+    "@electric-sql/pglite": "^0.5.8",
+    "dependency-cruiser": "^16.0.0",
+    "typescript": "^5.6.0"
   }
 }

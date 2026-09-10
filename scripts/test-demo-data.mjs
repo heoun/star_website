@@ -1,3 +1,4 @@
+import { toFeedListing } from "../worker/supabase.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createWorkspaceFixtures, ids } from "../backend/tools/workspace-fixtures.mjs";
@@ -21,11 +22,16 @@ try {
   const addedProperty = "99999999-9999-4999-8999-999999999999";
   fixture.state.buildings.push({id:addedProperty,name:"New Example Property"});
   fixture.state.settings[addedProperty] = {"landlord.entity_name":"Onboarded Example LLC"};
+  fixture.state.listings[0].price_display = "obsolete";
+  fixture.state.listings[0].neighborhood = "obsolete";
+  fixture.state.listings[0].kind_label = "obsolete";
+  fixture.state.listings[0].position = 99;
   await completeDemoState(fixture.state);
+  for (const key of ["price_display", "neighborhood", "kind_label", "position"]) equal(key in fixture.state.listings[0],false,"Removed listing fields are pruned from persisted demo data");
   equal(fixture.state.staff.some(s=>s.role==="landlord" && s.property_ids?.includes(addedProperty)),true,"Every mock property has a scoped landlord");
   equal(fixture.state.settings[addedProperty]["payee.name"],"Onboarded Example LLC","Provided landlord details stay consistent with generated contacts");
   equal(fixture.state.listings.filter(l=>l.building_id===addedProperty).length,1,"A property without listings receives one sample unit in the local demo only");
-  for(const l of fixture.state.listings) equal(l.price_display,`${new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(l.price_amount)} / month`,"Displayed rent matches the unit's numeric rent");
+  for(const l of fixture.state.listings) equal(toFeedListing(l).price,`${new Intl.NumberFormat("en-US",{style:"currency",currency:"USD",maximumFractionDigits:0}).format(l.price_amount)}/mo`,"Displayed rent matches the unit's numeric rent");
   for (const b of fixture.state.buildings) {
     const values=fixture.state.settings[b.id];
     equal(Object.keys(values).sort(),LEASE_REGISTRY.fields.filter(f=>f.source==="manager").map(f=>f.id).sort(),"Every property has all 125 stored lease defaults");

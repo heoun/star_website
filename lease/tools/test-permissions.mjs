@@ -96,12 +96,12 @@ globalThis.fetch = async (url, init = {}) => {
   if (target.includes("/rest/v1/listings")) {
     // A PATCH answers with the row as written, so a test can read back what
     // the Worker decided to store — the copied building name in particular.
-    const written = init.method === "PATCH" ? JSON.parse(init.body || "{}") : {};
+    const written = ["PATCH", "POST"].includes(init.method) ? JSON.parse(init.body || "{}") : {};
     return reply([{
       id: LISTING_ID, category: "residential", transaction_type: "rental",
       title: "Evergarden 7A", property_name: "Evergarden", unit: "7A",
       location: "81-07 Kew Gardens Road, Kew Gardens, NY", price_amount: 4500,
-      published: true, position: 0, building_id: listingBuildingId, listing_media: [],
+      published: true, building_id: listingBuildingId, listing_media: [],
       ...written
     }]);
   }
@@ -290,6 +290,16 @@ check("an ordinary edit that sends the link back unchanged still saves",
 check("and the building name is copied from the property, not from the form",
   agentKeepsLink.body.listing?.property_name === "Evergarden",
   JSON.stringify(agentKeepsLink.body.listing?.property_name));
+const inheritedListingAddress = await call(`/api/admin/listings/${LISTING_ID}`,
+  { method: "PATCH", body: { location: "Wrong address", property_name: "Wrong building", title: "Updated title" }, role: "agent" });
+check("an agent edit without building_id inherits the stored property's name and address",
+  inheritedListingAddress.status === 200 && inheritedListingAddress.body.listing?.property_name === "Evergarden" &&
+  inheritedListingAddress.body.listing?.location === "81-07 Kew Gardens Road, Kew Gardens, NY 11415");
+const standalone = await call(`/api/admin/listings/${LISTING_ID}`,
+  { method: "PATCH", body: { building_id: "", location: "10 Example Street, Example City, NY 10001", property_name: "Standalone" }, role: "manager" });
+check("unlinking explicitly keeps a standalone listing's entered name and address",
+  standalone.status === 200 && standalone.body.listing?.property_name === "Standalone" &&
+  standalone.body.listing?.location === "10 Example Street, Example City, NY 10001");
 listingBuildingId = null;
 
 const agentEditsListing = await call(`/api/admin/listings/${LISTING_ID}`,
@@ -300,6 +310,13 @@ check("an agent cannot edit a listing with no assigned marketing property",
 const managerRepoints = await call(`/api/admin/listings/${LISTING_ID}`,
   { method: "PATCH", body: { building_id: BUILDING_ID }, role: "manager" });
 check("a manager can", managerRepoints.status === 200, `${managerRepoints.status}`);
+
+const draftListing = await call("/api/admin/listings", {
+  method: "POST", role: "manager", body: { title: "New draft", category: "residential", transaction_type: "rental", building_id: BUILDING_ID, location: "Wrong address" }
+});
+check("new listings default to a draft and inherit the property address",
+  draftListing.status === 201 && draftListing.body.listing?.published === false &&
+  draftListing.body.listing?.location === "81-07 Kew Gardens Road, Kew Gardens, NY 11415");
 
 // The DHCR consent's two marks are manager-controlled by decision even though
 // the registry still calls them deal values.

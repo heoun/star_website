@@ -80,11 +80,9 @@
           size: item.size || item.square_feet || item.squareFeet || item.sf || "",
           term_label: item.term_label || item.term || item.lease_term || "",
           location: item.location || item.address || "",
-          neighborhood: item.neighborhood || item.area || "",
           bedrooms: item.bedrooms || item.beds || "",
           bathroom: item.bathroom || item.bathrooms || "",
           details_url: item.details_url || item.url || item.link || "",
-          kind_label: item.kind_label || item.project_kind || item.kind || "",
           image_label: item.image_label || item.photo_label || "",
           image_url: item.image_url || item.photo_url || item.image || ""
         };
@@ -100,7 +98,6 @@
     const termLabel = safeText(listing.term_label, "");
     const bedrooms = safeText(listing.bedrooms, "");
     const bathrooms = safeText(listing.bathroom, "");
-    const neighborhood = safeText(listing.neighborhood, "");
 
     if (propertyType) facts.push(propertyType);
     if (useType && useType.toLowerCase() !== propertyType.toLowerCase()) facts.push(useType);
@@ -109,7 +106,6 @@
     if (bathrooms) facts.push(`${bathrooms} bath`);
     if (size) facts.push(size);
     if (termLabel) facts.push(termLabel);
-    if (neighborhood) facts.push(neighborhood);
 
     return facts.slice(0, 4);
   };
@@ -163,10 +159,10 @@
     }
     const defaultKind = safeText(config.defaultKind, "Residential Listing");
     const photoLabel = safeText(listing.image_label, config.emptyPhotoLabel || "Listing preview");
-    const addressParts = [safeText(listing.neighborhood, ""), safeText(listing.location, "")].filter(Boolean);
+    const addressParts = [safeText(listing.location, "")].filter(Boolean);
     const addressLine = addressParts.join(" · ");
     const statusLabel = resolveStatusLabel(listing.transaction_group, config, config.emptyStatusLabel);
-    const kindLabel = safeText(listing.kind_label, defaultKind);
+    const kindLabel = safeText(listing.property_type, defaultKind);
     const factsMarkup = buildFacts(listing)
       .map((fact) => `<span class="listing-fact">${escapeHtml(fact)}</span>`)
       .join("");
@@ -223,9 +219,9 @@
     const maxVisibleListings = Number.isFinite(config.maxVisibleListings) ? config.maxVisibleListings : 9;
 
     // The home page's search hands over a ?q= term; match it against the
-    // fields a person would type (neighborhood, address, title).
+    // fields a person would type (address, title).
     const query = (new URLSearchParams(window.location.search).get("q") || "").trim().toLowerCase();
-    const matchesQuery = (item) => !query || [item.title, item.neighborhood, item.location]
+    const matchesQuery = (item) => !query || [item.title, item.location]
       .some((value) => String(value ?? "").toLowerCase().includes(query));
 
     const renderListings = (listings) => {

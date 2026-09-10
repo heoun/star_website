@@ -147,13 +147,13 @@ export function makeSupabaseRepos(config: SupabaseConfig): Repos {
         return toListing(rows[0], overlays[0]);
       },
       async listPublished() {
-        const rows = await pgrest("GET", `/listings?published=is.true&${RENTAL_FILTER}&order=position,created_at&${LISTING_COLS}`, undefined, undefined, "public") as PublicListingRow[];
+        const rows = await pgrest("GET", `/listings?published=is.true&${RENTAL_FILTER}&order=created_at.desc,id.desc&${LISTING_COLS}`, undefined, undefined, "public") as PublicListingRow[];
         const overlays = await overlaysFor(rows.map((r) => r.id));
         return rows.map((r) => toListing(r, overlays.get(r.id)))
           .filter((l) => l.status === "published");
       },
       async listAll(limit) {
-        const rows = await pgrest("GET", `/listings?${RENTAL_FILTER}&order=position,created_at&limit=${limit}&${LISTING_COLS}`, undefined, undefined, "public") as PublicListingRow[];
+        const rows = await pgrest("GET", `/listings?${RENTAL_FILTER}&order=created_at.desc,id.desc&limit=${limit}&${LISTING_COLS}`, undefined, undefined, "public") as PublicListingRow[];
         const overlays = await overlaysFor(rows.map((r) => r.id));
         return rows.map((r) => toListing(r, overlays.get(r.id)));
       },

@@ -42,7 +42,6 @@
     const rows = [
       ["Property", property.property_name],
       ["Unit", property.unit],
-      ["Neighborhood", property.neighborhood],
       ["Property type", property.property_type],
       ["Bedrooms", property.bedrooms === "0" ? "Studio" : property.bedrooms],
       ["Bathrooms", property.bathroom],
@@ -92,7 +91,7 @@
     const videoUrl = safeUrl(property.video_url);
     const isHostedVideo = videoUrl.startsWith("/media/");
     const externalDetails = safeUrl(property.details_url);
-    const addressLine = [property.neighborhood, property.location].filter(Boolean).join(" · ");
+    const addressLine = [property.location].filter(Boolean).join(" · ");
 
     container.innerHTML = `
       ${galleryMarkup(photos)}

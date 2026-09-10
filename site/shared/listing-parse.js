@@ -46,7 +46,6 @@ export function parseListingCopy(text) {
     transaction_type: /\/\s*mo|month|\brent\b|\blease\b/i.test(priceLine) ? "rental" : "sale",
     price_amount: Number.isFinite(priceAmount) && priceAmount >= 0 ? priceAmount : null,
     title: lines[1] || "",
-    neighborhood: addressParts[0] || "",
     location: addressParts.slice(1).join(", "),
     property_type: (factsLine.split(",")[0] || "").trim(),
     bedrooms: bedroomsMatch ? Number(bedroomsMatch[1]) : (/\bstudio\b/i.test(factsLine) ? 0 : null),

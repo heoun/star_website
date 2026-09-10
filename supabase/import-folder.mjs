@@ -24,7 +24,7 @@ import {
   classifyFiles,
   parseFolderName,
   parseListingCopy
-} from "../shared/listing-parse.js";
+} from "../site/shared/listing-parse.js";
 
 const BUCKET = "listing-media";
 
@@ -97,7 +97,7 @@ console.log(JSON.stringify({
   property_name: propertyName, unit,
   price_amount: copy.price_amount, property_type: copy.property_type,
   bedrooms: copy.bedrooms, bathrooms: copy.bathrooms,
-  neighborhood: copy.neighborhood, location: copy.location,
+  location: copy.location,
   description: copy.description ? `${copy.description.slice(0, 60)}…` : null,
   photos: photos.map(captionFromFilename), floor_plan: floorPlan, video
 }, null, 2));
@@ -148,9 +148,7 @@ const listingResponse = await rest("listings", {
     property_type: copy.property_type || null,
     bedrooms: copy.bedrooms,
     bathrooms: copy.bathrooms,
-    neighborhood: copy.neighborhood || null,
     location: copy.location || null,
-    kind_label: title,
     published: true
   })
 });

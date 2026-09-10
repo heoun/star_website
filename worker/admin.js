@@ -1,3 +1,4 @@
+import { propertyAddress } from "../site/shared/property-address.js";
 import { handleAdministration } from "./administration.js";
 import { verifyAccessRequest } from "./access.js";
 import { handleLandlordRead, handleChangeRequests, handleCaseWorkspace, requireCaseAccess, caseWorkspace } from "./backoffice.js";
@@ -76,15 +77,12 @@ const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{
 const SINGLE_LINE_FIELDS = [
   "property_name",
   "unit",
-  "price_display",
   "property_type",
   "use_type",
   "size",
   "term_label",
   "location",
-  "neighborhood",
   "details_url",
-  "kind_label",
   "video_url"
 ];
 
@@ -118,7 +116,7 @@ function optionalNumber(value, { integer = false } = {}) {
   return integer ? Math.round(parsed) : parsed;
 }
 
-// The building name a listing displays is the property's own, whenever it is
+// The building name and address a listing displays are the property's, whenever it is
 // under one. Two places to type the same building's name is two names that
 // drift, and the pair a reader compares is the website's label against the
 // address a lease prints. So the label is copied from the property here and
@@ -126,11 +124,13 @@ function optionalNumber(value, { integer = false } = {}) {
 // for sale — keeps its typed name.
 //
 // Returns a Response when the link cannot be honoured, null when all is well.
-async function nameFromProperty(env, values) {
-  if (!values.building_id) return null;
-  const building = await fetchBuilding(env, values.building_id);
+async function nameFromProperty(env, values, currentId = null) {
+  const propertyId = values.building_id === undefined ? currentId : values.building_id;
+  if (!propertyId) return null;
+  const building = await fetchBuilding(env, propertyId);
   if (!building) return json({ error: "That property no longer exists." }, 422);
   values.property_name = building.name;
+  values.location = propertyAddress(building) || null;
   return null;
 }
 
@@ -170,8 +170,7 @@ function normalizeListingInput(body, { partial = false, identity = null, current
   if (body.price_amount !== undefined) values.price_amount = optionalNumber(body.price_amount);
   if (body.bedrooms !== undefined) values.bedrooms = optionalNumber(body.bedrooms, { integer: true });
   if (body.bathrooms !== undefined) values.bathrooms = optionalNumber(body.bathrooms);
-  if (body.position !== undefined) values.position = optionalNumber(body.position, { integer: true }) ?? 0;
-  if (body.published !== undefined) values.published = Boolean(body.published);
+  if (!partial || body.published !== undefined) values.published = Boolean(body.published);
 
   // Which property's lease settings this unit inherits. Empty unlinks it,
   // which costs the unit its whole building settings layer.
@@ -380,16 +379,16 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
       const body = await request.json();
       // What this apartment is linked to now, so the rule below can tell an
       // agent putting a new unit under a property from one moving it.
-      const current = body.building_id === undefined
-        ? null
-        : (await fetchListing(env, id, { publishedOnly: false }))?.building_id || null;
+      const existing = await fetchListing(env, id, { publishedOnly: false });
+      if (!existing) return json({ error: "Listing not found." }, 404);
+      const current = existing.building_id || null;
 
       const { values, errors, refused } = normalizeListingInput(
         body, { partial: true, identity, current });
       if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
       if (refused.length > 0) return listingRefusal(refused);
       if (Object.keys(values).length === 0) return json({ error: "Nothing to update." }, 400);
-      const named = await nameFromProperty(env, values);
+      const named = await nameFromProperty(env, values, current);
       if (named) return named;
 
       const row = await updateListing(env, id, values);

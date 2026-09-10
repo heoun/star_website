@@ -24,17 +24,14 @@ create table if not exists public.listings (
   description text,
 
   -- Stored as a number so listings can be sorted and filtered later. The Worker
-  -- formats it for display; price_display overrides that when a listing needs
-  -- wording like "Price on request".
+  -- formats it for display according to the transaction type.
   price_amount numeric,
-  price_display text,
 
   property_type text,
   use_type text,
   size text,
   term_label text,
   location text,
-  neighborhood text,
   bedrooms integer check (bedrooms >= 0),
   bathrooms numeric check (bathrooms >= 0),
 
@@ -43,19 +40,16 @@ create table if not exists public.listings (
   video_url text,
 
   details_url text,
-  kind_label text,
 
   published boolean not null default true,
-  position integer not null default 0,
 
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
 
--- Matches the feed query exactly: filter on published, order by position then
--- newest first (category filtering happens in the browser).
+-- Published inventory shows newest listings first, with a stable ID tie-breaker.
 create index if not exists listings_feed_idx
-  on public.listings (published, position, created_at desc);
+  on public.listings (published, created_at desc, id desc);
 
 create table if not exists public.listing_media (
   id uuid primary key default gen_random_uuid(),

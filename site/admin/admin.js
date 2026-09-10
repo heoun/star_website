@@ -1,3 +1,4 @@
+import { syncListingKind, syncListingProperty } from "./listing-editor.js";
 import { renderAdminDashboard } from "./admin-dashboard.js";
 import { renderOnboarding } from "./onboarding.js";
 import { renderLandlordProperties } from "./landlord-properties.js";
@@ -93,11 +94,11 @@ const dropzone = document.getElementById("dropzone");
 const folderInput = document.getElementById("folder-input");
 
 const TEXT_FIELDS = [
-  "title", "property_name", "unit", "description", "price_display", "property_type",
-  "use_type", "size", "term_label", "location", "neighborhood", "details_url",
-  "kind_label", "video_url"
+  "title", "property_name", "unit", "description", "property_type",
+  "use_type", "size", "term_label", "location", "details_url",
+  "video_url"
 ];
-const NUMBER_FIELDS = ["price_amount", "bedrooms", "bathrooms", "position"];
+const NUMBER_FIELDS = ["price_amount", "bedrooms", "bathrooms"];
 
 let listings = [];
 let applications = [];
@@ -363,7 +364,7 @@ async function readFolder(files) {
   const { property_name, unit } = parseFolderName(folderName);
 
   return {
-    fields: { ...parsed, property_name, unit, kind_label: parsed.title },
+    fields: { ...parsed, property_name, unit },
     photoFiles: photoNames.map(find).filter(Boolean),
     planFile: planName ? find(planName) : null,
     videoFile: video ? find(video) : null,
@@ -384,6 +385,7 @@ async function importFolder(files) {
     }
     form.elements.category.value = "residential";
     form.elements.transaction_type.value = result.fields.transaction_type || "sale";
+    syncListingKind(form, false);
 
     queuePhotos(result.photoFiles);
     if (result.planFile) queuePlan(result.planFile);
@@ -438,8 +440,7 @@ async function filesFromDataTransfer(dataTransfer) {
 
 function describe(listing) {
   const parts = [];
-  if (listing.price_display) parts.push(listing.price_display);
-  else if (listing.price_amount !== null && listing.price_amount !== undefined) {
+  if (listing.price_amount !== null && listing.price_amount !== undefined) {
     const amount = Number(listing.price_amount).toLocaleString("en-US", {
       style: "currency", currency: "USD", maximumFractionDigits: 0
     });
@@ -447,7 +448,6 @@ function describe(listing) {
   }
   const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
   if (home) parts.push(home);
-  if (listing.neighborhood) parts.push(listing.neighborhood);
   return parts.join(" · ") || "No price or address yet";
 }
 
@@ -1038,11 +1038,13 @@ function openEditor(listing) {
   videoFile.value = "";
 
   for (const field of TEXT_FIELDS.concat(NUMBER_FIELDS)) {
-    form.elements[field].value = listing?.[field] ?? (field === "position" ? 0 : "");
+    form.elements[field].value = listing?.[field] ?? "";
   }
   form.elements.category.value = listing?.category || "residential";
   form.elements.transaction_type.value = listing?.transaction_type || "sale";
-  form.elements.published.checked = listing ? Boolean(listing.published) : true;
+  form.elements.published.checked = listing ? Boolean(listing.published) : false;
+  form.querySelector("#listing-form-error").hidden = true;
+  syncListingKind(form, Boolean(editingId));
 
   renderMedia();
   linkedBuildingId = listing?.building_id || "";
@@ -1050,7 +1052,7 @@ function openEditor(listing) {
   // Re-drawn once the properties arrive. No name argument: by then somebody —
   // or a folder import — may have typed in the box, and the list arriving is
   // no reason to empty it.
-  loadBuildings().then(() => fillPropertySelect());
+  loadBuildings(true).then(() => fillPropertySelect());
   if (!editor.open) editor.showModal();
 }
 
@@ -1087,62 +1089,34 @@ function fillPropertySelect(typedName) {
   const select = form.elements.building_id;
   if (!select) return;
 
+  const selectedId = typedName !== undefined ? linkedBuildingId : select.value;
   const options = [
-    `<option value=""${linkedBuildingId ? "" : " selected"}>Not part of a property</option>`,
+    `<option value=""${selectedId ? "" : " selected"}>Not part of a property</option>`,
     ...buildingRows.map((row) => `<option value="${escapeHtml(row.id)}"${
-      row.id === linkedBuildingId ? " selected" : ""}>${escapeHtml(row.name)}</option>`)
+      row.id === selectedId ? " selected" : ""}>${escapeHtml(row.name)}</option>`)
   ];
-  if (isManager()) options.push('<option value="__create__">Add a new property…</option>');
+  if (selectedId && !buildingRows.some(row => row.id === selectedId)) {
+    options.push(`<option value="${escapeHtml(selectedId)}" selected>Linked property · unavailable</option>`);
+  }
 
   select.innerHTML = options.join("");
   select.disabled = !mayPickProperty();
   showPropertyName(typedName);
 }
 
-// The name box appears only when there is a name to type: for a listing under
-// no property, and for the property a manager is about to create.
+// Show inherited building information while keeping standalone listings editable.
 function showPropertyName(typedName) {
   const select = form.elements.building_id;
-  const nameInput = form.elements.property_name;
-  const hint = document.getElementById("property-hint");
-  if (!select || !nameInput) return;
-
-  const creating = select.value === "__create__";
-  const unlinked = select.value === "";
-  nameInput.hidden = !(creating || unlinked);
-  if (typedName !== undefined) nameInput.value = creating ? "" : typedName;
-
-  if (hint) {
-    hint.textContent = creating
-      ? "The new property starts with no address. Set one on Properties so its leases print it."
-      : unlinked
-        ? "Not under a property, so this unit's leases read the address off the listing."
-        : select.disabled
-          ? "Only a manager can move an apartment to another property."
-          : "Its leases print this property's address and landlord terms.";
-  }
+  const property = buildingRows.find(row => row.id === select.value);
+  if (typedName !== undefined) form.elements.property_name.value = typedName;
+  syncListingProperty(form, property, Boolean(select.value));
+  document.getElementById("property-hint").textContent = select.value
+    ? (property ? "Building name and address come from this property." : "Property details are unavailable. Close and reopen to retry; the existing link is preserved.")
+    : "For a standalone listing, enter its building name and address. Add managed properties through Properties & settings or landlord onboarding.";
 }
 
-// What the listing should be linked to, resolved before the save: an existing
-// property's id, a fresh row made from the typed name, or null for none.
-async function resolveBuildingLink(values) {
-  const choice = form.elements.building_id?.value ?? "";
-  if (choice !== "__create__") return choice || null;
-
-  const name = values.property_name;
-  if (!name) throw new Error("Give the new property a name.");
-
-  const existing = buildingRows.find((row) => row.name.toLowerCase() === name.toLowerCase());
-  if (existing) return existing.id;
-
-  const { building } = await api("/buildings", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ name })
-  });
-  buildingRows.push(building);
-  buildingRowsLoaded = true;
-  return building.id;
+async function resolveBuildingLink() {
+  return form.elements.building_id.value || null;
 }
 
 function collectValues() {
@@ -1164,11 +1138,18 @@ function collectValues() {
   return values;
 }
 
-form.elements.building_id?.addEventListener("change", () => showPropertyName(""));
+form.elements.building_id?.addEventListener("change", () => {
+  // Preserve the selected address when making a listing standalone, so it can be edited.
+  showPropertyName();
+});
+for (const name of ["category", "transaction_type", "published"]) {
+  form.elements[name].addEventListener("change", () => syncListingKind(form, Boolean(editingId)));
+}
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   saveButton.disabled = true;
+  form.querySelector("#listing-form-error").hidden = true;
   setStatus("Saving…");
 
   try {
@@ -1198,9 +1179,14 @@ form.addEventListener("submit", async (event) => {
     renderMedia();
 
     editor.close();
-    setStatus("Saved. The website updates within a minute.");
+    const savedPublished = form.elements.published.checked;
     await load();
+    setStatus(savedPublished ? "Saved. The website updates within a minute." : "Draft saved. This listing is not published.");
   } catch (error) {
+    const errorEl = form.querySelector("#listing-form-error");
+    errorEl.textContent = error.message;
+    errorEl.hidden = false;
+    errorEl.scrollIntoView({ block: "nearest" });
     setStatus(error.message, "error");
   } finally {
     saveButton.disabled = false;

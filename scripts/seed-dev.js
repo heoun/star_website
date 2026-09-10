@@ -90,7 +90,10 @@ async function main() {
   const buildings = await source.request("buildings?select=*").catch(() => []);
   console.log(`  buildings        ${await upsert(target, "buildings", buildings)}`);
 
-  const listings = await source.request("listings?select=*&published=eq.true&order=position.asc");
+  const listings = await source.request("listings?select=*&published=eq.true&order=created_at.desc,id.desc");
+  for (const row of listings) {
+    for (const key of ["price_display", "neighborhood", "kind_label", "position"]) delete row[key];
+  }
   console.log(`  listings         ${await upsert(target, "listings", listings)}`);
 
   const ids = listings.map((row) => row.id);

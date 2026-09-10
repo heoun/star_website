@@ -7,20 +7,16 @@ const LISTING_COLUMNS = [
   "unit",
   "description",
   "price_amount",
-  "price_display",
   "property_type",
   "use_type",
   "size",
   "term_label",
   "location",
-  "neighborhood",
   "bedrooms",
   "bathrooms",
   "video_url",
   "details_url",
-  "kind_label",
   "published",
-  "position",
   "building_id",
   "created_at"
 ].join(",");
@@ -59,7 +55,7 @@ export async function fetchListings(env, { publishedOnly = true, propertyIds } =
   if (propertyIds && !propertyIds.length) return [];
   const filters = [
     `select=${LISTING_COLUMNS},listing_media(${MEDIA_COLUMNS})`,
-    "order=position.asc,created_at.desc",
+    "order=created_at.desc,id.desc",
     "listing_media.order=kind.asc,position.asc"
   ];
   if (publishedOnly) filters.push("published=eq.true");
@@ -499,7 +495,6 @@ const priceFormatter = new Intl.NumberFormat("en-US", {
 });
 
 function formatPrice(row) {
-  if (row.price_display) return row.price_display;
   if (row.price_amount === null || row.price_amount === undefined) return "";
 
   const amount = Number(row.price_amount);
@@ -538,11 +533,9 @@ export function toFeedListing(row) {
     size: row.size || "",
     term_label: row.term_label || "",
     location: row.location || "",
-    neighborhood: row.neighborhood || "",
     bedrooms: numberToText(row.bedrooms),
     bathroom: numberToText(row.bathrooms),
     details_url: row.details_url || "",
-    kind_label: row.kind_label || "",
     image_label: cover?.caption || "",
     image_url: mediaUrl(cover?.path)
   };

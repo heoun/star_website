@@ -103,9 +103,12 @@ export async function completeDemoState(state) {
     // A representative unit makes every sample property usable in lease preview.
     if (firstSeed && !state.listings.some(l => l.building_id === b.id)) state.listings.push({ id: crypto.randomUUID(), building_id: b.id, unit: "1A", price_amount: 2800 + i * 100, created_at: at, published: false });
   }
+  for (const row of [...state.listings, ...state.applications.map(a => a.listings).filter(Boolean)]) {
+    for (const key of ["price_display", "neighborhood", "kind_label", "position"]) delete row[key];
+  }
   for (const [i, l] of state.listings.entries()) {
     const b = state.buildings.find(b => b.id === l.building_id); if (!b) continue;
-    fillOnce("listings", l.id, l, { title: `${b.name} · ${l.unit || "1A"}`, property_name: b.name, unit: "1A", price_amount: 3000, price_display: `${new Intl.NumberFormat("en-US", {style:"currency", currency:"USD", maximumFractionDigits:0}).format(l.price_amount || 3000)} / month`, category: "residential", transaction_type: "rental", property_type: "Apartment", use_type: "Residential", bedrooms: 2, bathrooms: 1, size: "900 sq ft", location: [b.street,b.city,b.state_abbr,b.zip].join(", "), neighborhood: "Example neighborhood", description: "Mock two-bedroom apartment with an open living area, elevator access, shared laundry and a package room.", details: "Elevator · Shared laundry · Package room", term_label: "12 months", kind_label: "Apartment", created_at: at, listing_media: [] });
+    fillOnce("listings", l.id, l, { title: `${b.name} · ${l.unit || "1A"}`, property_name: b.name, unit: "1A", price_amount: 3000, category: "residential", transaction_type: "rental", property_type: "Apartment", use_type: "Residential", bedrooms: 2, bathrooms: 1, size: "900 sq ft", location: [b.street,b.city,b.state_abbr,b.zip].join(", "), description: "Mock two-bedroom apartment with an open living area, elevator access, shared laundry and a package room.", details: "Elevator · Shared laundry · Package room", term_label: "12 months", created_at: at, listing_media: [] });
     if (!state.applications.some(a => a.listing_id === l.id) && !seeded.listings[`${l.id}:application`]) {
       state.applications.push({ id: crypto.randomUUID(), ...mockApplication(l, i) });
     }

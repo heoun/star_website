@@ -250,7 +250,7 @@ import { endDateFor } from "../shared/lease-dates.js";
     // this card exists to confirm which home is being applied for.
     const unit = String(property.unit ?? "").trim();
     document.getElementById("summary-address").textContent =
-      [property.neighborhood, property.location, unit ? `Unit ${unit}` : ""]
+      [property.location, unit ? `Unit ${unit}` : ""]
         .filter(Boolean).join(" · ");
     // "0 bedrooms" is what a studio would read as, while the property page the
     // applicant just came from says "Studio" — and this card exists to confirm

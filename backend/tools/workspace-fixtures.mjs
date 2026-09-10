@@ -70,8 +70,15 @@ export function createWorkspaceFixtures(saved) {
       return response(state.staff.filter(row => match(row, q, "email")).slice(Number(q.get("offset") || 0), Number(q.get("offset") || 0) + Number(q.get("limit") || 1000)));
     }
     if (table === "listings") {
+      if (method === "POST") {
+        const row = { id: crypto.randomUUID(), created_at: new Date().toISOString(), listing_media: [], published: false, ...body };
+        state.listings.push(row);
+        return response([row]);
+      }
       const rows = state.listings.filter(row => match(row, q, "id") && (!q.has("building_id") || q.get("building_id").includes(row.building_id)) && (!q.has("published") || row.published));
       if (method === "PATCH") rows.forEach(row => Object.assign(row, body));
+      if (method === "DELETE") state.listings = state.listings.filter(row => !rows.includes(row));
+      if (q.get("order") === "created_at.desc,id.desc") rows.sort((a,b) => String(b.created_at).localeCompare(String(a.created_at)) || b.id.localeCompare(a.id));
       return response(rows);
     }
     if (table === "buildings") {

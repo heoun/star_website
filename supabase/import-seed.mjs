@@ -53,7 +53,7 @@ function parseNumber(value, { integer = false } = {}) {
   return integer ? Math.round(parsed) : parsed;
 }
 
-function toRow(listing, index) {
+function toRow(listing) {
   const status = String(listing.status ?? "").toLowerCase();
   return {
     category: String(listing.category ?? "").toLowerCase().includes("comm") ? "commercial" : "residential",
@@ -65,13 +65,10 @@ function toRow(listing, index) {
     size: listing.size || null,
     term_label: listing.term_label || null,
     location: listing.location || null,
-    neighborhood: listing.neighborhood || null,
     bedrooms: parseNumber(listing.bedrooms, { integer: true }),
     bathrooms: parseNumber(listing.bathroom),
     details_url: listing.details_url || null,
-    kind_label: listing.kind_label || null,
-    published: true,
-    position: index
+    published: true
   };
 }
 
@@ -96,7 +93,7 @@ if (existing.length > 0) {
   // cleans up storage as well.
   const withMedia = await (await rest("listing_media?select=id&limit=1")).json();
   if (withMedia.length > 0) {
-    console.error("Some listings have uploaded media. Delete them through /admin/ first so their R2 files are cleaned up; --replace only handles media-less rows.");
+    console.error("Some listings have uploaded media. Delete them through /admin/ first so their stored files are cleaned up; --replace only handles media-less rows.");
     process.exit(1);
   }
 

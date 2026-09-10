@@ -910,6 +910,31 @@
 
     .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
 
+    #editor { width: min(900px, 94vw); }
+    #listing-form { padding: 0 28px; }
+    #listing-form [hidden] { display: none !important; }
+    .listing-editor-head { padding: 26px 0 22px; border-bottom: 1px solid var(--line); }
+    .listing-editor-head h2 { margin: 6px 0 8px; font-size: 26px; }
+    .listing-editor-head p { margin: 0; }
+    .listing-editor-section { padding: 22px 0; border-bottom: 1px solid var(--line); }
+    #listing-form .listing-editor-section > h3 { display: flex; align-items: center; gap: 10px; margin: 0 0 20px; padding: 0; border: 0; font-size: 16px; text-transform: none; letter-spacing: 0; }
+    .listing-editor-section > h3 > span { display: inline-grid; place-items: center; width: 29px; height: 29px; background: #edf3f5; border-radius: 8px; font-size: 12px; color: var(--blue); }
+    #listing-form .grid { gap: 18px 22px; }
+    #listing-form label { font-size: 13px; }
+    #listing-form input, #listing-form select, #listing-form textarea { font-size: 14px; }
+    #listing-form input[readonly] { background: #f4f7f8; border-color: #e1e8ec; color: #536674; }
+    #listing-form .hint { font-size: 12px; line-height: 1.55; }
+    .listing-building-name { margin-top: 16px; }
+    .listing-address { margin: 20px 0; padding: 16px; background: #f8fafb; border: 1px solid var(--line); border-radius: 12px; }
+    .listing-address-head { display: flex; flex-wrap: wrap; gap: 8px 18px; justify-content: space-between; margin-bottom: 14px; font-size: 13px; }
+    .listing-state-zip { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .listing-publish-box { padding: 16px; background: #f8fafb; border: 1px solid var(--line); border-radius: 12px; }
+    .listing-external-link { margin-top: 18px; }
+    .listing-publish-box p { margin: 6px 0 0; }
+    #listing-form .form-actions { position: sticky; bottom: 0; margin: 0; padding: 16px 0; background: var(--white); z-index: 2; }
+    .listing-form-error { color: var(--danger, #a32b28); }
+    @media (max-width: 600px) { #listing-form { padding: 0 16px; } }
+
     /* ------------------------------------------------------------------
        responsive
     ------------------------------------------------------------------ */
@@ -1679,10 +1704,15 @@
     </main>
   </div>
 
-  <dialog id="editor">
+  <dialog id="editor" aria-labelledby="editor-title">
     <form id="listing-form" method="dialog">
-      <h2 id="editor-title">New listing</h2>
-
+      <header class="listing-editor-head">
+        <span class="k">LISTING DETAILS</span>
+        <h2 id="editor-title">New listing</h2>
+        <p class="hint">Choose a property, add the unit details, then prepare it for the website.</p>
+      </header>
+      <section class="listing-editor-section" aria-labelledby="listing-property-heading">
+        <h3 id="listing-property-heading"><span>01</span> Property &amp; unit</h3>
       <div class="grid">
         <div>
           <label for="category">Category</label>
@@ -1691,109 +1721,96 @@
             <option value="commercial">Commercial</option>
           </select>
         </div>
-
         <div>
           <label for="transaction_type">Transaction</label>
           <select id="transaction_type" name="transaction_type" required>
             <option value="sale">For sale</option>
-            <option value="rental">For rent / lease</option>
+            <option value="rental">For rent</option>
           </select>
         </div>
-
-        <div class="wide">
-          <label for="title">Title <span class="hint">(e.g. "Kew Gardens Luxury Rental")</span></label>
-          <input id="title" name="title" maxlength="200" required>
-        </div>
-
         <div>
-          <label for="building_id">Property <span class="hint">(the building this unit is in)</span></label>
+          <label for="building_id">Property</label>
           <select id="building_id" name="building_id"></select>
-          <input id="property_name" name="property_name" maxlength="120"
-                 placeholder="Name of the building" hidden>
           <p class="hint" id="property-hint"></p>
         </div>
-
         <div>
           <label for="unit">Unit <span class="hint">(e.g. "7A")</span></label>
           <input id="unit" name="unit" maxlength="30">
         </div>
-
+      </div>
+        <div class="listing-building-name">
+          <label for="property_name">Building name</label>
+          <input id="property_name" name="property_name" maxlength="120" placeholder="Optional building name">
+        </div>
+      </section>
+      <section class="listing-editor-section" aria-labelledby="listing-specs-heading">
+        <h3 id="listing-specs-heading"><span>02</span> Price &amp; specifications</h3>
+      <div class="grid">
         <div>
-          <label for="price_amount">Price <span class="hint">(numbers only, e.g. 4500)</span></label>
+          <label for="price_amount"><span id="listing-price-label">Asking price (USD)</span></label>
           <input id="price_amount" name="price_amount" type="number" min="0" step="1" inputmode="numeric">
         </div>
-
-        <div>
-          <label for="price_display">Price override <span class="hint">(optional)</span></label>
-          <input id="price_display" name="price_display" maxlength="60" placeholder="Price on request">
+      </div>
+        <div id="listing-property-address" class="listing-address" hidden>
+          <div class="listing-address-head"><b>Property address</b><span class="hint">From the selected property</span></div>
+          <div class="grid">
+            <div class="wide"><label for="listing-street">Street</label><input id="listing-street" readonly></div>
+            <div><label for="listing-city">City</label><input id="listing-city" readonly></div>
+            <div class="listing-state-zip">
+              <div><label for="listing-state">State</label><input id="listing-state" readonly></div>
+              <div><label for="listing-zip">ZIP code</label><input id="listing-zip" readonly></div>
+            </div>
+          </div>
+          <p class="hint" id="listing-address-hint">To correct this address, update Properties &amp; settings.</p>
         </div>
-
+      <div class="grid">
         <div>
-          <label for="location">Address</label>
-          <input id="location" name="location" maxlength="300" placeholder="81-07 Kew Gardens Road, NY">
+          <label for="location">Full address</label>
+          <input id="location" name="location" maxlength="300" placeholder="Street, City, State ZIP code">
         </div>
-
-        <div>
-          <label for="neighborhood">Neighborhood</label>
-          <input id="neighborhood" name="neighborhood" maxlength="120" placeholder="Kew Gardens">
-        </div>
-
         <div>
           <label for="property_type">Property type</label>
-          <input id="property_type" name="property_type" maxlength="60" placeholder="Apartment, Condo, House">
+          <input id="property_type" name="property_type" maxlength="60" placeholder="Apartment, Condo, House" list="listing-property-types">
         </div>
-
         <div>
           <label for="use_type">Use type <span class="hint">(commercial)</span></label>
           <input id="use_type" name="use_type" maxlength="60" placeholder="Retail, Office">
         </div>
-
         <div>
           <label for="bedrooms">Bedrooms <span class="hint">(0 = studio)</span></label>
           <input id="bedrooms" name="bedrooms" type="number" min="0" step="1">
         </div>
-
         <div>
           <label for="bathrooms">Bathrooms</label>
           <input id="bathrooms" name="bathrooms" type="number" min="0" step="0.5">
         </div>
-
         <div>
-          <label for="size">Size</label>
-          <input id="size" name="size" maxlength="60" placeholder="2,400 sf">
+          <label for="size">Size <span class="hint">(sq ft)</span></label>
+          <input id="size" name="size" maxlength="60" placeholder="e.g. 1,200 sq ft">
         </div>
-
         <div>
           <label for="term_label">Term <span class="hint">(lease)</span></label>
-          <input id="term_label" name="term_label" maxlength="60" placeholder="5-year term">
+          <input id="term_label" name="term_label" maxlength="60" placeholder="e.g. 12 months">
         </div>
-
+      </div>
+        <datalist id="listing-property-types"></datalist>
+      </section>
+      <section class="listing-editor-section" aria-labelledby="listing-content-heading">
+        <h3 id="listing-content-heading"><span>03</span> Website content</h3>
+      <div class="grid">
+        <div class="wide">
+          <label for="title">Listing title <span class="hint">(shown on the website)</span></label>
+          <input id="title" name="title" maxlength="200" required>
+        </div>
         <div class="wide">
           <label for="description">Description</label>
           <textarea id="description" name="description" maxlength="4000" placeholder="Modern Comfort at Evergarden&#10;Stylish 2-bed, 2-bath residence featuring..."></textarea>
         </div>
-
-        <div class="wide">
+      </div>
+        <div class="listing-external-link">
           <label for="details_url">External details link <span class="hint">(optional)</span></label>
           <input id="details_url" name="details_url" type="url" maxlength="500" placeholder="https://">
         </div>
-
-        <div>
-          <label for="kind_label">Card badge</label>
-          <input id="kind_label" name="kind_label" maxlength="80" placeholder="Kew Gardens Luxury Rental">
-        </div>
-
-        <div>
-          <label for="position">Sort order <span class="hint">(low first)</span></label>
-          <input id="position" name="position" type="number" step="1" value="0">
-        </div>
-
-        <div class="checkbox wide">
-          <input id="published" name="published" type="checkbox" checked>
-          <label for="published">Published on the website</label>
-        </div>
-      </div>
-
       <div id="media-section">
         <h3>Photos, floor plan &amp; video</h3>
         <p class="media-lock" id="media-locked">These files upload when you save the listing.</p>
@@ -1816,6 +1833,19 @@
         </div>
       </div>
 
+      </section>
+      <section class="listing-editor-section" aria-labelledby="listing-publish-heading">
+        <h3 id="listing-publish-heading"><span>04</span> Publication</h3>
+        <div class="listing-publish-box">
+          <div class="checkbox">
+            <input id="published" name="published" type="checkbox">
+            <label for="published">Published on the website</label>
+          </div>
+          <p class="hint" id="listing-publish-hint" aria-live="polite">Saved as a draft. Only the leasing team can see it.</p>
+        </div>
+
+      </section>
+      <p id="listing-form-error" class="listing-form-error" role="alert" hidden></p>
       <div class="form-actions">
         <button type="button" id="cancel">Close</button>
         <button type="submit" class="primary" id="save">Save listing</button>
