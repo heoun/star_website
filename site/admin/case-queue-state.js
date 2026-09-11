@@ -1,6 +1,6 @@
 // Filters only the cases already scoped by the API; this is not an access check.
 export const PIPELINE = [
-  { key: "review", label: "Reviewing", statuses: ["new", "contacted", "fee_pending", "screening", "review", "needs_info"] },
+  { key: "review", label: "Collecting information", statuses: ["new", "contacted", "fee_pending", "screening", "review", "needs_info"] },
   { key: "approved", label: "Approved", statuses: ["approved"] },
   { key: "landlord", label: "With the Landlord", statuses: ["sent_to_landlord"] },
   { key: "lease", label: "Lease", statuses: ["landlord_approved"] },
@@ -20,7 +20,7 @@ export function selectQueueCases(cases, view, session) {
     if (view.person === "lead" && row.responsible_email !== session.email) return false;
     if (view.person === "collaborating" && (row.responsible_email === session.email || !(row.collaborator_emails || []).includes(session.email))) return false;
     if (view.person && !["unassigned", "lead", "collaborating"].includes(view.person) && row.responsible_email !== view.person) return false;
-    return !query || [row.name, row.email, row.listings?.title, row.listings?.property_name, row.listings?.unit, row.responsible_email]
+    return !query || [row.name, row.email, ...(row.household?.members || []).flatMap(m=>[m.name,m.email]), row.listings?.title, row.listings?.property_name, row.listings?.unit, row.responsible_email]
       .filter(Boolean).join(" ").toLowerCase().includes(query);
   }).sort((a,b) => (view.bucket === "all" ? rank(a)-rank(b) : 0) || since(a)-since(b) || String(a.id).localeCompare(String(b.id)));
 }

@@ -30,7 +30,10 @@
     "test:identity": "node scripts/test-identity.mjs",
     "test:identity:db": "node scripts/test-identity-schema.mjs",
     "test:identity:ui": "node scripts/test-identity-ui.mjs",
-    "test:storage": "node scripts/test-storage.mjs"
+    "test:storage": "node scripts/test-storage.mjs",
+    "test:rentals": "node scripts/test-rental-flow.mjs && node scripts/test-rental-intake.mjs",
+    "test:rentals:db": "node scripts/test-rental-schema.mjs",
+    "test:rentals:ui": "npm run build && node scripts/test-rental-ui.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

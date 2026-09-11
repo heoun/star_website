@@ -505,6 +505,7 @@ function renderListings() {
       </div>
       <div class="actions">
         ${!listing.can_edit ? `<a class="desk-button" href="#/listings/${escapeHtml(listing.id)}">View listing</a>` : '<button type="button" data-action="edit">Edit</button>'}
+        ${listing.published && listing.transaction_type==='rental' && session.role==='agent' && session.property_ids?.includes(listing.building_id) ? '<button type="button" data-action="referral">Copy my application link</button>' : ''}
         <button type="button" class="danger" data-action="delete" data-manager-only>Delete</button>
       </div>
     </article>
@@ -1391,6 +1392,11 @@ rowsEl.addEventListener("click", async (event) => {
   const listing = listings.find((item) => item.id === id);
   if (!listing) return;
 
+  if(button.dataset.action==='referral') {
+    const link=new URL('/apply/',location.origin);link.searchParams.set('id',id);link.searchParams.set('agent',session.email);
+    try{await navigator.clipboard.writeText(link.toString());button.textContent='Link copied';}catch{setStatus(`Application link: ${link}`);}
+    return;
+  }
   if (button.dataset.action === "edit") {
     openEditor(listing);
     return;

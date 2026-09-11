@@ -1,3 +1,5 @@
+import { seedRentalDemo } from "./rental-demo-data.mjs";
+import { reconcileRentals } from "../worker/rentals.js";
 import { handlePublicOnboarding } from "../worker/administration.js";
 // Local, synthetic role demo. It runs the actual Worker handlers and repository
 // adapter against isolated fixtures. It cannot reach a real Supabase project.
@@ -19,11 +21,16 @@ if (existsSync(stateFile)) saved = JSON.parse(await readFile(stateFile, "utf8"))
 const fixture = createWorkspaceFixtures(saved);
 if (saved && !saved.demo_seed) await writeFile(`${stateFile}.before-complete-mock.json`, JSON.stringify(saved), {flag:"wx"}).catch(error => { if (error.code !== "EEXIST") throw error; });
 await completeDemoState(fixture.state);
+await seedRentalDemo(fixture.state);
 await mkdir(dirname(stateFile), {recursive:true});
 await writeFile(stateFile, JSON.stringify(fixture.state));
 fixture.env.APP_ENCRYPTION_KEY = DEMO_ENCRYPTION_KEY;
 if (!fixture.state.staff.some(s => s.email === "peer-admin@example.test")) fixture.state.staff.push({email:"peer-admin@example.test",name:"Riley · Admin",role:"manager",active:true,property_ids:[],account_version:0});
 globalThis.fetch = fixture.fetch;
+fixture.env.RENTAL_AUTOMATION='on';fixture.env.RENTAL_SCREENING='mock';
+fixture.env.LOCAL_EMAIL_SINK={async send(message,key){if(!key || !fixture.state.emails.some(m=>m.demo_key===key))fixture.state.emails.push({...message,demo_key:key});}};
+await reconcileRentals(fixture.env,new Request(`http://127.0.0.1:${port}/`));
+await writeFile(stateFile,JSON.stringify(fixture.state));
 const demoPeople = () => ({ owner: ["manager", "platform-owner@example.test"], admin: ["manager", "admin@example.test"], "agent-a": ["agent", "agent-a@example.test"], "agent-b": ["agent", "agent-b@example.test"], landlord: ["landlord", "owner@example.test"],
   ...Object.fromEntries(fixture.state.staff.flatMap((member,index) => member.role === "landlord" && member.active && member.email !== "owner@example.test" ? [[`partner-${index}`, ["landlord", member.email]]] : [])) });
 const mime = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript", ".mjs": "text/javascript", ".json": "application/json", ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".webp": "image/webp", ".ico": "image/x-icon", ".woff2": "font/woff2", ".pdf": "application/pdf", ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document" };
@@ -52,13 +59,13 @@ const server = http.createServer(async (req, res) => {
     if (url.pathname === "/__demo/inbox") {
       const esc = v => String(v || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
       res.writeHead(200, {"Content-Type":"text/html; charset=utf-8", "Cache-Control":"no-store", "Referrer-Policy":"no-referrer"});
-      res.end(`<!doctype html><meta name="viewport" content="width=device-width"><title>Synthetic demo inbox</title><style>body{font:16px system-ui;color:#193446;max-width:840px;margin:40px auto;padding:20px}article{padding:24px;border:1px solid #dde5e8;border-radius:12px;margin:20px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}a{color:inherit}</style><a href="/__demo">← Demo roles</a><h1>Local demo inbox</h1><p>These messages were saved locally. No email was sent.</p>${fixture.state.emails.slice().reverse().map(m=>`<article><p>To: ${esc([].concat(m.to).join(", "))}</p><h2>${esc(m.subject)}</h2><pre>${esc(m.text)}</pre>${/http[^\s]+\/landlord-onboarding\/#[a-f0-9]{64}/.exec(m.text)?.[0] ? `<a href="${esc(/http[^\s]+\/landlord-onboarding\/#[a-f0-9]{64}/.exec(m.text)[0])}">Open landlord form →</a>` : ""}</article>`).join("") || "<p>No invitations yet. Create one from Admin → Landlord onboarding.</p>"}`); return;
+      res.end(`<!doctype html><meta name="viewport" content="width=device-width"><title>Synthetic demo inbox</title><style>body{font:16px system-ui;color:#193446;max-width:840px;margin:40px auto;padding:20px}article{padding:24px;border:1px solid #dde5e8;border-radius:12px;margin:20px 0}pre{white-space:pre-wrap;overflow-wrap:anywhere;line-height:1.7}a{color:inherit}</style><a href="/__demo">← Demo roles</a><h1>Local demo inbox</h1><p>These messages were saved locally. No email was sent.</p>${fixture.state.emails.slice().reverse().map(m=>`<article><p>To: ${esc([].concat(m.to).join(", "))}</p><h2>${esc(m.subject)}</h2><pre>${esc(m.text)}</pre>${m.text.includes('/landlord-decision/') ? (()=>{const link=/Agree to proceed: (\S+)/.exec(m.text)?.[1];const role=Object.entries(people).find(([,value])=>[].concat(m.to).includes(value[1]))?.[0];if(!link || !role)return '';const u=new URL(link);return `<a href="/__demo?role=${esc(role)}&amp;next=${encodeURIComponent(u.pathname+u.hash)}">Open decision as the recipient landlord →</a>`;})() : ''}${/http[^\s]+\/landlord-onboarding\/#[a-f0-9]{64}/.exec(m.text)?.[0] ? `<a href="${esc(/http[^\s]+\/landlord-onboarding\/#[a-f0-9]{64}/.exec(m.text)[0])}">Open landlord form →</a>` : ""}</article>`).join("") || "<p>No invitations yet. Create one from Admin → Landlord onboarding.</p>"}`); return;
     }
     if (url.pathname === "/__demo") {
       // Approved partners are selectable in this isolated demo so the full
       // intake → account → property access flow can be inspected in the UI.
       const role = url.searchParams.get("role");
-      if (people[role]) { res.writeHead(303, { Location: "/admin/#/overview", "Set-Cookie": `star_demo_role=${role}; Path=/; HttpOnly; SameSite=Lax` }); res.end(); return; }
+      if (people[role]) { const next=url.searchParams.get('next');res.writeHead(303, { Location: next?.startsWith('/landlord-decision/#') ? next : "/admin/#/overview", "Set-Cookie": `star_demo_role=${role}; Path=/; HttpOnly; SameSite=Lax` }); res.end(); return; }
       res.writeHead(200, { "Content-Type": "text/html" });
       const esc = v => String(v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
       res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Star workspace · synthetic demo</title><style>body{font:16px system-ui;background:#f6f7f9;color:#132d42;max-width:720px;margin:12vh auto;padding:24px}a{display:block;background:white;border:1px solid #dce3e8;border-radius:10px;margin:14px 0;padding:20px;color:inherit;text-decoration:none}p{line-height:1.8;color:#5d707c}</style><h1>Explore each workspace</h1><p>Isolated demo with synthetic people and properties. Changes are saved locally. No messages, payments, checks or signature requests are sent.</p>${Object.entries(people).map(([key, [role, email]]) => `<a href="/__demo?role=${key}"><b>${key === "owner" ? "Platform owner" : key === "admin" ? "Admin" : role === "landlord" ? "Landlord" : key === "agent-a" ? "Agent A" : "Agent B"}</b><br>${esc(email)}</a>`).join("")}`); return;
@@ -80,7 +87,7 @@ const server = http.createServer(async (req, res) => {
     }
     let response;
     if (url.pathname.startsWith("/api/admin/")) {
-      response = await handleAdminRequest(request, { ...fixture.env, DEV_ADMIN_ROLE: role, DEV_ADMIN_EMAIL: email, OWNER_EMAIL: "platform-owner@example.test", LOCAL_EMAIL_SINK: { send: async message => { fixture.state.emails.push(message); } }, ASSETS: { fetch: asset } }, { waitUntil(p) { p.catch(() => {}); } }, url.pathname);
+      response = await handleAdminRequest(request, { ...fixture.env, DEV_ADMIN_ROLE: role, DEV_ADMIN_EMAIL: email, OWNER_EMAIL: "platform-owner@example.test", LOCAL_EMAIL_SINK: fixture.env.LOCAL_EMAIL_SINK, ASSETS: { fetch: asset } }, { waitUntil(p) { p.catch(() => {}); } }, url.pathname);
       if (!["GET", "HEAD"].includes(req.method) && response.ok) {
         await completeDemoState(fixture.state);
         const snapshot = JSON.stringify(fixture.state);
@@ -94,4 +101,6 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(response.status, Object.fromEntries(response.headers)); res.end(Buffer.from(await response.arrayBuffer()));
   } catch (error) { console.error(error.message); res.writeHead(500, { "Content-Type": "application/json" }); res.end(JSON.stringify({ error: "Demo request failed." })); }
 });
+let reconciling=false;
+setInterval(async()=>{if(reconciling)return;reconciling=true;try{await reconcileRentals(fixture.env,new Request(`http://127.0.0.1:${port}/`));const snapshot=JSON.stringify(fixture.state);pendingSave=pendingSave.then(()=>writeFile(stateFile,snapshot));await pendingSave;}catch(error){console.error('Local rental refresh failed',error.message);}finally{reconciling=false;}},15000).unref();
 server.listen(port, "127.0.0.1", () => console.log(`Synthetic role demo: http://127.0.0.1:${port}/__demo`));

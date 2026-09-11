@@ -1,4 +1,5 @@
 import { PIPELINE, selectQueueCases } from "./case-queue-state.js";
+import { groupedQueue, rentalGroupMarkup, bindRentalGroup } from "./rental-group.js";
 // The case workspace, from the agent's chair.
 //
 // An agent's day is a list of people waiting on them, and then one case at a
@@ -115,6 +116,7 @@ const proposedText = proposed => Object.entries(proposed || {})
 // Flags a queue row carries so the agent knows what is short without opening
 // the case. At most three, the ones that decide what to do first.
 function rowFlags(row, docs, manager) {
+  if(row.household) return row.household.issues.slice(0,3);
   const w = row.workspace || {}, flags = [];
   if (manager && !row.responsible_email) flags.push("Unassigned");
   if (row.next_step?.label === "Review New Documents") flags.push("New documents");
@@ -285,14 +287,14 @@ function renderStaffQueue(host, { cases, types, session, overview, title, note, 
     </section>
     <div class="cw-results"><p data-queue-result role="status"></p><button type="button" data-clear-filters>Clear filters</button></div>
     <article class="panel cw-queue-table">
-      <div class="cw-table-head" aria-hidden="true"><span>Applicant / property</span><span>Next step</span><span>${manager ? "Responsible" : "Your involvement"}</span><span>Waiting</span></div>
+      <div class="cw-table-head" aria-hidden="true"><span>Property</span><span>Unit</span><span>Applications</span><span>Needs attention</span></div>
       <div class="cw-rows"></div>
     </article>`;
   host.querySelector('[data-queue-person]').value = view.person;
   if (!host.querySelector('[data-queue-person]').value) view.person = "";
   const draw = () => {
     const rows = selectQueueCases(cases, view, session);
-    host.querySelector('.cw-rows').innerHTML = rows.length ? rows.map(row => staffQueueRow(row,types,session)).join("")
+    host.querySelector('.cw-rows').innerHTML = rows.length ? groupedQueue(rows,row => staffQueueRow(row,types,session))
       : empty("No rentals in this view", cases.length ? "Change or clear the filters to see more rentals." : manager ? "Submitted applications will appear here." : "An admin can assign an application to you or add you as a collaborator.");
     host.querySelector('[data-queue-result]').textContent = `${rows.length} of ${cases.length} rentals · ${view.bucket === "all" ? "Action needed first, then longest waiting" : "Longest waiting first"}`;
     host.querySelector('[data-clear-filters]').hidden = !(view.stage || view.person || view.query || view.bucket !== "all");
@@ -326,7 +328,7 @@ function staffQueueRow(row,types,session) {
   const responsible=row.responsible_email || "Unassigned";
   const involvement=manager ? responsible : responsible === session.email ? "Responsible" : "Collaborator";
   return `<a class="cw-row cw-staff-row" href="#/applications/${esc(row.id)}">
-    <span class="cw-who"><span class="desk-initial">${esc((row.name || "A").slice(0,1))}</span><span class="cw-who-text"><b>${esc(row.name || "Application")}</b><small>${esc(home(row))}</small>${stagePill(row.status)}</span></span>
+    <span class="cw-who"><span class="desk-initial">${esc((row.name || "A").slice(0,1))}</span><span class="cw-who-text"><b>${esc(row.household ? row.household.members.map(m=>m.name).join(" & ") : row.name || "Application")}</b><small>${esc(home(row))}</small>${stagePill(row.status)}</span></span>
     <span class="cw-next"><b>${esc(step.label || "Open rental")}</b>${flag ? `<small class="cw-flags">${esc(flag)}</small>` : ""}</span>
     <span class="cw-responsible"><small class="cw-mobile-label">${manager ? "Responsible" : "Your involvement"}</small><b>${esc(involvement)}</b>${manager && !row.responsible_email && !closed ? '<small class="cw-flags">Assign a team member →</small>' : ""}</span>
     <span class="cw-age ${closed ? "" : when.tone}"><b>${esc(closed ? "—" : when.text)}</b><small>${closed ? "Closed" : "in this step"}</small></span>
@@ -386,6 +388,20 @@ export async function renderCaseDetail(host, { api, session, id }) {
       docs: documentSummary(row, types), terms: { ...Object.fromEntries(TERM_IDS.filter(key => key !== "lease.effective_date" && readiness?.values?.[key] != null).map(key => [key, String(readiness.values[key])])), ...initialTerms(row) }, mail: drafts(row, session) };
     ctx.reviewing = allowed.includes("review_and_recommend");
     ctx.viewKey = JSON.stringify([session.role, session.email, id]);
+    if(row.household) {
+      host.innerHTML=rentalGroupMarkup(ctx,{panel,heading,primaryFor,documentSummary,checksForm,documentsPanel,termsPanel,teamPanel,assignForm,notesPanel,privateNotePanel,activityPanel});
+      const reload=()=>renderCaseDetail(host,{api,session,id});
+      bindCase(host,ctx,reload);
+      await bindRentalGroup(host,ctx,reload,current);
+      const timer=setInterval(async()=>{
+        if(!current()){clearInterval(timer);return;}
+        if(host.contains(document.activeElement) && document.activeElement.matches('input,select,textarea'))return;
+        try{const next=await api(`/cases/${encodeURIComponent(id)}`);if(current() && next.case.workspace_version!==row.workspace_version && !host.dataset.rentalDirty){clearInterval(timer);reload();}}catch{}
+      },15000);
+      host.addEventListener('input',()=>{host.dataset.rentalDirty='1';},{once:true});
+      delete host.dataset.rentalDirty;
+      return;
+    }
     const activeSection = detailViews.get(ctx.viewKey) || "application";
     const step = row.next_step || {};
     const sections = [
@@ -825,7 +841,7 @@ function renderLandlordCase(host, { api, session, id, row }) {
   const allowed = row.allowed_actions || [], offer = row.recommendation || {}, terms = offer.terms || {}, decision = row.landlord_decision;
   const step = row.next_step || {};
   const where = place(row);
-  const askAgent = offer.sent_by ? mailto(offer.sent_by, `Question about the recommendation for ${where}`, `Hello,\n\nI have a question about the rental recommendation for ${where} (${row.name}).\n\n`) : "";
+  const askAgent = offer.sent_by?.includes("@") ? mailto(offer.sent_by, `Question about the recommendation for ${where}`, `Hello,\n\nI have a question about the rental recommendation for ${where} (${row.name}).\n\n`) : "";
   const strip = `<section class="cw-strip" aria-label="Proposed terms">${[
     ["Monthly Rent", termText("rent.monthly", terms["rent.monthly"])],
     ["Lease Start", termText("lease.commencement_date", terms["lease.commencement_date"])],
@@ -838,10 +854,10 @@ function renderLandlordCase(host, { api, session, id, row }) {
     ${heading(session.role, row.name || "Rental", home(row))}
     ${landlordStepper(row)}
     ${strip}
-    ${panel(step.label || "Next step", offer.sent_at ? `Recommended by Star on ${shortDay(offer.sent_at)}${offer.revision > 1 ? `, revision ${offer.revision}` : ""}.` : "", landlordDecision(row, decision) + landlordPrimary(row, id, terms, decision, allowed), stagePill(row.status), "cw-next-panel")}
+    ${panel(step.label || "Next step", offer.sent_at ? `Shared by Star on ${shortDay(offer.sent_at)}${offer.revision > 1 ? `, revision ${offer.revision}` : ""}.` : "", landlordDecision(row, decision) + landlordPrimary(row, id, terms, decision, allowed), stagePill(row.status), "cw-next-panel")}
     <div class="cw-grid">
       <div>
-        ${tenantPanel(row, offer.summary)}
+        ${offer.members?.length ? panel('Applicants','The whole group shares this lease.',offer.members.map(m=>`<div class="rg-key-data">${line(m.name,`<b>Credit score: ${esc(m.credit_score ?? 'No score returned')}${m.mock?' (mock)':''}</b><p>${esc(m.score_model)} · ${esc(m.report_date?.slice(0,10))}</p><p>Annual income: ${esc(m.annual_income)} · ${esc(m.income_source)}</p><p>${esc(m.employment)}</p>`)}</div>`).join('')) : tenantPanel(row, offer.summary)}
         ${verifiedPanel(offer.summary)}
         ${terms["concession.terms"] ? panel("Concessions", "Agreed incentives written into the lease.", `<p class="desk-prewrap">${esc(terms["concession.terms"])}</p>`) : ""}
       </div>
@@ -933,6 +949,9 @@ function bindCase(host, ctx, reload) {
           command.confirmed = data.get("confirmed") === "on";
         }
         if (command.action === "assign") command.collaborator_emails = data.getAll("collaborator_emails");
+        if(command.action==='cancel_invite')command.confirmed=data.get('confirmed')==='on';
+        if(command.action==='merge'){command.source_version=Number(data.get('source_version'));command.confirmed=data.get('confirmed')==='on';}
+        if(session.role==='landlord')command.revision=row.recommendation?.revision;
         if (command.action === "landlord_changes") {
           // Blank figures mean "no proposal on this one", not a proposal of nothing.
           const offered = {};

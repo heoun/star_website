@@ -22,6 +22,8 @@ jobs:
         run: npm run test:case-review
       - name: Rental queue filters and priority
         run: npm run test:case-queue
+      - name: Automatic rental groups and landlord decisions
+        run: npm run test:rentals && npm run test:rentals:db
       - name: Workspace access and workflow
         run: npm run test:workspace
       - name: Applicant portal request visibility
