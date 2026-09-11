@@ -55,11 +55,32 @@ export function createWorkspaceFixtures(saved) {
       Object.assign(row, body.p_patch); row.workspace_version++; row.updated_at = new Date().toISOString();
       return response([embed(row)]);
     }
+    if(table==='commit_rental_group') {
+      const root=state.applications.find(a=>a.id===body.p_root);
+      const group=state.applications.filter(a=>(a.rental_group_id || a.id)===body.p_root);
+      const join=body.p_join ? state.applications.find(a=>a.id===body.p_join) : null;
+      const expected=[...group,...(join?[join]:[])];
+      if(!root || expected.length!==Object.keys(body.p_versions).length || expected.some(a=>a.workspace_version!==body.p_versions[a.id]))return response({error:'Changed'},409);
+      if(join && (join.listing_id!==root.listing_id || ['sent_to_landlord','landlord_approved','lease_sent','lease_signed','declined'].includes(join.status)))return response({error:'Invalid join'},409);
+      if(join){join.rental_group_id=root.id;join.responsible_email=root.responsible_email;join.collaborator_emails=[...root.collaborator_emails];join.workspace_version++;}
+      for(const [id,patch] of Object.entries(body.p_patches)){const row=state.applications.find(a=>a.id===id);Object.assign(row,structuredClone(patch));row.workspace_version++;row.updated_at=new Date().toISOString();}
+      if(!body.p_patches[root.id])root.workspace_version++;
+      for(const member of group)if(member.id!==root.id && (member.responsible_email!==root.responsible_email || JSON.stringify(member.collaborator_emails)!==JSON.stringify(root.collaborator_emails))){member.responsible_email=root.responsible_email;member.collaborator_emails=[...root.collaborator_emails];member.workspace_version++;}
+      return response(null);
+    }
+    if(table==='submit_rental_application') {
+      const root=state.applications.find(a=>a.id===body.p_root),invitation=root?.workspace?.invitations?.find(i=>i.id===body.p_invite);
+      if(body.p_root && (!invitation || invitation.accepted || invitation.email!==body.p_application.email || Date.parse(invitation.expires)<Date.now() || root.listing_id!==body.p_application.listing_id))return response({error:'Invalid invitation'},409);
+      if(state.applications.some(a=>a.email===body.p_application.email && a.listing_id===body.p_application.listing_id && a.status!=='declined'))return response({error:'Already applied'},409);
+      const id=crypto.randomUUID(),row={id,status:'new',workspace_version:0,created_at:new Date().toISOString(),updated_at:new Date().toISOString(),responsible_email:null,collaborator_emails:[],...body.p_application,rental_group_id:root?.id || id};
+      if(root){row.responsible_email=root.responsible_email;row.collaborator_emails=[...root.collaborator_emails];invitation.accepted=id;root.workspace_version++;}
+      state.applications.push(row);return response(row);
+    }
     if (table === "applications") {
-      let rows = state.applications.filter(row => match(row, q, "id") && match(row, q, "workspace_version"));
+      let rows = state.applications.filter(row => match(row, q, "id") && match(row, q, "workspace_version") && (!q.has("rental_group_id") || String(row.rental_group_id || row.id)===q.get("rental_group_id").replace(/^eq\./,"")));
       if (q.has("or")) { const person = /responsible_email\.eq\."((?:\\.|[^"])*)"/.exec(q.get("or"))?.[1]?.replace(/\\([\\"])/g, "$1"); rows = rows.filter(row => row.responsible_email === person || row.collaborator_emails.includes(person)); }
       if (q.has("listings.building_id")) rows = rows.filter(row => q.get("listings.building_id").includes(embed(row).listings?.building_id));
-      if (q.has("workspace->recommendation->>landlord_email")) rows = rows.filter(row => `eq."${row.workspace?.recommendation?.landlord_email}"` === q.get("workspace->recommendation->>landlord_email"));
+      if (q.has("workspace->recommendation->>landlord_email")) rows = rows.filter(row => [`eq."${row.workspace?.recommendation?.landlord_email}"`,`eq.${row.workspace?.recommendation?.landlord_email}`].includes(q.get("workspace->recommendation->>landlord_email")));
       if (q.has("status")) rows = rows.filter(row => q.get("status").includes(row.status));
       if (method === "PATCH") rows.forEach(row => { Object.assign(row, body); row.workspace_version++; });
       if (method === "DELETE") state.applications = state.applications.filter(row => !rows.includes(row));

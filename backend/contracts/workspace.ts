@@ -11,7 +11,8 @@ export interface WorkspaceProperty {
 }
 export type WorkspaceAction = "assign" | "checks" | "approve" | "request_info" | "decline"
   | "terms" | "review_and_recommend" | "recommend" | "landlord_accept" | "landlord_changes" | "landlord_decline"
-  | "note" | "admin_note" | "prepare_lease" | "record_tenant_signature" | "record_landlord_signature" | "archive_lease";
+  | "note" | "admin_note" | "prepare_lease" | "record_tenant_signature" | "record_landlord_signature" | "archive_lease"
+  | "invite_member" | "cancel_invite" | "merge_member" | "automatic_share" | "tenant_signed" | "refresh_draft";
 export interface LeaseFile { path: string; name: string; size: number; uploaded_at: string }
 export interface WorkspaceTerms {
   "lease.effective_date"?: string;
@@ -35,8 +36,16 @@ export interface Recommendation {
   revision: number; sent_at: string; sent_by: string; landlord_email: string;
   tenant_name: string; property_title: string; unit: string; terms: WorkspaceTerms;
   summary?: RecommendationSummary;
+  members?: import('./rentals.ts').RentalMemberSummary[];
 }
 export interface WorkspaceState {
+  rental_flow?: 'automatic';
+  automation_issue?: string;
+  invitations?: import('./rentals.ts').RentalInvitation[];
+  screening_result?: {status: string; credit_score?: number | null; reference?: string; model?: string; date?: string; mock?: boolean};
+  delivery?: {revision: number; status: string; attempt_at: string; key: string};
+  lease_draft?: {values: Record<string, unknown>; missing: string[]; error?: string; at: string; revision: number};
+  signature_receipts?: Record<string, {reference: string; at: string; by: string}>;
   terms?: WorkspaceTerms;
   checks?: { fee: string; screening: string; documents: string; reference: string; by: string; at: string; credit_score?: number | null };
   // What the team asked the applicant for, so the request can be repeated
@@ -55,6 +64,7 @@ export interface WorkspaceState {
   activity?: { action: WorkspaceAction; by: string; at: string; detail: string }[];
 }
 export interface WorkspaceApplication {
+  rental_group_id?: string;
   id: string; listing_id?: string; status: string; name?: string;
   responsible_email?: string | null; collaborator_emails?: string[];
   workspace_version?: number; workspace?: WorkspaceState;

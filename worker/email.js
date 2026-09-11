@@ -16,12 +16,12 @@ import { isLocalRequest } from "./env.js";
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 // Returns whether the message was delivered — or, locally, shown.
-export async function sendEmail(request, env, message) {
+export async function sendEmail(request, env, message, { idempotencyKey } = {}) {
   const local = isLocalRequest(request);
 
   if (local && env.DEV_REAL_EMAIL !== "true") {
     // Local demo/test inbox; never used for a non-loopback request.
-    if (env.LOCAL_EMAIL_SINK?.send) { await env.LOCAL_EMAIL_SINK.send(message); return true; }
+    if (env.LOCAL_EMAIL_SINK?.send) { await env.LOCAL_EMAIL_SINK.send(message, idempotencyKey); return true; }
     console.log(
       [
         "",
@@ -51,7 +51,8 @@ export async function sendEmail(request, env, message) {
       method: "POST",
       headers: {
         Authorization: `Bearer ${env.RESEND_API_KEY}`,
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
+        ...(idempotencyKey ? {"Idempotency-Key": idempotencyKey} : {})
       },
       body: JSON.stringify(message)
     });

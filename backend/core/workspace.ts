@@ -55,7 +55,7 @@ export function canAccessCase(p: WorkspacePrincipal, row: WorkspaceApplication):
   if (p.role === "agent") return same(p.email, row.responsible_email)
     || (row.collaborator_emails || []).some(value => same(p.email, value));
   const recommendation = row.workspace?.recommendation;
-  return p.role === "landlord" && !!recommendation && SHARED.includes(row.status)
+  return p.role === "landlord" && !!recommendation && (SHARED.includes(row.status) || (row.workspace?.rental_flow === 'automatic' && row.status === 'declined' && row.workspace.landlord_decision?.outcome === 'declined'))
     && same(p.email, recommendation.landlord_email)
     && !!row.listings?.building_id && (p.property_ids || []).includes(row.listings.building_id);
 }
