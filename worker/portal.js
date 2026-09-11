@@ -1,4 +1,5 @@
 import { storageBucket } from "./storage.js";
+import { runRentalAutomation } from "./rentals.js";
 // The applicant portal: /portal/ in the browser, /api/portal/* here.
 //
 // Applying for a home starts with an account, and the accounts are Supabase
@@ -326,6 +327,7 @@ async function handleUpload(request, env, ctx, session, applicationId) {
     ctx.waitUntil(sendCompletionNotice(request, env, application));
   }
 
+  ctx.waitUntil(runRentalAutomation(env,request,applicationId));
   return json({ document: toPortalDocument(row) }, 201);
 }
 

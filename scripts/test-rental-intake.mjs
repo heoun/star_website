@@ -1,0 +1,31 @@
+import assert from 'node:assert/strict';
+import worker from '../worker/index.js';
+import {createIdentityFixture} from './identity-fixtures.mjs';
+import {completeDemoState,DEMO_ENCRYPTION_KEY} from './demo-data.mjs';
+import {ids} from '../backend/tools/workspace-fixtures.mjs';
+const identity=createIdentityFixture(),{fixture,env,user,restore}=identity;
+await completeDemoState(fixture.state);
+env.RENTAL_AUTOMATION='on';env.RENTAL_SCREENING='mock';env.APP_ENCRYPTION_KEY=DEMO_ENCRYPTION_KEY;
+env.LOCAL_EMAIL_SINK={async send(m){fixture.state.emails.push(m);}};
+user('roommate@example.test');const pending=[];let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
+const call=(path,body,cookie='')=>worker.fetch(new Request(`http://127.0.0.1${path}`,{method:body?'POST':'GET',headers:{'Content-Type':'application/json',Cookie:cookie},...(body?{body:JSON.stringify(body)}:{})}),env,{waitUntil:p=>pending.push(p)});
+const login=async email=>{const r=await call('/api/auth/login',{email,password:'testing-password'});eq(r.status,200);return r.headers.getSetCookie().map(c=>c.split(';')[0]).join('; ');};
+try{
+ const cookie=await login('applicant@example.test'),payload={...fixture.state.applications[0],listing_id:ids.listing,id_number:'000112222',sales_person:'agent-a@example.test',roommates:[{first_name:'Room',last_name:'Mate',phone:'212-555-0101',email:'roommate@example.test'}]};
+ let response=await call('/api/apply/options?id='+ids.listing);let options=await response.json();eq(options.agents.map(a=>a.email),['agent-a@example.test']);
+ const before=fixture.state.applications.length;
+ response=await call('/api/apply',{...payload,sales_person:'agent-b@example.test'},cookie);eq(response.status,422);eq(fixture.state.applications.length,before);
+ response=await call('/api/apply',payload,cookie);if(response.status!==201)console.error(await response.clone().text());eq(response.status,201);await Promise.all(pending.splice(0));
+ const lead=fixture.state.applications.find(a=>a.email==='applicant@example.test');eq(lead.responsible_email,'agent-a@example.test');eq(lead.workspace.terms['lease.commencement_date'],'2026-10-01');eq(lead.rental_group_id,lead.id);
+ eq(lead.workspace.invitations.length,1);eq(lead.status,'new');eq(lead.workspace.recommendation,undefined);
+ assert(lead.ssn_encrypted && !lead.ssn_encrypted.includes(payload.id_number));checks++;
+ const mail=fixture.state.emails.find(m=>m.to.includes('roommate@example.test'));assert(mail.text.includes('invite='));checks++;
+ const invite=`${lead.id}.${lead.workspace.invitations[0].id}`;
+ response=await call('/api/apply',{...payload,roommates:[],group_invite:invite},cookie);eq(response.status,409);
+ const mateCookie=await login('roommate@example.test');
+ response=await call('/api/apply',{...payload,first_name:'Room',last_name:'Mate',roommates:[],sales_person:'',group_invite:invite},mateCookie);if(response.status!==201)console.error(await response.clone().text());eq(response.status,201);await Promise.all(pending.splice(0));
+ const mate=fixture.state.applications.find(a=>a.email==='roommate@example.test');eq(mate.rental_group_id,lead.id);eq(mate.responsible_email,'agent-a@example.test');eq(lead.workspace.invitations[0].accepted,mate.id);
+ response=await call('/api/apply',{...payload,roommates:[],group_invite:invite},mateCookie);eq(response.status,409);
+ assert(!fixture.state.emails.some(m=>m.subject.startsWith('Application ready')));checks++;
+ console.log(`PASS ${checks} automatic intake HTTP checks: property agents, encrypted submission, delayed roommate invite, account-bound group join, no duplicate submission and no premature landlord email`);
+}finally{await Promise.allSettled(pending);restore();}

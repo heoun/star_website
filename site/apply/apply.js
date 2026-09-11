@@ -285,6 +285,25 @@ import { endDateFor } from "../shared/lease-dates.js";
 
   const wireForm = (property) => {
     const form = document.getElementById("apply-form");
+    let automaticRental=false;
+    const groupInvite=new URLSearchParams(location.search).get('invite') || '';
+    fetch(`/api/apply/options?id=${encodeURIComponent(id)}`).then(r=>r.json()).then(options=>{
+      automaticRental=options.automatic===true;
+      if(!automaticRental)return;
+      const section=document.createElement('div');section.className='field';
+      const label=document.createElement('label');label.textContent='Agent you are working with';
+      const select=document.createElement('select');select.name='sales_person';
+      select.add(new Option('No agent / not sure',''));
+      (options.agents || []).forEach(a=>select.add(new Option(a.name,a.email)));
+      const referred=new URLSearchParams(location.search).get('agent');
+      if((options.agents || []).some(a=>a.email===referred))select.value=referred;
+      label.append(select);section.append(label);
+      const note=document.createElement('p');note.textContent=groupInvite ? 'You are joining an invited application group. Submit with the invited email to accept. The group shares one lease.' : 'Choose the agent who helped you. If you are unsure, our team will assign someone.';section.append(note);
+      if(groupInvite)select.disabled=true;
+      form.querySelector('.form-step')?.prepend(section);
+      const inviteBox=form.elements.invite_roommates;
+      if(inviteBox){inviteBox.checked=true;inviteBox.disabled=true;}
+    }).catch(()=>{});
     const panels = Array.from(form.querySelectorAll(".form-step"));
     const stepLinks = Array.from(document.querySelectorAll(".step-link"));
     const backButton = document.getElementById("step-back");
@@ -1074,6 +1093,7 @@ import { endDateFor } from "../shared/lease-dates.js";
     };
 
     const maybeSendInvites = () => {
+      if(automaticRental){announce('Roommate invitations will be sent after you submit your application.');return;}
       if (hasRoommates() !== "yes" || field("invite_roommates")?.checked !== true) return;
       const pending = roommates.entries().filter(({ filled }) => filled)
         .map(({ values }) => ({
@@ -1126,6 +1146,8 @@ import { endDateFor } from "../shared/lease-dates.js";
 
       const payload = {
         listing_id: id,
+        sales_person: form.elements.sales_person?.value || "",
+        group_invite: groupInvite,
         first_name: value("first_name"),
         last_name: value("last_name"),
         dob: toUsDate(value("dob")),

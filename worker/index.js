@@ -8,11 +8,19 @@ import { serveListingsFeed, servePropertyDetail } from "./listings.js";
 import { serveMedia } from "./media.js";
 import { handlePortalRequest } from "./portal.js";
 import { handleBackendRequest } from "../backend/app/index.ts";
+import { rentalMode, rentalApplyOptions, reconcileRentals } from "./rentals.js";
 
 export default {
+  async scheduled(_event,env,ctx) {
+    ctx.waitUntil(reconcileRentals(env,new Request(env.SITE_ORIGIN || 'https://starreusa.com/')));
+  },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const pathname = url.pathname;
+    if(pathname==='/api/apply/options' && request.method==='GET') {
+      try {return Response.json({automatic:rentalMode(env),agents:rentalMode(env) ? await rentalApplyOptions(env,url.searchParams.get('id')) : []},{headers:{'Cache-Control':'no-store'}});}
+      catch {return Response.json({error:'Application options are unavailable.'},{status:503});}
+    }
 
     // The listing pages fetch this path; the Worker answers it from Supabase.
     // wrangler.jsonc routes it here instead of to the bundled asset, which is

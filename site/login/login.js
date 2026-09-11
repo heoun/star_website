@@ -11,6 +11,8 @@ async function enterWorkspace() {
   const response = await fetch("/api/admin/me", { credentials:"same-origin" });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || "Your account does not have workspace access. Contact your administrator.");
+  const returnTo=new URLSearchParams(location.search).get('return');
+  if(!result.owner && returnTo?.startsWith('/landlord-decision/#')){location.replace(returnTo);return;}
   const route = result.owner ? "#/staff" : location.hash.startsWith("#/") ? location.hash : "#/overview";
   location.replace(`/admin/${route}`);
 }

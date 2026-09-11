@@ -3,6 +3,7 @@ import { handleAdministration } from "./administration.js";
 import { readSession, sameOriginMutation } from "./auth.js";
 import { handleLandlordRead, handleChangeRequests, handleCaseWorkspace, requireCaseAccess, caseWorkspace } from "./backoffice.js";
 import { projectCase } from "../backend/app/workspace.ts";
+import { rentalMode, rentalWorkflow, householdApplication, runRentalAutomation } from "./rentals.js";
 import { describeEnvironment, devIdentity } from "./env.js";
 import { purgeListingsCache } from "./listings.js";
 import {
@@ -568,6 +569,7 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
       throw error;
     }
     if (!row) return json({ error: "This application changed. Refresh before saving." }, 409);
+    await runRentalAutomation(env,request,id);
     return json({ application: await caseWorkspace(env).get(identity, id) });
   }
 
@@ -994,8 +996,13 @@ async function handleLeaseDocument(request, env, identity, applicationId) {
   const scoped = await requireCaseAccess(env, identity, applicationId);
   if (body.mode === "final" && (!scoped.workspace?.landlord_decision || scoped.workspace.landlord_decision.outcome !== "accepted")) return json({ error: "Landlord confirmation is required before producing the final lease." }, 409);
   if (["landlord_approved", "lease_sent", "lease_signed"].includes(scoped.status) && Object.keys(body.overrides || {}).length) return json({ error: "These terms were confirmed by the landlord. Use the saved version." }, 409);
-  const application = await fetchApplicationForLease(env, applicationId);
+  let application = await fetchApplicationForLease(env, applicationId);
   if (!application) return json({ error: "Application not found." }, 404);
+  if(rentalMode(env)) {
+    const group=await rentalWorkflow(env,request).load(identity,applicationId);
+    if(group.root.id!==applicationId) return json({error:'Open the shared rental to generate its lease.'},409);
+    application={...application,...householdApplication(group)};
+  }
 
   const listing = application.listings;
   if (!listing) return json({ error: "This application's listing has been removed." }, 422);

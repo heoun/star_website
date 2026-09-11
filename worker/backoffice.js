@@ -6,6 +6,7 @@ import { parseDate } from "../site/shared/lease-dates.js";
 import { DOCUMENT_TYPES, requireDocsBucket } from "./portal.js";
 import { documentSummary } from "../site/admin/application-view.js";
 import { sendEmail } from "./email.js";
+import { rentalMode, rentalWorkflow } from "./rentals.js";
 
 const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
 import { workspaceFor, projectCase, projectLandlordProperty } from "../backend/app/workspace.ts";
@@ -30,6 +31,19 @@ export async function handleCaseWorkspace(request, env, identity, id, subresourc
     // The document checklist rides along for staff, so a queue row can say
     // "2 documents missing" with the same list the portal shows applicants.
     const types = identity.role === "landlord" ? [] : DOCUMENT_TYPES;
+    if(rentalMode(env)) {
+      const flow=rentalWorkflow(env,request);
+      if(!id && request.method==='GET') return json({cases:await flow.list(identity),document_types:types});
+      if(id && !subresource && request.method==='GET') return json({case:await flow.get(identity,id),document_types:types});
+      if(id && subresource==='invite' && request.method==='POST') return json(await flow.invite(identity,id,await request.json()));
+      if(id && subresource==='actions' && request.method==='POST') {
+        const command=await request.json();
+        if(!command || typeof command!=='object' || Array.isArray(command)) return json({error:'Invalid action.'},422);
+        delete command.lease_snapshot;
+        if(command.action==='archive_lease') return json({error:'Upload the fully signed lease PDF.'},422);
+        return json({case:await flow.execute(identity,id,command)});
+      }
+    }
     if (!id && request.method === "GET") return json({ cases: await workspace.list(identity), document_types: types });
     if (!id) return json({ error: "Case required." }, 400);
     if (!subresource && request.method === "GET") return json({ case: await workspace.get(identity, id), document_types: types });

@@ -3,6 +3,7 @@ import { encryptionReady, encryptSsn } from "./ssn.js";
 import { sendEmail } from "./email.js";
 import { readSession } from "./portal.js";
 import { renderPage } from "./contact.js";
+import { rentalMode, rentalApplyOptions, submitRental, rentalWorkflow, runRentalAutomation } from "./rentals.js";
 
 const CONTACT_EMAIL = "info@starreusa.com";
 const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
@@ -434,6 +435,7 @@ function withoutRowValues(message) {
 // their name has not been asked yet.
 
 export async function handleRoommateInvites(request, env) {
+  if(rentalMode(env)) return json({ok:true,queued:true});
   const contentType = (request.headers.get("Content-Type") || "").trim();
   if (!/^application\/json\b/i.test(contentType)) {
     return json({ error: "Invitations could not be read. Please try again." }, 415);
@@ -751,9 +753,18 @@ async function processApplication(request, env, ctx, body, email) {
   }
 
   const fullName = `${firstName} ${lastName}`.trim();
-
+  let saved;
   try {
-    await insertApplication(env, {
+    const automatic=rentalMode(env);
+    if(automatic && (roommates.length>9 || new Set(roommates.map(m=>m.email.toLowerCase())).size!==roommates.length || roommates.some(m=>m.email.toLowerCase()===email))) return json({error:'List each roommate once, using their own email. A group supports up to 10 applicants.'},422);
+    if(automatic && body.group_invite && roommates.length) return json({error:'Join this group first. Your agent can invite additional roommates.'},422);
+    const agent=String(body.sales_person || '').trim().toLowerCase();
+    if(automatic && agent && !(await rentalApplyOptions(env,listingId)).some(a=>a.email===agent)) return json({error:'Choose an active agent for this property.'},422);
+    const parts=moveIn.split('/');
+    const start=parts.length===3 ? `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}` : moveIn;
+    const end=new Date(`${start}T12:00:00Z`);end.setUTCMonth(end.getUTCMonth()+leaseTermMonths);end.setUTCDate(end.getUTCDate()-1);
+    const invitations=automatic && !body.group_invite ? roommates.map(m=>({id:crypto.randomUUID(),email:m.email.toLowerCase(),name:`${m.first_name} ${m.last_name}`,expires:new Date(Date.now()+14*86400000).toISOString()})) : [];
+    const values={
       listing_id: listingId,
       name: fullName,
       first_name: firstName,
@@ -779,13 +790,21 @@ async function processApplication(request, env, ctx, body, email) {
       emergency_contacts: emergencyContacts.length > 0 ? emergencyContacts : null,
       roommates: roommates.length > 0 ? roommates : null,
       pets: pets.length > 0 ? pets : null,
-      message: cleanMultiline(body.message, 2000) || null
-    });
+      message: cleanMultiline(body.message, 2000) || null,
+      ...(automatic ? {responsible_email:agent || null,workspace:{rental_flow:'automatic',invitations,terms:{'lease.commencement_date':start,'lease.end_date':end.toISOString().slice(0,10),'rent.monthly':String(listing.price_amount || ''),'deposit.amount':String(listing.price_amount || '')}}} : {})
+    };
+    saved=automatic ? await submitRental(env,values,body.group_invite) : await insertApplication(env,values);
   } catch (error) {
     console.error("Application insert failed:", withoutRowValues(error?.message));
-    return json({ error: "The application could not be saved. Please try again." }, 500);
+    return json({ error: error.status ? error.message : "The application could not be saved. Please try again." }, error.status || 500);
   }
 
+  if(rentalMode(env)) {
+    ctx.waitUntil((async()=>{
+      try {await rentalWorkflow(env,request).notifyInvitations(saved.rental_group_id || saved.id);}catch{console.error('Roommate invitations require retry');}
+      await runRentalAutomation(env,request,saved.rental_group_id || saved.id);
+    })());
+  }
   ctx.waitUntil(sendNotification(request, env, listing, fullName));
   ctx.waitUntil(sendReceipt(request, env, listing, email, employmentStatus));
   return json({ ok: true }, 201);

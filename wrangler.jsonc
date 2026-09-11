@@ -4,7 +4,9 @@
   "compatibility_date": "2026-07-01",
   "workers_dev": false,
   "preview_urls": false,
-  "vars": { "STORAGE_BACKEND": "supabase" },
+  "vars": { "STORAGE_BACKEND": "supabase", "RENTAL_AUTOMATION": "off" },
+  // Enable RENTAL_AUTOMATION after applying supabase/rental-flow.sql.
+  "triggers": { "crons": ["*/1 * * * *"] },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
