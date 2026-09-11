@@ -172,3 +172,10 @@ Review-stage staff cases now open on Review & decide: applicant-reported facts, 
 Agreement date is resolved when preparing the lease; a blank review input does not override that generated date. Confirmed recommendation terms feed the existing lease resolver, and the staff header shows proposed/agreed rent instead of the listing's original asking rent. The new action needs no schema migration. Existing separate commands remain compatible; older saved recommendations are not rewritten.
 
 Validation: 71 new combined-review HTTP checks, 158 existing workspace checks, 12 queue checks, 70 complete-demo/lease checks and 92 permission checks passed, plus typecheck, architecture gate and build. Browser checks on a separate synthetic state exercised both Admin and Agent review, single-landlord selection, a changed rent, one-submit recommendation, landlord acceptance and final lease generation without another data-entry step. The active 8792 demo was restarted against its existing state; test decisions were made on 8794 only. No real email, credit check, payment or signature was initiated.
+
+
+## 2026-09-11 Application groups and automatic landlord decisions
+
+New rental workflow, role-scoped household membership, roommate invitations, grouped queue, per-person lease/application panels, landlord email confirmation, automatic draft resolution and ordered signature receipts are documented in [rental-flow.md](rental-flow.md). Production activation requires its additive migration and `RENTAL_AUTOMATION=on`. The 8792 local demo enables it using synthetic records. Real credit-provider and electronic-signature delivery integrations remain external.
+
+Latest saved development checkpoint: [2026-09-11 rental workflow and interface](checkpoint-2026-09-11.md).
