@@ -19,8 +19,14 @@ function annotate(root) {
     // Put the badge beside the caption, before its form control.
     if (node.matches('label')) {
       const control = [...node.children].find(c => c.matches('input,select,textarea'));
-      if (control && control.type !== 'checkbox' && control.type !== 'radio') node.insertBefore(marker, control);
-      else node.append(marker);
+      if (control && control.type !== 'checkbox' && control.type !== 'radio') {
+        let caption=node.querySelector(':scope > .demo-field-caption');
+        if(!caption){caption=document.createElement('span');caption.className='demo-field-caption';while(node.firstChild && node.firstChild!==control)caption.append(node.firstChild);node.insertBefore(caption,control);}
+        caption.append(marker);
+      } else {
+        const caption=node.querySelector(':scope > .desk-check-caption, :scope > span:not(.demo-mock-label)');
+        (caption || node).append(marker);
+      }
     } else node.append(marker);
   }
 }

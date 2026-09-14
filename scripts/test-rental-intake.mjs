@@ -14,6 +14,11 @@ try{
  const cookie=await login('applicant@example.test'),payload={...fixture.state.applications[0],listing_id:ids.listing,id_number:'000112222',sales_person:'agent-a@example.test',roommates:[{first_name:'Room',last_name:'Mate',phone:'212-555-0101',email:'roommate@example.test'}]};
  let response=await call('/api/apply/options?id='+ids.listing);let options=await response.json();eq(options.agents.map(a=>a.email),['agent-a@example.test']);
  const before=fixture.state.applications.length;
+ const listing=fixture.state.listings.find(l=>l.id===ids.listing);listing.published=false;
+ response=await call('/api/apply',payload,cookie);eq(response.status,404);eq(fixture.state.applications.length,before);
+ listing.published=true;
+ const chosenAgent=fixture.state.staff.find(s=>s.email===payload.sales_person);chosenAgent.active=false;
+ response=await call('/api/apply',payload,cookie);eq(response.status,422);eq(fixture.state.applications.length,before);chosenAgent.active=true;
  response=await call('/api/apply',{...payload,sales_person:'agent-b@example.test'},cookie);eq(response.status,422);eq(fixture.state.applications.length,before);
  response=await call('/api/apply',payload,cookie);if(response.status!==201)console.error(await response.clone().text());eq(response.status,201);await Promise.all(pending.splice(0));
  const lead=fixture.state.applications.find(a=>a.email==='applicant@example.test');eq(lead.responsible_email,'agent-a@example.test');eq(lead.workspace.terms['lease.commencement_date'],'2026-10-01');eq(lead.rental_group_id,lead.id);
@@ -27,5 +32,11 @@ try{
  const mate=fixture.state.applications.find(a=>a.email==='roommate@example.test');eq(mate.rental_group_id,lead.id);eq(mate.responsible_email,'agent-a@example.test');eq(lead.workspace.invitations[0].accepted,mate.id);
  response=await call('/api/apply',{...payload,roommates:[],group_invite:invite},mateCookie);eq(response.status,409);
  assert(!fixture.state.emails.some(m=>m.subject.startsWith('Application ready')));checks++;
+ // No preference is the deliberate unassigned case; a selected agent above is preserved.
+ user('no-agent@example.test');const noAgentCookie=await login('no-agent@example.test');
+ response=await call('/api/apply',{...payload,sales_person:'',roommates:[]},noAgentCookie);eq(response.status,201);await Promise.all(pending.splice(0));
+ eq(fixture.state.applications.find(a=>a.email==='no-agent@example.test').responsible_email,null);
+ // Removing a listing from public view must retain its already-submitted applications.
+ listing.published=false;eq(fixture.state.applications.find(a=>a.id===lead.id).responsible_email,'agent-a@example.test');
  console.log(`PASS ${checks} automatic intake HTTP checks: property agents, encrypted submission, delayed roommate invite, account-bound group join, no duplicate submission and no premature landlord email`);
 }finally{await Promise.allSettled(pending);restore();}

@@ -1,3 +1,4 @@
+import {reportFields} from '../backend/tools/screening-fixtures.mjs';
 import assert from 'node:assert/strict';
 import {createWorkspaceFixtures,ids} from '../backend/tools/workspace-fixtures.mjs';
 import {completeDemoState} from './demo-data.mjs';
@@ -11,12 +12,17 @@ const env={...fixture.env,RENTAL_AUTOMATION:'on',RENTAL_SCREENING:'mock',LOCAL_E
 const flow=rentalWorkflow(env,request),admin={role:'manager',email:'admin@example.test'},agent={role:'agent',email:'agent-b@example.test'},wrong={role:'agent',email:'agent-a@example.test'};
 let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};const rejects=async(fn,status)=>{await assert.rejects(fn,e=>e.status===status);checks++;};
 try{
+ const assignment=await flow.get(admin,ids.a);
+ await rejects(()=>flow.execute(admin,ids.a,{action:'assign',version:assignment.workspace_version,responsible_email:admin.email,collaborator_emails:[]}),422);
+ await rejects(()=>flow.execute(wrong,ids.a,{action:'assign',version:assignment.workspace_version,responsible_email:agent.email,collaborator_emails:[]}),403);
+ const assigned=await flow.execute(admin,ids.a,{action:'assign',version:assignment.workspace_version,responsible_email:wrong.email,collaborator_emails:[admin.email]});
+ eq(assigned.responsible_email,wrong.email);eq(assigned.collaborator_emails,[admin.email]);
  const raw=()=>fixture.state.applications.find(a=>a.id===ids.b),mate=()=>fixture.state.applications.find(a=>a.rental_group_id===ids.b && a.id!==ids.b);
  eq((await flow.list(agent)).length,1);await rejects(()=>flow.get(wrong,ids.b),404);
  let row=await flow.get(admin,ids.b);eq(row.household.members.length,2);eq(row.allowed_actions.includes('review_and_recommend'),false);
  mate().workspace.checks.fee='pending';await flow.reconcile(ids.b);eq(fixture.state.emails.length,0);eq(raw().workspace.recommendation,undefined);
  row=await flow.get(admin,ids.b);
- await flow.execute(admin,ids.b,{action:'checks',version:row.workspace_version,member_id:mate().id,fee:'paid',screening:'received',documents:'verified',credit_score:728,score_model:'VantageScore 3.0',reason:'Mock external provider receipt'});
+ await flow.execute(admin,ids.b,{action:'checks',version:row.workspace_version,member_id:mate().id,...reportFields(mate().id),fee:'paid',screening:'received',documents:'verified',credit_score:728,score_model:'VantageScore 3.0',reason:'Mock external provider receipt'});
  eq(raw().status,'sent_to_landlord');eq(fixture.state.emails.length,1);eq(raw().workspace.recommendation.members.length,2);
  assert(fixture.state.emails[0].text.includes('728'));checks++;
  assert(fixture.state.emails[0].text.includes('Agree to proceed:'));checks++;
@@ -31,7 +37,7 @@ try{
  for(let i=0;i<2;i++)await flow.get(owner,ids.b);eq(fixture.writes.length,writesBefore);
  await rejects(()=>flow.execute(owner,ids.b,{action:'landlord_accept',version,revision:revision-1}),409);
  const accepted=await flow.execute(owner,ids.b,{action:'landlord_accept',version,revision});eq(accepted.status,'landlord_approved');
- eq(raw().workspace.lease_draft.missing,[]);assert(raw().lease_snapshot['tenant.names'].includes('Morgan Example'));checks++;
+ eq(raw().workspace.lease_draft.missing,[]);assert(raw().lease_snapshot['tenant.names'].includes('Applicant E'));checks++;
  await rejects(()=>flow.execute(owner,ids.b,{action:'landlord_accept',version,revision}),409);
  row=await flow.get(agent,ids.b);
  row=await flow.execute(agent,ids.b,{action:'tenant_signed',version:row.workspace_version,member_id:raw().id,reason:'Mock signed receipt A'});
@@ -40,6 +46,8 @@ try{
  eq(row.status,'lease_sent');eq(row.allowed_actions.includes('record_landlord_signature'),true);
  await rejects(()=>flow.invite(agent,ids.b,{version:row.workspace_version,name:'Late',email:'late@example.test'}),403);
  row=await flow.execute(agent,ids.b,{action:'record_landlord_signature',version:row.workspace_version,reason:'Mock owner receipt'});eq(!!row.workspace.landlord_signature,true);
+ const signed=new FormData();signed.set('version',String(row.workspace_version));signed.set('file',new Blob(['%PDF-1.4 Synthetic fully signed lease'],{type:'application/pdf'}),'signed-mock.pdf');
+ const archived=await handleAdminRequest(new Request(`http://127.0.0.1/api/admin/cases/${ids.b}/signed-lease`,{method:'POST',body:signed}),env,{},`/api/admin/cases/${ids.b}/signed-lease`);eq(archived.status,200);row=(await archived.json()).case;eq(row.status,'lease_signed');
  // Recipient choice and closed decisions are still denied through the real HTTP adapter.
  const response=await handleAdminRequest(new Request(`http://127.0.0.1/api/admin/cases/${ids.b}/actions`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'review_and_recommend',version:row.workspace_version})}),env,{},`/api/admin/cases/${ids.b}/actions`);eq(response.status,403);
  // Independent applications remain separate until an authorized, explicit join.
@@ -55,7 +63,7 @@ try{
  await rejects(()=>flow.execute(admin,ids.a,{action:'checks',version:lead.workspace_version,fee:'paid',screening:'received',documents:'verified',reason:'Stale attempt'}),409);
  // Missing or unconfigured reports never become a fabricated production score.
  const realEnv={...env,RENTAL_SCREENING:'external'},realFlow=rentalWorkflow(realEnv,request);
- for(const a of fixture.state.applications.filter(a=>a.rental_group_id===ids.a)){a.workspace.checks={fee:'paid',screening:'pending',documents:'verified'};delete a.workspace.screening_result;}
+ for(const a of fixture.state.applications.filter(a=>a.rental_group_id===ids.a)){a.workspace.checks={fee:'paid',screening:'pending',documents:'verified'};delete a.workspace.screening_result;delete a.workspace.demo_screening_status;}
  await realFlow.reconcile(ids.a);eq(fixture.state.applications.find(a=>a.id===ids.a).workspace.screening_result.status,'not_connected');eq(fixture.state.emails.length,0);
  // A failed outbound message remains visible and retries without another packet revision.
  let fail=true;env.LOCAL_EMAIL_SINK.send=async m=>{if(fail)throw new Error('Mock transport failure');fixture.state.emails.push(m);};

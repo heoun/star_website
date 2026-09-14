@@ -1,3 +1,5 @@
+import {normalizeDemoNames} from './demo-names.mjs';
+import {demoListingAsset} from './demo-listing-media.mjs';
 import { seedRentalDemo } from "./rental-demo-data.mjs";
 import { reconcileRentals } from "../worker/rentals.js";
 import { handlePublicOnboarding } from "../worker/administration.js";
@@ -25,7 +27,8 @@ await seedRentalDemo(fixture.state);
 await mkdir(dirname(stateFile), {recursive:true});
 await writeFile(stateFile, JSON.stringify(fixture.state));
 fixture.env.APP_ENCRYPTION_KEY = DEMO_ENCRYPTION_KEY;
-if (!fixture.state.staff.some(s => s.email === "peer-admin@example.test")) fixture.state.staff.push({email:"peer-admin@example.test",name:"Riley · Admin",role:"manager",active:true,property_ids:[],account_version:0});
+if (!fixture.state.staff.some(s => s.email === "peer-admin@example.test")) fixture.state.staff.push({email:"peer-admin@example.test",name:"Admin B",role:"manager",active:true,property_ids:[],account_version:0});
+normalizeDemoNames(fixture.state);
 globalThis.fetch = fixture.fetch;
 fixture.env.RENTAL_AUTOMATION='on';fixture.env.RENTAL_SCREENING='mock';
 fixture.env.LOCAL_EMAIL_SINK={async send(message,key){if(!key || !fixture.state.emails.some(m=>m.demo_key===key))fixture.state.emails.push({...message,demo_key:key});}};
@@ -37,6 +40,8 @@ const mime = { ".html": "text/html", ".css": "text/css", ".js": "text/javascript
 let mockTemplate;
 async function asset(request) {
   const path = decodeURIComponent(new URL(request.url).pathname);
+  const listingAsset = await demoListingAsset(path, fixture.state);
+  if (listingAsset) return listingAsset;
   if (path === "/__demo/annotations.js") return new Response(await readFile(new URL("./demo-assets/annotations.js", import.meta.url)), {headers:{"Content-Type":"text/javascript", "Cache-Control":"no-store"}});
   let file = resolve(dist, `.${path}${path.endsWith("/") ? "index.html" : ""}`);
   if (!file.startsWith(`${dist}/`)) return new Response("Not found", { status: 404 });
@@ -90,6 +95,7 @@ const server = http.createServer(async (req, res) => {
       response = await handleAdminRequest(request, { ...fixture.env, DEV_ADMIN_ROLE: role, DEV_ADMIN_EMAIL: email, OWNER_EMAIL: "platform-owner@example.test", LOCAL_EMAIL_SINK: fixture.env.LOCAL_EMAIL_SINK, ASSETS: { fetch: asset } }, { waitUntil(p) { p.catch(() => {}); } }, url.pathname);
       if (!["GET", "HEAD"].includes(req.method) && response.ok) {
         await completeDemoState(fixture.state);
+        normalizeDemoNames(fixture.state);
         const snapshot = JSON.stringify(fixture.state);
         pendingSave = pendingSave.then(async () => { await mkdir(dirname(stateFile), { recursive: true }); await writeFile(stateFile, snapshot); });
         await pendingSave;

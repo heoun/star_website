@@ -2,7 +2,7 @@ import { toFeedListing } from "../worker/supabase.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { createWorkspaceFixtures, ids } from "../backend/tools/workspace-fixtures.mjs";
-import { completeDemoState, annotateDemoTemplate, DEMO_ENCRYPTION_KEY, MOCK_PREVIEW_TENANCY } from "./demo-data.mjs";
+import { completeDemoState, repairDraftDemoApplications, annotateDemoTemplate, DEMO_ENCRYPTION_KEY, MOCK_PREVIEW_TENANCY } from "./demo-data.mjs";
 import { LEASE_REGISTRY, dealValues, resolveValues, fillTemplate } from "../worker/lease.js";
 import { reviewLease } from "../site/shared/lease-review.js";
 import { documentSummary } from "../site/admin/application-view.js";
@@ -44,7 +44,8 @@ try {
     checks++;
     const listing=fixture.state.listings.find(l=>l.building_id===b.id);
     const app=fixture.state.applications.find(a=>a.listing_id===listing.id);
-    const result=resolveValues({layers:{building:values,unit:{}},deal:dealValues({building:b,listing,application:app,today:parseDate("2026-09-09")})});
+    if(!listing.published)equal(app,undefined,"Draft listing has no generated application");
+    const result=resolveValues({layers:{building:values,unit:{}},deal:dealValues({building:b,listing,application:app,today:parseDate("2026-09-09")}),overrides:app?{}:MOCK_PREVIEW_TENANCY});
     equal(result.missing,[],"Mock data resolves every required lease field");
     equal(reviewLease({registry:LEASE_REGISTRY,...result,application:app}).findings.blank,[],"Checkbox disclosures must form a consistent scenario");
     const docx=await fillTemplate(env,{url:"http://localhost/admin/"},result.values),xml=await xmlOf(docx);
@@ -78,5 +79,16 @@ try {
   equal(fixture.state.settings[ids.property]["utility.other1_label"],"","Intentional clearing survives the next demo seed");
   equal((await xmlOf(originalTemplate)).includes("(mock)"),false,"Production template remains untouched");
   equal((await xmlOf(template)).match(/<w:t[^>]*>(.*?)<\/w:t>/)?.[1],(await xmlOf(originalTemplate)).match(/<w:t[^>]*>(.*?)<\/w:t>/)?.[1],"Mock banner preserves the opening words used for document navigation");
+  // Old preview-only applications are removed, but a genuine historical submission is retained.
+  const repair=createWorkspaceFixtures().state;await completeDemoState(repair);
+  repair.listings[0].published=false;
+  const generated={...structuredClone(repair.applications[0]),id:crypto.randomUUID(),created_at:"2026-09-01T10:00:00Z",status:"review",workspace:{}};
+  delete generated.submitted;repair.applications.push(generated);
+  repair.demo_seed.listings[`${generated.listing_id}:application`]=true;
+  const historic=repair.applications[0];historic.created_at="2026-09-01T10:00:00Z";historic.submitted={source:'public application'};
+  delete repair.demo_draft_application_seed;repairDraftDemoApplications(repair);
+  equal(repair.applications.some(a=>a.id===generated.id),false);
+  equal(repair.applications.some(a=>a.id===historic.id),true);
+  await completeDemoState(repair);equal(repair.applications.some(a=>a.id===generated.id),false,'A draft never regenerates the removed preview applicant');
   console.log(`PASS ${checks} complete mock data, lease generation, printed markers, disclosure consistency and persistence checks`);
 } finally {globalThis.fetch=actualFetch;}
