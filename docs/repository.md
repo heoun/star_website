@@ -66,4 +66,11 @@ npm run test:workspace:db
 npm run test:administration:db
 ```
 
-本次整理已通过上述检查；拆分后的后端与品牌、后台界面快照也分别通过构建检查。另有 `npm run smoke` 的本地 HTTP 流程检查，以及 `scripts/test-backoffice-ui.mjs` 浏览器回归工具；本次整理未运行这两项，不能将已通过的单元、数据库和构建检查视为生产端到端验收。
+本次整理已通过上述检查；拆分后的后端与品牌、后台界面快照也分别通过构建检查。另有 `npm run smoke` 的本地 HTTP 流程检查，以及当时的旧版浏览器回归工具；2026-09-09 整理未运行这两项，不能将已通过的单元、数据库和构建检查视为生产端到端验收。
+
+
+## 2026-09-14 检查点
+
+当前阶段与验证结果见 [开发检查点](backoffice/checkpoint-2026-09-14.md)。现行浏览器回归入口为 `npm run test:rentals:ui` 和 `npm run test:lease-import:ui`，需要 Playwright（可用 `PLAYWRIGHT_MODULE` 指定本地模块）。旧人工审核场景 `scripts/test-backoffice-ui.mjs` 已移除，它不再匹配自动申请组演示环境；旧接口的审核与权限检查仍由 `test:case-review`、`test:workspace` 和 `test:rentals` 覆盖。
+
+本轮核查没有发现误追踪的构建产物或本地凭据，因此沿用现有 `.gitignore`。`dist/`、`node_modules/`、`.wrangler/`、`.dev.vars`、`notes/` 均保持忽略。演示视频和示例附件作为可复现的合成素材保留在 `scripts/demo-assets/`；运行状态、浏览器截图和临时检查脚本留在系统临时目录。
