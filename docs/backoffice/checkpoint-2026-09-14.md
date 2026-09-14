@@ -41,3 +41,26 @@ Database schema suites and production integration tests were not rerun for this 
 ## Remaining integration boundaries
 
 The actual credit provider is not connected. The local preview displays saved synthetic screening data; it is not a full bureau report. Real signing remains an external integration, with signing receipts tracked by the current workflow. Production activation still requires the existing Supabase setup and rental-flow migration, configured identity and delivery services, and provider integration. This checkpoint does not perform those external actions.
+
+## Follow-up checkpoint — journey scenarios and property directories
+
+This later checkpoint follows `5102af9` on the same branch, preserving the earlier stages above.
+
+| Commit | Stage |
+| --- | --- |
+| `1639c17` | Publish local Property C/D listings and seed twelve independent rental journey scenarios, including blocking cases, landlord decisions, lease drafts, ordered signing and a marked mock archive PDF. Include a scenario catalogue and repeatable checks. |
+| `6b6a32a` | Group Rentals by Property → Unit → application group and Listings by Property → Unit. Share natural property/unit ordering and property-name typography across all three directories; retain per-unit application priority and remove repeated location text beside prices. Update browser coverage. |
+| This follow-up documentation commit | Record repository hygiene and validation for the saved state. |
+
+Repository review found no untracked scratch files requiring deletion and no tracked files matching the ignore rules. Existing rules cover `.dev.vars`, `.wrangler/`, `dist/`, `node_modules/`, `notes/` and generated test output. Runtime state and browser screenshots remain outside the repository. Keep the small, explicitly synthetic archive PDF and its Python generator as reproducible demo fixtures; neither is a real signed lease. No additional ignore patterns were necessary.
+
+Rechecked before these commits:
+
+- `npm run test:demo`: 69 data checks, 47 identity checks, media checks, and all twelve journey scenarios, including state preservation and idempotent seeding.
+- `npm run test:rentals`: 57 workflow, 29 intake and 65 screening-gate checks.
+- `npm run test:case-queue`: 12 filtering, priority and scope checks.
+- Rental browser suite: 53 checks passed with `PLAYWRIGHT_MODULE` pointing to the installed local runtime. The first attempt without that variable failed because Playwright is not installed in this checkout; no dependency change was needed.
+- Production build and Git whitespace checks passed.
+- Targeted browser checks during these changes verified Property A–D order in all three directories, nested unit order, common title styles across desktop/sidebar/mobile states, and price-only text in all ten local listings. Natural-sort checks covered 1A/2A/10A and preserved application order within groups.
+
+These are local commits only. No push, deployment, production database operation or real email/payment/signature action was performed. Integration boundaries from the earlier checkpoint still apply.
