@@ -1,3 +1,4 @@
+import {propertyGroups, compareNames} from './property-groups.js';
 import { applicantColumns, correctionFields } from './rental-applicant.js';
 import {openMockReport} from './mock-screening-report.js';
 const selectedApplicants = new Map();
@@ -5,10 +6,10 @@ const rentalViews = new Map();
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const money=v=>{if(v===null || v===undefined || v==='')return 'Not stated';const n=Number(String(v).replace(/[$,]/g,''));return Number.isFinite(n)?n.toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0}):String(v);};
 const form=(action,body,label)=>`<form class="case-action-form cw-form" data-action="${action}">${body}<button type="submit" class="primary">${label}</button><p role="status"></p></form>`;
-export function groupedQueue(rows,rowMarkup) {
- const groups=new Map();
- for(const row of rows) {const l=row.listings || {},key=`${l.building_id || l.property_name || l.id}/${l.unit || ''}`;if(!groups.has(key))groups.set(key,{listing:l,rows:[]});groups.get(key).rows.push(row);}
- return [...groups.values()].map(g=>`<details class="rg-unit"><summary><span><b>${esc(g.listing.property_name || g.listing.title || 'Property')}</b></span><span>${esc(g.listing.unit || '—')}</span><span>${g.rows.length} application group${g.rows.length===1?'':'s'}</span><span>${g.rows.filter(r=>r.next_step?.bucket==='attention').length} need attention</span></summary><div class="rg-unit-apps"><table class="rg-group-table" aria-label="${esc(g.listing.property_name || g.listing.title || 'Property')} · Unit ${esc(g.listing.unit || '—')} application groups"><thead><tr><th scope="col">Application Group</th><th scope="col">Current Progress</th><th scope="col">Responsible Agent</th><th scope="col">Time in Stage</th></tr></thead><tbody>${g.rows.map(rowMarkup).join('')}</tbody></table></div></details>`).join('');
+export function groupedQueue(rows,rowMarkup,{expanded=false}={}) {
+ const count=rows=>`${rows.length} application group${rows.length===1?'':'s'}`;
+ const attention=rows=>`${rows.filter(r=>r.next_step?.bucket==='attention').length} need attention`;
+ return propertyGroups(rows,row=>row.listings).map(g=>`<details class="rg-property" ${expanded?'open':''}><summary><span><b class="property-list-name">${esc(g.name)}</b></span><span>${g.units.size} unit${g.units.size===1?'':'s'}</span><span>${count(g.rows)}</span><span>${attention(g.rows)}</span></summary><div class="rg-property-units">${[...g.units.values()].sort((a,b)=>compareNames(a.name,b.name)).map(unit=>`<details class="rg-unit" ${expanded?'open':''}><summary><span><b>Unit ${esc(unit.name)}</b></span><span>${count(unit.rows)}</span><span>${attention(unit.rows)}</span></summary><div class="rg-unit-apps"><table class="rg-group-table" aria-label="${esc(g.name)} · Unit ${esc(unit.name)} application groups"><thead><tr><th scope="col">Application Group</th><th scope="col">Current Progress</th><th scope="col">Responsible Agent</th><th scope="col">Time in Stage</th></tr></thead><tbody>${unit.rows.map(rowMarkup).join('')}</tbody></table></div></details>`).join('')}</div></details>`).join('');
 }
 export function rentalGroupMarkup(ctx,h) {
  const {row,w,id,session}=ctx,group=row.household,members=group.members;

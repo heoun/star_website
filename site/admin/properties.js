@@ -14,6 +14,7 @@
 // editor, in property-defaults.js, which this page hosts as a page and the
 // document view hosts beside the lease.
 
+import { compareProperties } from "./property-groups.js";
 import { readiness } from "./property-sections.js";
 import {
   defaultsMarkup,
@@ -103,7 +104,7 @@ export async function renderPropertyList(host) {
 
   try {
     await loadRegistry();
-    const rows = await loadBuildings(true);
+    const rows = [...await loadBuildings(true)].sort(compareProperties);
 
     // One request per building. The layer is small and buildings are few; if
     // that ever stops being true this is the loop to replace with one call.
@@ -127,7 +128,7 @@ export async function renderPropertyList(host) {
 
       return `<a class="prop-row" href="#/properties/${escapeHtml(building.id)}">
         <span class="prop-identity">
-          <b>${escapeHtml(building.name)}</b>
+          <b class="property-list-name">${escapeHtml(building.name)}</b>
           <small>${escapeHtml([building.street, building.city, building.state_abbr, building.zip]
             .filter(Boolean).join(", ")) || "No address recorded"}</small>
           <span class="prop-listing-count">${count} linked listing${count === 1 ? "" : "s"}</span>

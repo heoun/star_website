@@ -1,3 +1,4 @@
+import {propertyGroups, compareNames} from './property-groups.js';
 import { openNewProperty } from "./property-import.js";
 import "./sidebar.js";
 import { syncListingKind, syncListingProperty } from "./listing-editor.js";
@@ -441,17 +442,14 @@ async function filesFromDataTransfer(dataTransfer) {
 
 // ---- Listing list ----
 
-function describe(listing) {
-  const parts = [];
+function listingPrice(listing) {
   if (listing.price_amount !== null && listing.price_amount !== undefined) {
     const amount = Number(listing.price_amount).toLocaleString("en-US", {
       style: "currency", currency: "USD", maximumFractionDigits: 0
     });
-    parts.push(listing.transaction_type === "rental" ? `${amount}/mo` : amount);
+    return listing.transaction_type === "rental" ? `${amount}/mo` : amount;
   }
-  const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
-  if (home) parts.push(home);
-  return parts.join(" · ") || "No price or address yet";
+  return "Price not set";
 }
 
 function coverUrl(listing) {
@@ -490,18 +488,18 @@ function renderListings() {
     return;
   }
 
-  rowsEl.innerHTML = visible.map((listing) => `
+  const rowMarkup = (listing) => `
     <article class="row" data-id="${escapeHtml(listing.id)}">
       ${coverUrl(listing)
         ? `<img class="thumb" src="${escapeHtml(coverUrl(listing))}" alt="" loading="lazy">`
         : '<div class="thumb"></div>'}
       <div>
-        <h2><a href="#/listings/${escapeHtml(listing.id)}">${escapeHtml(listing.title || "Untitled listing")}</a></h2>
-        <p>${escapeHtml(describe(listing))}</p>
+        <h2><a href="#/listings/${escapeHtml(listing.id)}">${escapeHtml(listing.unit ? `Unit ${listing.unit}` : listing.title || "Untitled listing")}</a></h2>
+        <p>${escapeHtml(listingPrice(listing))}</p>
         <div class="tags">
           <span class="tag">${escapeHtml(listing.category)}</span>
           <span class="tag">${listing.transaction_type === "rental" ? "For rent" : "For sale"}</span>
-          ${listing.published ? "" : '<span class="tag draft">Unpublished</span>'}
+          ${listing.published ? '<span class="tag listing-published">Published</span>' : '<span class="tag draft">Unpublished</span>'}
         </div>
       </div>
       <div class="actions">
@@ -510,7 +508,8 @@ function renderListings() {
         <button type="button" class="danger" data-action="delete" data-manager-only>Delete</button>
       </div>
     </article>
-  `).join("");
+  `;
+  rowsEl.innerHTML = propertyGroups(visible).map(group=>`<details class="listing-property" ${listingSearch || filter!=="all"?'open':''}><summary><span><b class="property-list-name">${escapeHtml(group.name)}</b></span><span>${group.units.size} unit${group.units.size===1?'':'s'}</span><span>${group.rows.filter(l=>l.published).length} published</span><span>${group.rows.filter(l=>!l.published).length} unpublished</span></summary><div class="listing-property-units">${group.rows.slice().sort((a,b)=>compareNames(a.unit,b.unit)).map(rowMarkup).join('')}</div></details>`).join('');
 }
 
 // ---- Routing ----

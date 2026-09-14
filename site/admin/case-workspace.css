@@ -295,3 +295,26 @@ button.rg-report-link:disabled{color:#83919a;cursor:default;text-decoration:none
  .rg-group-table td{padding:6px 0;border:0}.rg-group-table td:last-child{text-align:left}
  .rg-group-table td:before{content:attr(data-label);display:block;font-size:11px;color:#637684;margin-bottom:3px}
 }
+
+/* Property -> unit -> application, with totals scoped to the current filters. */
+.rg-property{border-top:1px solid #dfe6ec}.rg-property:first-child{border-top:0}
+.rg-property>summary{display:grid;grid-template-columns:minmax(0,2fr) minmax(0,.7fr) minmax(0,1.1fr) minmax(0,1fr);gap:20px;padding:22px 24px;align-items:center;cursor:pointer;list-style:none}
+.rg-property>summary::-webkit-details-marker{display:none}
+.rg-property>summary>span{min-width:0;overflow-wrap:anywhere}
+.rg-property>summary>span:first-child{position:relative;padding-left:24px}
+.rg-property>summary>span:first-child:before{content:'▸';position:absolute;left:0;color:#6b8492}
+.rg-property[open]>summary>span:first-child:before{content:'▾'}
+.rg-property[open]>summary{background:#eaf2f5}
+.rg-property-units{padding:0 18px 16px;background:#eaf2f5}
+.rg-property-units>.rg-unit{background:white;border:1px solid #dfe6ec;border-bottom:0}
+.rg-property-units>.rg-unit:last-child{border-bottom:1px solid #dfe6ec}
+.rg-property-units>.rg-unit>summary{grid-template-columns:minmax(0,2.7fr) minmax(0,1.1fr) minmax(0,1fr);padding:16px 20px;font-size:13px;list-style:none}
+.rg-property-units>.rg-unit>summary::-webkit-details-marker{display:none}
+.rg-property>summary:focus-visible,.rg-unit>summary:focus-visible{outline:2px solid #205570;outline-offset:-2px}
+@media(max-width:760px){
+ .rg-property>summary{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:10px;padding:18px}
+ .rg-property-units{padding:0 10px 12px}
+ .rg-property-units>.rg-unit>summary{grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:8px;padding:14px}
+ .rg-property-units>.rg-unit>summary>span:first-child{grid-column:1/-1}
+ .rg-property-units>.rg-unit>summary>span:nth-child(3){padding-left:0}
+}

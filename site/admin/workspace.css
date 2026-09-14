@@ -334,3 +334,23 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
   .content{container-type:inline-size;transition:max-width .22s ease}
 }
 @media(prefers-reduced-motion:reduce){.app,.content{transition:none}}
+
+/* Listings share the property-first hierarchy used by Rentals. */
+.listing-property{background:#fff}
+.listing-property+.listing-property{border-top:1px solid var(--line)}
+.listing-property>summary{display:grid;grid-template-columns:minmax(0,2fr) repeat(3,minmax(0,1fr));align-items:center;gap:20px;padding:22px 24px;list-style:none;cursor:pointer;font-size:13px}
+.listing-property>summary::-webkit-details-marker{display:none}
+.listing-property>summary>span{min-width:0;overflow-wrap:anywhere}
+.listing-property>summary>span:first-child{padding-left:24px;position:relative}
+.listing-property>summary>span:first-child:before{content:'▸';position:absolute;left:0;color:#6b8492}
+.listing-property[open]>summary{background:#eaf2f5}
+.listing-property[open]>summary>span:first-child:before{content:'▾'}
+.listing-property-units{padding:0 18px 16px;background:#eaf2f5}
+.listing-property-units>.row{border-bottom:1px solid var(--line);padding:16px 20px}
+.listing-property-units>.row:last-child{border-bottom:0}
+.listing-property .listing-published{color:#326349;background:#eef5f0}
+.listing-property>summary:focus-visible{outline:2px solid #205570;outline-offset:-2px}
+@media(max-width:760px){.listing-property>summary{grid-template-columns:repeat(2,minmax(0,1fr));gap:10px;padding:18px}.listing-property-units{padding:0 10px 12px}.listing-property-units>.row{padding:14px}}
+
+/* Shared property names across Rentals, Properties & Settings, and Listings. */
+.property-list-name { font-family: var(--body); font-size: 15px; font-weight: 650; line-height: 1.5; color: var(--blue); }

@@ -288,16 +288,16 @@ function renderStaffQueue(host, { cases, types, session, overview, title, note, 
     </section>
     <div class="cw-results"><p data-queue-result role="status"></p><button type="button" data-clear-filters>Clear filters</button></div>
     <article class="panel cw-queue-table">
-      <div class="cw-table-head rg-queue-head" aria-hidden="true"><span>Property</span><span>Unit</span><span>Applications</span><span>Needs attention</span></div>
+      <div class="cw-table-head rg-queue-head" aria-hidden="true"><span>Property</span><span>Units</span><span>Applications</span><span>Needs attention</span></div>
       <div class="cw-rows"></div>
     </article>`;
   host.querySelector('[data-queue-person]').value = view.person;
   if (!host.querySelector('[data-queue-person]').value) view.person = "";
   const draw = () => {
     const rows = selectQueueCases(cases, view, session);
-    host.querySelector('.cw-rows').innerHTML = rows.length ? groupedQueue(rows,row => staffQueueRow(row,types,session))
+    host.querySelector('.cw-rows').innerHTML = rows.length ? groupedQueue(rows,row => staffQueueRow(row,types,session),{expanded:Boolean(view.query || view.stage || view.person || view.bucket!=="all")})
       : empty("No rentals in this view", cases.length ? "Change or clear the filters to see more rentals." : manager ? "Submitted applications will appear here." : "An admin can assign an application to you or add you as a collaborator.");
-    host.querySelector('[data-queue-result]').textContent = `${rows.length} of ${cases.length} rentals · ${view.bucket === "all" ? "Action needed first, then longest waiting" : "Longest waiting first"}`;
+    host.querySelector('[data-queue-result]').textContent = `${rows.length} of ${cases.length} rentals · Properties A–Z · Within each unit: ${view.bucket === "all" ? "action needed first, then longest waiting" : "longest waiting first"}`;
     host.querySelector('[data-clear-filters]').hidden = !(view.stage || view.person || view.query || view.bucket !== "all");
     host.querySelectorAll('[data-bucket]').forEach(el => el.setAttribute('aria-pressed',String(el.dataset.bucket === view.bucket)));
   };

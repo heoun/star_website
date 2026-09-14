@@ -23,10 +23,10 @@ page.on('pageerror',e=>errors.push(e.message));
 const out='/tmp/star-rental-ui';await mkdir(out,{recursive:true});let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
 const login=async email=>{await page.goto(`${base}/login/`);await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/admin/**');};
 try{
- await login('admin@example.test');await page.goto(`${base}/admin/#/applications`);await page.locator('.rg-unit').first().waitFor();
+ await login('admin@example.test');await page.goto(`${base}/admin/#/applications`);await page.locator('.rg-property').first().waitFor();
  for(const width of [1600,1280]){
   await page.setViewportSize({width,height:1080});
-  const aligned=await page.evaluate(()=>{const h=[...document.querySelectorAll('.rg-queue-head>span')].map(n=>n.getBoundingClientRect().x);return [...document.querySelectorAll('.rg-unit>summary')].every(row=>[...row.children].every((n,i)=>Math.abs(n.getBoundingClientRect().x-h[i])<1));});eq(aligned,true);
+  const aligned=await page.evaluate(()=>{const h=[...document.querySelectorAll('.rg-queue-head>span')].map(n=>n.getBoundingClientRect().x);return [...document.querySelectorAll('.rg-property>summary')].every(row=>[...row.children].every((n,i)=>Math.abs(n.getBoundingClientRect().x-h[i])<1));});eq(aligned,true);
  }
  await page.setViewportSize({width:1600,height:1080});await page.screenshot({path:`${out}/aligned-rental-queue.png`,fullPage:true});
  await page.goto(`${base}/admin/#/applications/${ids.a}`);await page.getByRole('heading',{name:'Application & Screening',exact:true}).waitFor();
@@ -34,8 +34,8 @@ try{
  eq(await page.locator('[data-report-evidence], select[name=fee], select[name=screening]').count(),0);
  eq(await page.getByText('Record external report / payment',{exact:true}).count(),0);
  const flow=rentalWorkflow(env,new Request(base));await flow.reconcile(ids.b);
- await page.goto(`${base}/admin/#/applications`);await page.locator('.rg-unit').first().waitFor();
- eq(await page.locator('.rg-unit[open]').count(),0);await page.locator('.rg-unit').filter({hasText:'Property B'}).locator('summary').click();await page.getByRole('link',{name:/Applicant B/}).click();
+ await page.goto(`${base}/admin/#/applications`);await page.locator('.rg-property').first().waitFor();
+ eq(await page.locator('.rg-property[open]').count(),0);const propertyB=page.locator('.rg-property').filter({has:page.locator('summary',{hasText:'Property B'})});await propertyB.locator(':scope > summary').click();await propertyB.locator('.rg-unit > summary').first().click();await page.getByRole('link',{name:/Applicant B/}).click();
  await page.getByRole('heading',{name:'Lease Details',exact:true}).first().waitFor();eq(await page.getByRole('heading',{name:'Application & Screening',exact:true}).count(),1);eq(await page.getByText('Recommend to landlord',{exact:true}).count(),0);
  await page.getByRole('button',{name:/Applicant E/}).click();eq(await page.locator('[data-person-panel]:visible').getByText('85000',{exact:true}).count(),0);await page.locator('[data-person-panel]:visible .rg-key-data').getByText('$85,000',{exact:true}).waitFor();checks++;
  const person=page.locator('[data-person-panel]:visible');
