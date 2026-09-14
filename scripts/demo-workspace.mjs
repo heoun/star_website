@@ -1,3 +1,4 @@
+import {seedJourney,journeyPage} from './demo-journey.mjs';
 import {normalizeDemoNames} from './demo-names.mjs';
 import {demoListingAsset} from './demo-listing-media.mjs';
 import { seedRentalDemo } from "./rental-demo-data.mjs";
@@ -32,6 +33,7 @@ normalizeDemoNames(fixture.state);
 globalThis.fetch = fixture.fetch;
 fixture.env.RENTAL_AUTOMATION='on';fixture.env.RENTAL_SCREENING='mock';
 fixture.env.LOCAL_EMAIL_SINK={async send(message,key){if(!key || !fixture.state.emails.some(m=>m.demo_key===key))fixture.state.emails.push({...message,demo_key:key});}};
+await seedJourney(fixture.state,fixture.env,new Request(`http://127.0.0.1:${port}/`));
 await reconcileRentals(fixture.env,new Request(`http://127.0.0.1:${port}/`));
 await writeFile(stateFile,JSON.stringify(fixture.state));
 const demoPeople = () => ({ owner: ["manager", "platform-owner@example.test"], admin: ["manager", "admin@example.test"], "agent-a": ["agent", "agent-a@example.test"], "agent-b": ["agent", "agent-b@example.test"], landlord: ["landlord", "owner@example.test"],
@@ -51,7 +53,7 @@ async function asset(request) {
       mockTemplate ||= annotateDemoTemplate(bytes);
       bytes = Buffer.from(await mockTemplate);
     }
-    if (path === "/admin/" || path === "/admin/index.html") bytes = Buffer.from(bytes.toString().replace('<div class="topright">', '<div class="topright"><a href="/__demo" style="white-space:nowrap;font-size:12px">Demo roles</a>'));
+    if (path === "/admin/" || path === "/admin/index.html") bytes = Buffer.from(bytes.toString().replace('<div class="topright">', '<div class="topright"><a href="/__demo/scenarios" style="white-space:nowrap;font-size:12px">Demo scenarios</a><a href="/__demo" style="white-space:nowrap;font-size:12px">Demo roles</a>'));
     if (extname(file) === ".html") bytes = Buffer.from(bytes.toString().replace('</body>', '<script type="module" src="/__demo/annotations.js"></script></body>'));
     return new Response(bytes, { headers: { "Content-Type": mime[extname(file)] || "application/octet-stream", "Cache-Control": "no-store" } });
   } catch { return new Response("Not found", { status: 404 }); }
@@ -61,6 +63,7 @@ const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url, `http://127.0.0.1:${port}`);
     const people = demoPeople();
+    if (url.pathname === "/__demo/scenarios") { res.writeHead(200,{"Content-Type":"text/html; charset=utf-8","Cache-Control":"no-store"});res.end(journeyPage(fixture.state));return; }
     if (url.pathname === "/__demo/inbox") {
       const esc = v => String(v || "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
       res.writeHead(200, {"Content-Type":"text/html; charset=utf-8", "Cache-Control":"no-store", "Referrer-Policy":"no-referrer"});
@@ -73,7 +76,7 @@ const server = http.createServer(async (req, res) => {
       if (people[role]) { const next=url.searchParams.get('next');res.writeHead(303, { Location: next?.startsWith('/landlord-decision/#') ? next : "/admin/#/overview", "Set-Cookie": `star_demo_role=${role}; Path=/; HttpOnly; SameSite=Lax` }); res.end(); return; }
       res.writeHead(200, { "Content-Type": "text/html" });
       const esc = v => String(v).replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
-      res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Star workspace · synthetic demo</title><style>body{font:16px system-ui;background:#f6f7f9;color:#132d42;max-width:720px;margin:12vh auto;padding:24px}a{display:block;background:white;border:1px solid #dce3e8;border-radius:10px;margin:14px 0;padding:20px;color:inherit;text-decoration:none}p{line-height:1.8;color:#5d707c}</style><h1>Explore each workspace</h1><p>Isolated demo with synthetic people and properties. Changes are saved locally. No messages, payments, checks or signature requests are sent.</p>${Object.entries(people).map(([key, [role, email]]) => `<a href="/__demo?role=${key}"><b>${key === "owner" ? "Platform owner" : key === "admin" ? "Admin" : role === "landlord" ? "Landlord" : key === "agent-a" ? "Agent A" : "Agent B"}</b><br>${esc(email)}</a>`).join("")}`); return;
+      res.end(`<!doctype html><meta charset="utf-8"><meta name="viewport" content="width=device-width"><title>Star workspace · synthetic demo</title><style>body{font:16px system-ui;background:#f6f7f9;color:#132d42;max-width:720px;margin:12vh auto;padding:24px}a{display:block;background:white;border:1px solid #dce3e8;border-radius:10px;margin:14px 0;padding:20px;color:inherit;text-decoration:none}p{line-height:1.8;color:#5d707c}</style><h1>Explore each workspace</h1><a href="/__demo/scenarios"><b>Rental Journey · 全流程场景目录</b></a><p>Isolated demo with synthetic people and properties. Changes are saved locally. No messages, payments, checks or signature requests are sent.</p>${Object.entries(people).map(([key, [role, email]]) => `<a href="/__demo?role=${key}"><b>${key === "owner" ? "Platform owner" : key === "admin" ? "Admin" : role === "landlord" ? "Landlord" : key === "agent-a" ? "Agent A" : "Agent B"}</b><br>${esc(email)}</a>`).join("")}`); return;
     }
     const cookies = req.headers.cookie || "";
     const selected = /(?:^|;\s*)star_demo_role=([^;]+)/.exec(cookies)?.[1];
