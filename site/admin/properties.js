@@ -242,8 +242,7 @@ function renderPropertyShell({ building, target }) {
       <div class="actions">
         ${units.length === 0 ? "" :
           `<button type="button" id="property-test-lease">Generate test lease</button>
-           <button type="button" class="primary" id="property-doc-edit">${
-             isManager() ? "Fill these in on the document" : "Read these on the document"}</button>`}
+`}
       </div>
     </div>
 

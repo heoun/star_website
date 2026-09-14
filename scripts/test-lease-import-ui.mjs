@@ -28,7 +28,7 @@ const errors=[];page.on('pageerror',e=>errors.push(e.message));page.on('request'
 let checks=0;const equal=(a,b)=>{assert.deepEqual(a,b);checks++;};
 const login=async(email)=>{await page.goto(`${base}/login/`);await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/admin/**');};
 const open=async()=>{await page.goto(`${base}/admin/#/properties`);await page.getByRole('button',{name:'New property',exact:true}).click();await page.getByRole('dialog').waitFor();};
-const fillProperty=async(name='Imported property')=>{const form=page.locator('[data-new-property-form]');await form.getByLabel('Property name',{exact:true}).fill(name);await form.getByLabel('Street',{exact:true}).fill('10 Example Road');await form.getByLabel('City',{exact:true}).fill('New York');await form.getByLabel('State',{exact:true}).fill('NY');await form.getByLabel('ZIP code',{exact:true}).fill('10001');};
+const fillProperty=async(name='Imported property')=>{const form=page.locator('[data-new-property-form]');await form.getByLabel('Property name',{exact:true}).fill(name);await form.getByLabel('Street',{exact:true}).fill('10 Example Road');await form.getByLabel('City',{exact:true}).fill('New York');await form.getByLabel('State',{exact:true}).fill('NY');await form.getByLabel('ZIP code',{exact:true}).fill('10001');await form.getByLabel('Landlord signature email',{exact:true}).fill('signer@example.test');};
 const template=await readFile('lease/template/lease-template.docx');
 const xml=`<?xml version="1.0"?><w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>${source.split('\n').map(line=>`<w:p><w:r><w:t xml:space="preserve">${line.replaceAll('&','&amp;').replaceAll('<','&lt;')}</w:t></w:r></w:p>`).join('')}</w:body></w:document>`;
 const docx=Buffer.from(await replaceEntry(readEntries(template.buffer.slice(template.byteOffset,template.byteOffset+template.byteLength)),'word/document.xml',xml));
@@ -66,12 +66,36 @@ try{
  await open();await page.locator('#lease-import-file').setInputFiles({name:'scan.pdf',mimeType:'application/pdf',buffer:pdf('')});await page.locator('.import-message[data-tone="error"]').waitFor();equal((await page.locator('.import-message').textContent()).includes('No readable lease text'),true);await page.getByRole('button',{name:'Close lease import'}).click();
  if(process.env.LEASE_IMPORT_SAMPLE){await open();await page.locator('#lease-import-file').setInputFiles(process.env.LEASE_IMPORT_SAMPLE);await page.locator('.import-summary').waitFor();const detected=await page.locator('.import-summary h3').textContent();assert(!detected.startsWith('0 '));checks++;equal(await page.locator('[name="street"]').inputValue(),'8107 Kew Gardens Road');console.log(`Source file review: ${detected}`);await page.screenshot({path:`${artifacts}/source-new-property.png`,fullPage:true});await page.getByRole('button',{name:'Close lease import'}).click();}
  // Manual creation remains available without forcing a lease upload.
- await open();await page.getByRole('button',{name:'Enter manually'}).click();await fillProperty('Manual property');await page.locator('[data-import-confirm]').check();await page.getByRole('button',{name:'Create property',exact:true}).click();await page.getByRole('dialog').waitFor({state:'detached'});equal(fixture.state.buildings.length,4);
- const invalid=await page.evaluate(async id=>{const post=body=>fetch('/api/admin/buildings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(response=>response.status);return [await post({name:'Must not create',creation_token:crypto.randomUUID(),initial_settings:{'tenant.names':'Private'}}),await post({name:'Must not overwrite',building_id:id,creation_token:crypto.randomUUID(),initial_settings:{}})];},ids.property);equal(invalid,[422,422]);equal(fixture.state.buildings.length,4);equal(fixture.state.settings[ids.property],original);
+ await open();await page.getByRole('button',{name:'Enter manually'}).click();await fillProperty('Manual property');
+ const signer=page.locator('[name="landlord_signer_email"]');equal(await signer.getAttribute('required'),'');
+ await signer.fill('');await page.locator('[data-import-confirm]').check();await page.getByRole('button',{name:'Create property',exact:true}).click();equal(fixture.state.buildings.length,3);await signer.fill('signer@example.test');
+ const beforeDraft=requests.filter(r=>r.method==='POST' && r.url.endsWith('/api/admin/buildings')).length;
+ await page.getByRole('button',{name:'Fill these in on the document',exact:true}).click();
+ const frame=page.frameLocator('iframe[title="New property lease defaults"]');
+ await frame.locator('[data-lease-slot="manager.name"][data-editable]').first().click();
+ await frame.getByLabel('Property manager — name',{exact:true}).fill('Draft Property Manager');
+ await frame.getByRole('button',{name:'Use in new property',exact:true}).click();
+ await page.waitForFunction(()=>document.querySelector('[data-import-value="manager.name"]')?.value==='Draft Property Manager');
+ equal(await value('manager.name').inputValue(),'Draft Property Manager');equal(await select('manager.name').isChecked(),true);
+ equal(requests.filter(r=>r.method==='POST' && r.url.endsWith('/api/admin/buildings')).length,beforeDraft);
+ await page.screenshot({path:`${artifacts}/new-property-document.png`,fullPage:true});
+ await page.locator('[data-import-confirm]').check();await page.getByRole('button',{name:'Create property',exact:true}).click();await page.getByRole('dialog').waitFor({state:'detached'});equal(fixture.state.buildings.length,4);
+ const invalid=await page.evaluate(async id=>{const post=body=>fetch('/api/admin/buildings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(response=>response.status);return [await post({name:'Must not create',creation_token:crypto.randomUUID(),landlord_signer_email:'signer@example.test',initial_settings:{'tenant.names':'Private'}}),await post({name:'Must not overwrite',landlord_signer_email:'signer@example.test',building_id:id,creation_token:crypto.randomUUID(),initial_settings:{}})];},ids.property);equal(invalid,[422,422]);
+ const emailRejections=await page.evaluate(async id=>{const request=(url,method,body)=>fetch(url,{method,headers:{'Content-Type':'application/json'},body:JSON.stringify(body)}).then(r=>r.status);return [await request('/api/admin/buildings','POST',{name:'Missing email'}),await request('/api/admin/buildings/'+id,'PATCH',{landlord_signer_email:''}),await request('/api/admin/buildings','POST',{name:'Invalid email',landlord_signer_email:'wrong'})];},ids.property);equal(emailRejections,[422,422,422]);equal(fixture.state.buildings.length,4);equal(fixture.state.settings[ids.property],original);
  for(const email of ['agent-a@example.test','owner@example.test','platform-owner@example.test']){
   await page.locator('[data-sign-out]').first().click();await page.waitForURL('**/login/');await login(email);await page.goto(`${base}/admin/#/properties`);await page.waitForTimeout(250);
   equal(await page.locator('[data-desk-new-property]').count(),0);
   const denied=await page.evaluate(async()=>{const response=await fetch('/api/admin/buildings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name:'Unauthorized',creation_token:crypto.randomUUID(),initial_settings:{}})});return response.status;});equal(denied,403);
+ }
+ await page.route('**/api/portal/me',route=>route.fulfill({json:{email:'applicant@example.test'}}));
+ let bedrooms=1;
+ await page.route('**/data/property.json?*',route=>route.fulfill({json:{id:ids.listing,title:'Mock rental',bedrooms,price:'$3300',unit:'7C'}}));
+ for(const n of [1,0,2]){
+  bedrooms=n;await page.goto(`${base}/apply/?id=${ids.listing}`);await page.locator('#first_name').waitFor({state:n<2?'visible':'attached'});
+  equal(await page.locator('#header-step').textContent(),`Rental Application · Step 1 of ${n<2?6:7}`);
+  equal(await page.locator('.step-link[data-step="1"]').isVisible(),n>=2);
+  if(n<2){equal(await page.locator('.step-link[data-step="2"] .step-index > span').textContent(),'1');equal(await page.locator('#step-back').isVisible(),false);await page.getByRole('button',{name:'Continue →',exact:true}).click();equal(await page.locator('#header-step').textContent(),'Rental Application · Step 1 of 6');}
+  await page.screenshot({path:`${artifacts}/application-${n}-bedrooms.png`,fullPage:true});
  }
  equal(errors,[]);
  console.log(`PASS ${checks} new-property browser checks: upload/manual drafts, reviewed creation, safe retry, reload, no existing-property writes, invalid fields, mobile and role permissions`);

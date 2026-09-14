@@ -144,7 +144,7 @@ function settingRow(field, values, editing, docLinked) {
 
   return `<div class="line${needed && !editing ? " is-needed" : ""}"
     data-setting-row="${escapeHtml(field.id)}">
-    <label class="lbl" for="set-${escapeHtml(field.id)}">${escapeHtml(PROPERTY_FIELD_LABELS[field.id] || field.label)}</label>
+    <label class="lbl" for="set-${escapeHtml(field.id)}">${escapeHtml(PROPERTY_FIELD_LABELS[field.id] || field.label)}${field.required?'<span class="required-mark" aria-hidden="true"></span>':''}</label>
     <div>
       ${editing ? control(field, resolved, docLinked) : valueCell(field, resolved)}
       ${field.note ? `<span class="panel-hint">${escapeHtml(field.note)}</span>` : ""}
@@ -201,7 +201,7 @@ function signingPanel(section, ctx) {
                 set ? "Change signer" : "Set signer"}</button>`
             : '<span class="locked">Manager only</span>'}
         </div>
-        <div class="line" data-setting-row="landlord_signer_email"><span class="lbl">Landlord signer’s email</span><div><b>${escapeHtml(signerEmail || "Not entered")}</b><span class="panel-hint">Receives the landlord signature request. Use Change signer to update.</span></div></div>
+        <div class="line" data-setting-row="landlord_signer_email"><span class="lbl">Landlord signer’s email<span class="required-mark" aria-hidden="true"></span></span><div><b>${escapeHtml(signerEmail || "Not entered")}</b><span class="panel-hint">Receives the landlord signature request. Use Change signer to update.</span></div></div>
         ${inline.map((field) => settingRow(field, values, editing, docLinked)).join("")}
       </div>
     </div>
@@ -222,7 +222,7 @@ function sectionPanel(section, ctx) {
       </div>
       <div class="phead-tools">
         ${optional
-          ? `<span class="pill is-off">${section.fields.length} optional</span>`
+          ? ""
           : short > 0
             ? `<span class="pill is-bad">${short} required</span>`
             : '<span class="pill is-good">Complete</span>'}
@@ -348,10 +348,10 @@ function signerDialog(signer, signerEmail, emailKnown) {
       </div>
       <div class="sheet-body">
         <label for="signer-name">Authorised signer</label>
-        <input type="text" id="signer-name" value="${escapeHtml(signer.value || "")}"
+        <input type="text" required id="signer-name" value="${escapeHtml(signer.value || "")}"
                placeholder="The name printed above the signature line">
         <label for="signer-email" style="margin-top:12px">Signature address</label>
-        <input type="email" id="signer-email" value="${escapeHtml(signerEmail)}"
+        <input type="email" required id="signer-email" value="${escapeHtml(signerEmail)}"
                placeholder="where the signature request is sent"${emailKnown ? "" : " disabled"}>
         ${emailKnown ? "" : `<p class="note" style="color:var(--warn)">This database cannot store a
           signature address yet. Run supabase/schema.sql on it and the field opens.</p>`}
@@ -641,7 +641,7 @@ async function saveSigner(ctx) {
     setStatus("The signer needs the name that is printed above the signature line.", "error");
     return;
   }
-  if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+  if (!host.querySelector("#signer-email")?.disabled && (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))) {
     setStatus("That signature address does not look like an email address.", "error");
     return;
   }

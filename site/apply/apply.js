@@ -478,10 +478,7 @@ import { endDateFor } from "../shared/lease-dates.js";
     if (roommateCap === 0) {
       form.querySelector('[data-group="has_roommates"]')?.closest("fieldset")?.setAttribute("hidden", "");
       form.querySelectorAll('input[name="has_roommates"]').forEach((radio) => radio.removeAttribute("required"));
-      const solo = document.getElementById("roommates-solo");
-      solo.hidden = false;
-      solo.textContent = `This home is listed as a ${bedroomCount === 0 ? "studio" : "one bedroom home"}, `
-        + "so the lease covers a single applicant and there is no roommate to add.";
+      document.querySelector('.step-link[data-step="1"]').closest('li').hidden=true;
     } else {
       const capNote = document.getElementById("roommate-cap-note");
       capNote.hidden = false;
@@ -490,6 +487,12 @@ import { endDateFor } from "../shared/lease-dates.js";
           + `${roommateCap === 1 ? "roommate" : "roommates"}.`
         : `You can add up to ${roommateCap} ${roommateCap === 1 ? "roommate" : "roommates"} for this home.`;
     }
+
+    const firstStep=roommateCap===0?2:1;
+    const visibleSteps=TOTAL_STEPS-firstStep+1;
+    const displayStep=step=>step-firstStep+1;
+    progress.setAttribute('aria-valuemax',String(visibleSteps));
+    stepLinks.forEach(link=>{const n=Number(link.dataset.step);const number=link.querySelector('.step-index > span');if(number)number.textContent=String(displayStep(n));});
 
     // ----------------------------------------------------------- validation
     //
@@ -957,7 +960,7 @@ import { endDateFor } from "../shared/lease-dates.js";
           `${emergency.count()} emergency ${emergency.count() === 1 ? "contact" : "contacts"}`]]
       ];
 
-      reviewList.innerHTML = lines.map(([step, parts]) => {
+      reviewList.innerHTML = lines.filter(([step])=>step>=firstStep).map(([step, parts]) => {
         const short = !isComplete(step);
         const summary = short
           ? "Something on this step still needs your attention"
@@ -965,11 +968,11 @@ import { endDateFor } from "../shared/lease-dates.js";
         return `
           <li class="review-item">
             <span class="review-copy">
-              <strong>Step ${step} · ${escapeHtml(stepName(step))}</strong>
+              <strong>Step ${displayStep(step)} · ${escapeHtml(stepName(step))}</strong>
               <span class="${short ? "is-short" : ""}">${escapeHtml(summary)}</span>
             </span>
             <button class="review-edit" type="button" data-goto="${step}"
-                    aria-label="Edit step ${step}, ${escapeHtml(stepName(step))}">Edit</button>
+                    aria-label="Edit step ${displayStep(step)}, ${escapeHtml(stepName(step))}">Edit</button>
           </li>`;
       }).join("");
     };
@@ -1005,7 +1008,7 @@ import { endDateFor } from "../shared/lease-dates.js";
     };
 
     const showStep = (requested, { focus = true, push = true } = {}) => {
-      const step = Math.max(1, Math.min(TOTAL_STEPS, requested));
+      const step = Math.max(firstStep, Math.min(TOTAL_STEPS, requested));
       state.step = step;
       state.visited.add(step);
 
@@ -1015,16 +1018,16 @@ import { endDateFor } from "../shared/lease-dates.js";
         panel.hidden = !active;
       });
 
-      headerStep.textContent = `Rental Application · Step ${step} of ${TOTAL_STEPS}`;
-      progress.setAttribute("aria-valuenow", String(step));
-      progress.setAttribute("aria-valuetext", `Step ${step} of ${TOTAL_STEPS}, ${stepName(step)}`);
-      progressFill.style.width = `${(step / TOTAL_STEPS) * 100}%`;
+      headerStep.textContent = `Rental Application · Step ${displayStep(step)} of ${visibleSteps}`;
+      progress.setAttribute("aria-valuenow", String(displayStep(step)));
+      progress.setAttribute("aria-valuetext", `Step ${displayStep(step)} of ${visibleSteps}, ${stepName(step)}`);
+      progressFill.style.width = `${(displayStep(step) / visibleSteps) * 100}%`;
 
-      backButton.hidden = step === 1;
+      backButton.hidden = step === firstStep;
       nextButton.textContent = step === TOTAL_STEPS ? "Submit Application" : "Continue →";
       actionNote.textContent = step === TOTAL_STEPS
         ? "Your application is sent when you press Submit Application."
-        : `Step ${step} of ${TOTAL_STEPS} · your application is sent only from the last step`;
+        : `Step ${displayStep(step)} of ${visibleSteps} · your application is sent only from the last step`;
 
       if (step === TOTAL_STEPS) { paintReview(); mountTurnstile(); }
       paintSteps();
@@ -1274,7 +1277,7 @@ import { endDateFor } from "../shared/lease-dates.js";
       // Every step, because the Worker checks every step. The first one that
       // is short is the one to open, so the fix is in front of the reader
       // rather than behind a Back button.
-      for (let step = 1; step <= TOTAL_STEPS; step += 1) {
+      for (let step = firstStep; step <= TOTAL_STEPS; step += 1) {
         const problems = validate(step);
         if (problems.length === 0) { clearErrors(step); continue; }
         if (step !== state.step) showStep(step);
@@ -1371,8 +1374,8 @@ import { endDateFor } from "../shared/lease-dates.js";
     paintLeaseEnd();
     // A fragment left over from a previous visit would open a step nobody has
     // filled in; the application always starts at the beginning.
-    window.history.replaceState({ step: 1 }, "", window.location.pathname + window.location.search);
-    showStep(1, { focus: false, push: false });
+    window.history.replaceState({ step: firstStep }, "", window.location.pathname + window.location.search);
+    showStep(firstStep, { focus: false, push: false });
   };
 
   // ------------------------------------------------------------ help dialog

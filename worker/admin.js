@@ -739,6 +739,7 @@ async function handleBuildings(request, env, identity, id) {
         if (body[field] !== undefined) values[field] = cleanLine(body[field], 200) || null;
       }
       if (!values.name) return json({ error: "A building needs a name." }, 422);
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.landlord_signer_email || "")) return json({error:"A valid landlord signature email is required."},422);
       if (body.initial_settings !== undefined || body.creation_token !== undefined) {
         if (!UUID_PATTERN.test(body.creation_token || '') || body.id || body.building_id) return json({error:'A new property requires a creation token, not an existing property ID.'},422);
         if (!body.initial_settings || typeof body.initial_settings !== 'object' || Array.isArray(body.initial_settings)) return json({error:'Initial settings must be an object.'},422);
@@ -762,6 +763,7 @@ async function handleBuildings(request, env, identity, id) {
     }
     if (Object.keys(values).length === 0) return json({ error: "Nothing to update." }, 400);
     if (values.name === null) return json({ error: "A building needs a name." }, 422);
+    if (Object.hasOwn(values,"landlord_signer_email") && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(values.landlord_signer_email || "")) return json({error:"A valid landlord signature email is required."},422);
 
     const row = await updateBuilding(env, id, values);
     if (!row) return json({ error: "Building not found." }, 404);

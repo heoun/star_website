@@ -488,9 +488,7 @@
 /* The asterisk convention: a box that has to be filled says so on its label.
    :has() reads the live required attribute, so the marks follow the
    work-or-school branch as it toggles which fields are required. */
-.field:has(:required) > label:not(.consent)::after,
-.field:has(:required) > .field-label::after,
-.field:has(:required) > .consent > span::after { content: " *"; color: var(--danger); font-weight: 700; }
+
 
 /* The one quiet trust line on the identity row, with its little lock. */
 .privacy-note {
@@ -1063,3 +1061,4 @@
     transition-duration: .01ms !important; animation-duration: .01ms !important;
   }
 }
+.app-steps li[hidden] { display:none !important; }

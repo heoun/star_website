@@ -14,7 +14,7 @@ export function openNewProperty({fields, api, escapeHtml: esc, onSaved, setStatu
   const creationToken = crypto.randomUUID();
   let submittedPayload = null;
   const fieldById = new Map(fields.map(field=>[field.id,field]));
-  dialog.innerHTML = `<header class="import-head"><div><span class="k">Properties & settings</span><h2 id="import-title">New property</h2><p>Start from a lease or enter the property details yourself.</p></div><button type="button" data-import-close aria-label="Close lease import">Close</button></header>
+  dialog.innerHTML = `<header class="import-head"><div><span class="k">Properties & Settings</span><h2 id="import-title">New property</h2><p>Start from a lease or enter the property details yourself.</p></div><button type="button" data-import-close aria-label="Close lease import">Close</button></header>
     <div class="import-body"><ol class="import-progress"><li aria-current="step">1. Choose lease</li><li>2. Review fields</li><li>3. Create property</li></ol>
     <section class="import-upload"><label for="lease-import-file"><b>Choose a previous lease</b><span>PDF or DOCX · Up to 20 MB</span></label><input id="lease-import-file" type="file" accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"><p>Reads text locally in your browser. Scanned pages need an OCR text copy. Review everything before creating the property.</p><button type="button" data-import-manual>Enter manually</button></section>
     <p class="import-message" role="status" aria-live="polite"></p><div class="import-review"></div></div>
@@ -47,7 +47,7 @@ export function openNewProperty({fields, api, escapeHtml: esc, onSaved, setStatu
   };
   const rowMarkup = field => {
     const row=rows.get(field.id), hasOld=isAnswered(field,baseline[field.id]), detected=row.detected;
-    return `<tr data-import-row="${esc(field.id)}"><td><input type="checkbox" data-import-select="${esc(field.id)}" aria-label="Import ${esc(field.label)}"${row.selected?' checked':''}></td><th scope="row"><label for="import-value-${esc(field.id)}">${esc(field.label)}</label>${row.conflict?'<span class="import-flag">Conflicting values</span>':detected && hasOld && row.value!==baseline[field.id]?'<span class="import-flag">Replaces existing value</span>':detected?'<span class="import-detected">Detected</span>':'<span class="import-muted">Not found · Enter manually</span>'}</th><td>${control(field,row.value)}<div class="import-source">${detected?`<details><summary>View source${row.conflict?' & alternatives':''}</summary><p>${esc(row.evidence)}</p><small>${esc(row.location)}</small>${row.alternatives.map(item=>`<p><b>Also found: ${esc(formatSettingValue(field,item.value))}</b><br>${esc(item.evidence)}</p>`).join('')}</details>`:'No matching value found in this lease.'}</div></td></tr>`;
+    return `<tr data-import-row="${esc(field.id)}"><td><input type="checkbox" data-import-select="${esc(field.id)}" aria-label="Import ${esc(field.label)}"${row.selected?' checked':''}></td><th scope="row"><label for="import-value-${esc(field.id)}">${esc(field.label)}${field.required?'<span class="required-mark" aria-hidden="true"></span>':''}</label>${row.conflict?'<span class="import-flag">Conflicting values</span>':detected && hasOld && row.value!==baseline[field.id]?'<span class="import-flag">Replaces existing value</span>':detected?'<span class="import-detected">Detected</span>':'<span class="import-muted">Not found · Enter manually</span>'}</th><td>${control(field,row.value)}<div class="import-source">${detected?`<details><summary>View source${row.conflict?' & alternatives':''}</summary><p>${esc(row.evidence)}</p><small>${esc(row.location)}</small>${row.alternatives.map(item=>`<p><b>Also found: ${esc(formatSettingValue(field,item.value))}</b><br>${esc(item.evidence)}</p>`).join('')}</details>`:'No matching value found in this lease.'}</div></td></tr>`;
   };
   const table = own => `<div class="import-table-wrap"><table class="import-table"><thead><tr><th><span class="sr-only">Import</span></th><th>Property setting</th><th>Value to save · Editable</th></tr></thead><tbody>${own.map(rowMarkup).join('')}</tbody></table></div>`;
   const propertyForm = address => {
@@ -61,7 +61,7 @@ export function openNewProperty({fields, api, escapeHtml: esc, onSaved, setStatu
       ${input('city','City',parts.length>=3?parts[1]:'', 'required')}
       ${input('state_abbr','State',abbr, 'required pattern="[A-Za-z]{2}"')}
       ${input('zip','ZIP code',region?.[2] || '', 'required pattern="[0-9]{5}(-[0-9]{4})?"')}
-      ${input('landlord_signer_email','Landlord signature email (optional)','', 'type="email"')}
+      ${input('landlord_signer_email','Landlord signature email','', 'type="email" required')}
       </div></form></section>`;
   };
   const prepareRows = () => {
@@ -77,6 +77,7 @@ export function openNewProperty({fields, api, escapeHtml: esc, onSaved, setStatu
     dialog.querySelector('.import-progress').innerHTML='<li>1. Choose lease ✓</li><li aria-current="step">2. Review fields</li><li>3. Create property</li>';
     dialog.querySelector('.import-review').innerHTML=`<div class="import-summary"><div><h3>${detected} of ${fields.length} settings detected</h3><p>${esc(fileName)}</p></div><div class="import-file-actions"><button type="button" data-import-change>Change lease</button><button type="button" data-import-select-detected>Select detected fields</button></div></div>
       ${propertyForm(draft.sourceAddress)}
+      <section class="import-document"><button type="button" data-draft-document>Fill these in on the document</button><p>Complete property defaults on the lease template. Your changes stay in this new property draft until you create it.</p><div data-draft-document-host hidden></div></section>
       ${draft.warnings.length?`<ul class="import-warnings">${draft.warnings.map(w=>`<li>${esc(w)}</li>`).join('')}</ul>`:''}
       <details class="import-scope"><summary>What will be saved?</summary><p>Selected values become this property's shared lease defaults. Reconfirm dated disclosures before reusing them.</p></details>
       ${groups.filter(group=>group.fields.some(field=>rows.get(field.id).detected)).map(group=>`<section class="import-group"><h3>${esc(group.label)}</h3>${table(group.fields.filter(field=>rows.get(field.id).detected))}</section>`).join('')}
@@ -110,7 +111,25 @@ export function openNewProperty({fields, api, escapeHtml: esc, onSaved, setStatu
   dialog.addEventListener('input',event=>{
     if(event.target.matches('input[data-import-value],textarea[data-import-value]')) rows.get(event.target.dataset.importValue).value=event.target.value;
   });
+  const frameValues=()=>Object.fromEntries([...rows.values()].filter(r=>r.selected).map(r=>[r.id,r.value]));
+  const syncDocument=()=>dialog.querySelector('iframe')?.contentWindow?.postMessage({type:'property-draft-values',values:frameValues()},location.origin);
+  const onDocumentMessage=event=>{
+    const frame=dialog.querySelector('iframe');if(event.origin!==location.origin || event.source!==frame?.contentWindow)return;
+    if(event.data?.type==='property-draft-ready')frame.contentWindow.postMessage({type:'property-draft-init',fields,values:frameValues()},location.origin);
+    if(event.data?.type==='property-draft-change' && !busy && !submittedPayload){
+      const row=rows.get(event.data.id);if(!row)return;row.value=event.data.value;row.selected=true;
+      const control=dialog.querySelector(`[data-import-value="${CSS.escape(row.id)}"]`);if(control)control.value=String(row.value);
+      dialog.querySelector(`[data-import-select="${CSS.escape(row.id)}"]`).checked=true;refreshCount();syncDocument();
+    }
+  };
+  window.addEventListener('message',onDocumentMessage);
+  dialog.addEventListener('close',()=>window.removeEventListener('message',onDocumentMessage),{once:true});
+  dialog.addEventListener('input',syncDocument);dialog.addEventListener('change',syncDocument);
   dialog.addEventListener('click',async event=>{
+    if(event.target.closest('[data-draft-document]')){
+      const host=dialog.querySelector('[data-draft-document-host]');host.hidden=!host.hidden;
+      if(!host.querySelector('iframe'))host.innerHTML='<iframe title="New property lease defaults" src="./property-draft-document.html"></iframe>';
+    }
     if(event.target.closest('[data-import-manual]') && !busy) {
       draft={candidates:[],warnings:[],sourceAddress:''}; fileName='Manual entry'; prepareRows(); renderReview(); message('Enter the property details. Add default settings now or after creation.');
     }
