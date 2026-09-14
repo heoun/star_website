@@ -75,8 +75,8 @@ try {
 
   // Agent A: only assigned cases, with the complete synthetic uploads.
   await signIn("agent-a");
-  check(await page.getByRole("heading", { name: "My Tasks" }).isVisible(), "The agent's home is My Tasks");
-  await page.locator("#route-overview .cw-rows").waitFor();
+  check(await page.getByRole("heading", { name: "My Rentals" }).isVisible(), "The agent's home is My Rentals");
+  await page.locator("#route-cases .cw-rows").waitFor();
   await page.getByRole("button", { name: /^All Rentals/ }).click();
   check(await page.locator(".cw-row").count() === 2, "Agent A sees two assigned cases");
 
@@ -102,11 +102,11 @@ try {
   check(await nextStep() === "Waiting for the Landlord", "A sent recommendation waits on the landlord");
   check((await page.locator("a.desk-button", { hasText: "Email the Landlord" }).first().getAttribute("href")).startsWith("mailto:owner@example.test?"), "The landlord reminder is drafted");
   await page.goto(`${base}/__demo/inbox`);
-  check(await page.getByText("Rental recommendation for Parkside Residences, Unit 2A").count() >= 1, "The landlord's email is in the demo inbox");
+  check(await page.getByText("Rental recommendation for Property A, Unit 2A").count() >= 1, "The landlord's email is in the demo inbox");
 
   // Landlord: the recommendation and nothing from the application.
   await signIn("landlord");
-  await page.locator("#route-overview .cw-rows").waitFor();
+  await page.locator("#route-cases .cw-rows").waitFor();
   check(await page.locator(".cw-row").count() === 2, "Only shared recommendations reach the landlord");
   check(await page.locator(".cw-row", { hasText: "a month" }).count() === 2, "Each row states the rent on offer");
   // A counter-offer on the other recommendation: figures, not just a comment.
@@ -127,7 +127,7 @@ try {
   await submit("landlord_accept");
   check(await page.getByText("agreed to these terms").count() === 1, "The landlord's decision is shown back");
   await page.reload(); await page.getByText("agreed to these terms").waitFor(); checks++;
-  await page.getByRole("link", { name: "My properties", exact: true }).click();
+  await page.getByRole("link", { name: "My Properties", exact: true }).click();
   check(!await page.locator("#dropzone").isVisible(), "No landlord marketing import");
 
   // Agent: the final lease, the signatures, the archive.
@@ -143,7 +143,7 @@ try {
   const bytes = await readFile(await download.path());
   check(bytes.subarray(0, 2).toString() === "PK" && bytes.length > 10000, "and is a real document");
   await page.locator(".cw-next-panel h2", { hasText: "Send the Lease for Tenant Signatures" }).waitFor(); checks++;
-  check((await page.locator("a.desk-button", { hasText: "Email the Tenant" }).first().getAttribute("href")).startsWith("mailto:casey.morgan@example.test?"), "The lease email to the tenant is drafted");
+  check((await page.locator("a.desk-button", { hasText: "Email the Tenant" }).first().getAttribute("href")).startsWith("mailto:applicant-a@example.test?"), "The lease email to the tenant is drafted");
   await submit("record_tenant_signature", { reason: "Signing receipt SIGN-001 confirms all tenants." });
   check(await nextStep() === "Get the Landlord's Signature", "Tenants sign before the landlord");
   await signIn("landlord"); await openCase(ids.a);
@@ -160,7 +160,7 @@ try {
 
   // The landlord gets the signed PDF; the other agent still gets nothing.
   await signIn("landlord");
-  await page.getByRole("link", { name: "Lease documents", exact: true }).click();
+  await page.getByRole("link", { name: "Lease Documents", exact: true }).click();
   await page.locator(".cw-row-file").waitFor(); checks++;
   await signIn("agent-b");
   await page.goto(`${base}/admin/#/applications/${ids.a}`);

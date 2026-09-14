@@ -1,3 +1,4 @@
+import { screeningFields } from './screening-fields.js';
 import { PIPELINE, selectQueueCases } from "./case-queue-state.js";
 import { groupedQueue, rentalGroupMarkup, bindRentalGroup } from "./rental-group.js";
 // The case workspace, from the agent's chair.
@@ -183,7 +184,7 @@ export async function renderCaseQueue(host, { api, session, overview = false, fi
   host.onchange = host.oninput = host.onkeydown = host.onsubmit = null;
   const landlord = session.role === "landlord", manager = session.role === "manager";
   const title = files ? "Lease Documents"
-    : overview ? (landlord ? "Your Next Decision" : manager ? "What Needs Attention" : "My Tasks")
+    : overview ? (landlord ? "Your Next Decision" : manager ? "What Needs Attention" : "My Rentals")
       : manager ? "All Rentals" : "My Rentals";
   const note = files ? "Completed leases shared with your account."
     : landlord ? "Review the team's rental recommendation and confirm the terms."
@@ -287,7 +288,7 @@ function renderStaffQueue(host, { cases, types, session, overview, title, note, 
     </section>
     <div class="cw-results"><p data-queue-result role="status"></p><button type="button" data-clear-filters>Clear filters</button></div>
     <article class="panel cw-queue-table">
-      <div class="cw-table-head" aria-hidden="true"><span>Property</span><span>Unit</span><span>Applications</span><span>Needs attention</span></div>
+      <div class="cw-table-head rg-queue-head" aria-hidden="true"><span>Property</span><span>Unit</span><span>Applications</span><span>Needs attention</span></div>
       <div class="cw-rows"></div>
     </article>`;
   host.querySelector('[data-queue-person]').value = view.person;
@@ -326,13 +327,22 @@ function staffQueueRow(row,types,session) {
   const when=age(step.since || row.updated_at || row.created_at);
   const flag=rowFlags(row,row.application_documents ? documentSummary(row,types) : null,false)[0];
   const responsible=row.responsible_email || "Unassigned";
-  const involvement=manager ? responsible : responsible === session.email ? "Responsible" : "Collaborator";
-  return `<a class="cw-row cw-staff-row" href="#/applications/${esc(row.id)}">
-    <span class="cw-who"><span class="desk-initial">${esc((row.name || "A").slice(0,1))}</span><span class="cw-who-text"><b>${esc(row.household ? row.household.members.map(m=>m.name).join(" & ") : row.name || "Application")}</b><small>${esc(home(row))}</small>${stagePill(row.status)}</span></span>
-    <span class="cw-next"><b>${esc(step.label || "Open rental")}</b>${flag ? `<small class="cw-flags">${esc(flag)}</small>` : ""}</span>
-    <span class="cw-responsible"><small class="cw-mobile-label">${manager ? "Responsible" : "Your involvement"}</small><b>${esc(involvement)}</b>${manager && !row.responsible_email && !closed ? '<small class="cw-flags">Assign a team member →</small>' : ""}</span>
-    <span class="cw-age ${closed ? "" : when.tone}"><b>${esc(closed ? "—" : when.text)}</b><small>${closed ? "Closed" : "in this step"}</small></span>
-  </a>`;
+  const members=row.household?.members || [{name:row.name || "Application"}];
+  const pending=row.household?.invitations.filter(i=>!i.accepted).length || 0;
+  let progress=step.label || "Open Rental", detail=flag || "";
+  if(step.label === "Complete the Application Group" && flag) {
+    const waiting=/^(.+): waiting for application\.?$/i.exec(flag);
+    const credit=/^(.+): Credit report pending\.?$/i.exec(flag);
+    if(waiting){progress="Awaiting Application";detail=waiting[1];}
+    else if(credit){progress="Credit Report Pending";detail=credit[1];}
+    else {progress=flag;detail="";}
+  }
+  return `<tr class="rg-group-row">
+    <td data-label="Application Group"><a class="rg-group-link" href="#/applications/${esc(row.id)}">${esc(members.map(m=>m.name).join(" & "))}</a><small>${members.length} submitted${pending ? ` · ${pending} awaiting submission` : ""}</small></td>
+    <td data-label="Current Progress"><b class="${step.bucket==='attention'?'rg-action-needed':''}">${esc(progress)}</b>${detail ? `<small>${esc(detail)}</small>` : ""}</td>
+    <td data-label="Responsible Agent"><span>${esc(responsible)}</span>${!manager ? `<small>${responsible === session.email ? "You are responsible" : "You are a collaborator"}</small>` : ""}</td>
+    <td data-label="Time in Stage"><span>${esc(closed ? "Closed" : when.text || "—")}</span></td>
+  </tr>`;
 }
 
 function queueRow(row, types, viewer) {
@@ -421,7 +431,7 @@ export async function renderCaseDetail(host, { api, session, id }) {
       ${sections.map(([key,label,body],index) => `<section class="cw-detail-section" role="tabpanel" id="cw-section-${key}" aria-labelledby="cw-tab-${key}" ${key === activeSection ? "" : "hidden"}>${body}</section>`).join("")}`;
     bindCase(host, ctx, () => renderCaseDetail(host, { api, session, id }));
   } catch (error) {
-    if (current()) host.innerHTML = `<a class="link" href="#/overview">← My workspace</a><p role="alert" class="status">${esc(error.message)}</p>`;
+    if (current()) host.innerHTML = `<a class="link" href="#/overview">← My Workspace</a><p role="alert" class="status">${esc(error.message)}</p>`;
   }
 }
 
@@ -633,21 +643,28 @@ function prepareLease({ row, readiness, allowed }) {
 }
 
 function checksFields(w) {
+  const completed = w.screening_result?.status === "complete";
+  const paid = ["paid", "waived"].includes(w.checks?.fee);
   const option = (value, text, selected) => `<option value="${value}"${selected ? " selected" : ""}>${text}</option>`;
   return `
     <div class="cw-form-grid">
-      <label>Application Fee<select name="fee">${option("pending", "Not verified", !w.checks || w.checks.fee === "pending")}${option("paid", "Payment verified", w.checks?.fee === "paid")}${option("waived", "Waiver verified", w.checks?.fee === "waived")}</select></label>
-      <label>Credit Check<select name="screening">${option("pending", "Report pending", w.checks?.screening !== "received")}${option("received", "Report received and reviewed", w.checks?.screening === "received")}</select></label>
+      <label>Application Fee<select name="fee"><option value="pending" ${!paid ? "selected" : ""} ${completed ? "disabled" : ""}>Payment pending</option>${option("paid", "Payment verified", w.checks?.fee === "paid")}${option("waived", "Waiver verified", w.checks?.fee === "waived")}</select></label>
+      <label>Credit Check<select name="screening">${option("pending", "Report pending", w.checks?.screening !== "received")}<option value="received" ${w.checks?.screening === "received" ? "selected" : ""} ${!paid ? "disabled" : ""}>Report received and reviewed</option></select></label>
       <label>Supporting Documents<select name="documents">${option("pending", "Not yet verified", w.checks?.documents !== "verified")}${option("verified", "Reviewed and verified", w.checks?.documents === "verified")}</select></label>
-      <label>Credit Score<input name="credit_score" type="number" min="300" max="850" step="1" value="${esc(w.checks?.credit_score ?? "")}" placeholder="From the report, if any"></label>
+
     </div>
-    ${reasonField("Provider Reference and Note", w.checks?.reference || "", { rows: 2 })}`;
+    ${screeningFields(w)}${reasonField("Payment / verification note", w.checks?.reference || "", { rows: 2 })}`;
 }
 const checksForm = (w, label = "Save Verification") => actionForm("checks", checksFields(w), label);
 const approveForm = (label = "Approve Application") => actionForm("approve", "<p>Payment, the screening report and the documents are verified. Approving prepares the landlord recommendation.</p>", label);
 function assignForm(row, people) {
-  return actionForm("assign", `<label>Responsible Team Member<select name="responsible_email"><option value="">Unassigned</option>${people.team.map(p => `<option value="${esc(p.email)}" ${p.email === row.responsible_email ? "selected" : ""}>${esc(p.name || p.email)}</option>`).join("")}</select></label>
-    <fieldset><legend>Collaborators</legend>${people.team.map(p => `<label class="desk-check"><input type="checkbox" name="collaborator_emails" value="${esc(p.email)}" ${(row.collaborator_emails || []).includes(p.email) ? "checked" : ""}>${esc(p.name || p.email)}</label>`).join("")}</fieldset>`, "Save Assignment");
+  const collaborators = [["agent", "Agent"], ["manager", "Admin"]].map(([role, title]) => {
+    const members = people.team.filter(person => person.role === role);
+    if (!members.length) return "";
+    return `<div class="cw-collaborator-group" role="group" aria-label="${title}"><h4>${title}</h4>${members.map(p => `<label class="desk-check"><input type="checkbox" name="collaborator_emails" value="${esc(p.email)}" ${(row.collaborator_emails || []).includes(p.email) ? "checked" : ""}><span class="desk-check-caption">${esc(p.name || p.email)}</span></label>`).join("")}</div>`;
+  }).join("");
+  return actionForm("assign", `<label>Responsible Agent<select name="responsible_email"><option value="">Unassigned</option>${people.team.filter(p => p.role === "agent").map(p => `<option value="${esc(p.email)}" ${p.email === row.responsible_email ? "selected" : ""}>${esc(p.name || p.email)}</option>`).join("")}</select></label>
+    <fieldset><legend>Collaborators</legend>${collaborators}</fieldset>`, "Save Assignment");
 }
 function termsFields({ terms, row }, fields = TERM_IDS) {
   const field = key => key === "concession.terms"
@@ -850,7 +867,7 @@ function renderLandlordCase(host, { api, session, id, row }) {
     ["Rent Due Day", terms["rent.due_day"] ? `Day ${terms["rent.due_day"]}` : ""]
   ].map(([label, value]) => `<div class="stat"><span class="k">${esc(label)}</span><b>${value ? esc(value) : '<span class="soft">Not set</span>'}</b></div>`).join("")}</section>`;
 
-  host.innerHTML = `<a class="link" href="#/overview">← My workspace</a>
+  host.innerHTML = `<a class="link" href="#/overview">← My Workspace</a>
     ${heading(session.role, row.name || "Rental", home(row))}
     ${landlordStepper(row)}
     ${strip}

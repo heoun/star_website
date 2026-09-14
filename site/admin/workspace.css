@@ -98,8 +98,13 @@ body:not([data-role="manager"]):not([data-role="agent"]) [data-staff-only] { dis
 .desk-form textarea { resize: vertical; }
 .desk-form > p { margin: 0; font-size: 12px; }
 .desk-form fieldset { border: 1px solid var(--line); border-radius: 7px; padding: 14px; max-height: 270px; overflow: auto; }
-.desk-form .desk-check { display: flex; align-items: center; gap: 10px; margin: 10px 0; }
-.desk-check input { width: 16px; height: 16px; }
+/* Shared choice rows work in both account forms and rental assignment forms. */
+.desk-form .desk-check,.cw-form .desk-check { display:grid;grid-template-columns:16px minmax(0,1fr);align-items:center;gap:10px;min-height:32px;margin:4px 0;cursor:pointer; }
+.desk-form .desk-check input[type=checkbox],.cw-form .desk-check input[type=checkbox] { width:16px;height:16px;min-width:16px;margin:0;padding:0;justify-self:start;accent-color:var(--brand,#205570); }
+.desk-check-caption { min-width:0;line-height:1.5;overflow-wrap:anywhere; }
+.cw-collaborator-group h4 { margin:0 0 8px;font-size:12px;font-weight:700;color:var(--muted,#657987); }
+.cw-collaborator-group + .cw-collaborator-group { margin-top:16px;padding-top:16px;border-top:1px solid var(--border,#dce5eb); }
+
 .desk-request { padding: 22px 24px; border-bottom: 1px solid var(--line); }
 .desk-request-head { display: flex; justify-content: space-between; align-items: start; gap: 12px; }
 .desk-request > small { display: block; color: #74818c; margin-top: 7px; }

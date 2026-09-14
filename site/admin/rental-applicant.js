@@ -1,5 +1,6 @@
 // Full applicant record for the two-column rental workspace. All corrections
 // use the existing application endpoint and its role and audit rules.
+import {hasMockReport} from './mock-screening-report.js';
 export const escape = v => String(v ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 const e = escape;
 const value = v => v === true ? 'Yes' : v === false ? 'No' : v === null || v === undefined || v === '' ? 'Not provided' : String(v);
@@ -20,7 +21,7 @@ export function correctionFields(m,key) {
  if(key==='employment' && m.employment_status!=='student') return [d('income_note','Annual income',m.income_note),...['employer','position','start','supervisor_name','supervisor_phone','supervisor_email'].map(k=>d(`current_employer.${k}`,k.replaceAll('_',' '),m.current_employer?.[k]))];
  return [];
 }
-export function applicantColumns(m,ctx,checks,summary,money) {
+export function applicantColumns(m,ctx,summary,money) {
  const canCorrect=!['sent_to_landlord','landlord_approved','lease_sent','lease_signed','declined'].includes(ctx.row.status);
  const summaries={
   tenant:[m.name,m.email].filter(Boolean).join(' · '),
@@ -49,11 +50,15 @@ export function applicantColumns(m,ctx,checks,summary,money) {
  const docs=ctx.documentSummary(m,ctx.types);
  summaries.documents=docs?`${docs.requiredMet} of ${docs.required} requirements received${docs.missing?` · ${docs.missing} outstanding`:''}`:'Checklist unavailable';
  const documents=docs?`<p class="cw-note">${m.employment_status==='student'?'Studying':'Working'} · ${docs.requiredMet} of ${docs.required} requirements received</p><div class="rg-documents">${docs.rows.map(({type,files,state})=>`<div class="rg-document"><div><b>${e(type.label)}</b><span class="pill is-${['received','covered'].includes(state)?'good':state==='optional'?'off':'warn'}">${e(({received:'Received',covered:'Alternative received',optional:'Optional',missing:'Missing',partial:`${files.length} / ${type.required} received`})[state])}</span></div>${files.length?files.map(f=>`<a href="/api/admin/documents/${e(f.id)}" target="_blank" rel="noopener">${e(f.file_name)}</a>`).join(''):''}${type.either?'<small>One of the alternatives in this requirement is sufficient.</small>':''}</div>`).join('')}</div>`:empty('Document checklist unavailable.');
- const screening=`<div class="rg-screening-summary"><div class="rg-key-data">${fact('Credit score',summary.credit_score ?? 'Pending / no score')}${fact('Annual income',money(m.income_note))}</div><p class="cw-note">${e(summary.income_source)} · ${e(summary.report_status)} report<br>${e(summary.score_model)}${summary.report_date?` · ${e(summary.report_date.slice(0,10))}`:''}</p>${checks}</div>`
- +section('identity','Applicant details',facts([['Date of birth',m.dob],[m.id_type==='passport'?'Passport number':'Social Security number',m.ssn_last4?`•••• ${m.ssn_last4}`:'Not provided']]))
+ const reportLink=m.workspace?.screening_result?.report_url?.startsWith('https://') && summary.report_status!=='Pending'
+  ? `<a class="rg-report-link" href="${e(m.workspace.screening_result.report_url)}" target="_blank" rel="noopener noreferrer">View Report ↗</a>`
+  : hasMockReport(m) ? `<button type="button" class="rg-report-link" data-view-mock-report="${e(m.id)}">View Report ↗</button>`
+  : '<button type="button" class="rg-report-link" disabled title="Report not available yet">View Report ↗</button>';
+ const overview=`<div class="rg-applicant-summary" aria-label="${e(m.name)} summary"><div class="rg-key-data">${fact('Credit Score',summary.credit_score ?? (summary.report_status==='Needs review'?'Needs review':'Awaiting report'))}${fact('Annual Income',money(m.income_note))}</div>${reportLink}</div>`;
+ const screening=section('identity','Applicant details',facts([['Date of birth',m.dob],[m.id_type==='passport'?'Passport number':'Social Security number',m.ssn_last4?`•••• ${m.ssn_last4}`:'Not provided']]))
  +section('employment','Employment and income',employmentBody)
  +section('history','Rental history',sub("Tenant’s current address",rental(current || {address:m.current_address}))+sub("Tenant’s previous address",previous.length?previous.map(rental).join(''):empty('No previous address history provided.')))
  +section('documents','Documents',documents)
  +section('contacts','References and contacts',sub(`References · ${(m.reference_contacts || []).length} / 2 minimum`,(m.reference_contacts || []).length?m.reference_contacts.map((x,i)=>sub(`Reference ${i+1}`,contact(x))).join(''):empty('References not provided.'))+sub(`Emergency contacts · ${(m.emergency_contacts || []).length} / 1 minimum`,(m.emergency_contacts || []).length?m.emergency_contacts.map(contact).join(''):empty('Emergency contact not provided.')));
- return {lease,screening};
+ return {lease,screening,overview};
 }

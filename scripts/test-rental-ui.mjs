@@ -24,12 +24,29 @@ const out='/tmp/star-rental-ui';await mkdir(out,{recursive:true});let checks=0;c
 const login=async email=>{await page.goto(`${base}/login/`);await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/admin/**');};
 try{
  await login('admin@example.test');await page.goto(`${base}/admin/#/applications`);await page.locator('.rg-unit').first().waitFor();
- eq(await page.locator('.rg-unit[open]').count(),0);await page.locator('.rg-unit').filter({hasText:'Riverside'}).locator('summary').click();await page.getByRole('link',{name:/Robin Chen/}).click();
+ for(const width of [1600,1280]){
+  await page.setViewportSize({width,height:1080});
+  const aligned=await page.evaluate(()=>{const h=[...document.querySelectorAll('.rg-queue-head>span')].map(n=>n.getBoundingClientRect().x);return [...document.querySelectorAll('.rg-unit>summary')].every(row=>[...row.children].every((n,i)=>Math.abs(n.getBoundingClientRect().x-h[i])<1));});eq(aligned,true);
+ }
+ await page.setViewportSize({width:1600,height:1080});await page.screenshot({path:`${out}/aligned-rental-queue.png`,fullPage:true});
+ await page.goto(`${base}/admin/#/applications/${ids.a}`);await page.getByRole('heading',{name:'Application & Screening',exact:true}).waitFor();
+ await page.locator('.rg-key-data').getByText('Awaiting report',{exact:true}).waitFor();checks++;
+ eq(await page.locator('[data-report-evidence], select[name=fee], select[name=screening]').count(),0);
+ eq(await page.getByText('Record external report / payment',{exact:true}).count(),0);
+ const flow=rentalWorkflow(env,new Request(base));await flow.reconcile(ids.b);
+ await page.goto(`${base}/admin/#/applications`);await page.locator('.rg-unit').first().waitFor();
+ eq(await page.locator('.rg-unit[open]').count(),0);await page.locator('.rg-unit').filter({hasText:'Property B'}).locator('summary').click();await page.getByRole('link',{name:/Applicant B/}).click();
  await page.getByRole('heading',{name:'Lease Details',exact:true}).first().waitFor();eq(await page.getByRole('heading',{name:'Application & Screening',exact:true}).count(),1);eq(await page.getByText('Recommend to landlord',{exact:true}).count(),0);
- await page.getByRole('button',{name:/Morgan Example/}).click();eq(await page.locator('[data-person-panel]:visible').getByText('85000',{exact:true}).count(),0);await page.locator('[data-person-panel]:visible .rg-key-data').getByText('$85,000',{exact:true}).waitFor();checks++;
+ await page.getByRole('button',{name:/Applicant E/}).click();eq(await page.locator('[data-person-panel]:visible').getByText('85000',{exact:true}).count(),0);await page.locator('[data-person-panel]:visible .rg-key-data').getByText('$85,000',{exact:true}).waitFor();checks++;
  const person=page.locator('[data-person-panel]:visible');
+ eq(await person.locator('.rg-summary-name').count(),0);
+ await person.getByRole('button',{name:'View Report ↗',exact:true}).click();
+ await page.getByRole('dialog',{name:'Credit Report',exact:true}).getByText('Applicant E',{exact:true}).waitFor();checks++;
+ await page.getByRole('button',{name:'Close Report',exact:true}).click();
+ eq(await person.locator('.rg-pair .rg-applicant-summary').count(),0);
+ for(const panel of await person.locator('.rg-pair>.panel').all()) eq(await panel.locator('[data-record-section]').count(),5);
  eq(await page.locator('[data-person][aria-pressed=true]').getAttribute('data-person'),await person.getAttribute('data-person-panel'));
- eq(await page.getByRole('button',{name:/Morgan Example/}).getAttribute('aria-pressed'),'true');
+ eq(await page.getByRole('button',{name:/Applicant E/}).getAttribute('aria-pressed'),'true');
  eq(await person.locator('.rg-pair > .panel').count(),2);
  const boxes=await person.locator('.rg-pair > .panel').evaluateAll(nodes=>nodes.map(n=>({x:n.getBoundingClientRect().x,y:n.getBoundingClientRect().y})));
  eq(boxes[0].y,boxes[1].y);eq(boxes[1].x>boxes[0].x,true);
@@ -48,9 +65,9 @@ try{
  await page.getByRole('button',{name:'Collapse all sections',exact:true}).click();
  eq(await person.locator('[data-record-section][open]').count(),0);
  await page.setViewportSize({width:390,height:844});eq(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:`${out}/application-mobile.png`,fullPage:true});await page.setViewportSize({width:1600,height:1080});
- const flow=rentalWorkflow(env,new Request(base));await flow.reconcile(ids.b);eq(fixture.state.emails.length,1);
+ await flow.reconcile(ids.b);eq(fixture.state.emails.length,1);
  const email=fixture.state.emails[0],link=/Agree to proceed: (\S+)/.exec(email.text)[1],landlord=fixture.state.applications.find(a=>a.id===ids.b).workspace.recommendation.landlord_email;
- await page.locator('[data-sign-out]').first().click();await page.goto(link);await page.getByRole('link',{name:'Sign in to continue'}).click();await page.getByLabel('Email address').fill(landlord);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/landlord-decision/**');await page.getByRole('button',{name:'Agree to proceed',exact:true}).waitFor();
+ await page.locator('[data-sign-out]').first().click();await page.waitForURL('**/login/');await page.getByLabel('Email address').waitFor();await page.goto(link);await page.getByRole('link',{name:'Sign in to continue'}).click();await page.getByLabel('Email address').fill(landlord);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/landlord-decision/**');await page.getByRole('button',{name:'Agree to proceed',exact:true}).waitFor();
  eq(fixture.state.applications.find(a=>a.id===ids.b).status,'sent_to_landlord');
  await page.reload();await page.getByRole('button',{name:'Agree to proceed',exact:true}).waitFor();eq(fixture.state.applications.find(a=>a.id===ids.b).status,'sent_to_landlord');
  await page.screenshot({path:`${out}/landlord-email-confirmation.png`,fullPage:true});
@@ -71,8 +88,21 @@ try{
  await page.getByRole('tab',{name:'Activity',exact:true}).click();await page.getByRole('tab',{name:'Applicants',exact:true}).click();eq(await edit.getByLabel('Phone',{exact:true}).inputValue(),'212-555-0199');
  await edit.getByRole('button',{name:'Save changes',exact:true}).click();
  await page.locator('[data-person-panel]:visible .rg-fact').getByText('212-555-0199',{exact:true}).waitFor();eq(fixture.state.applications.find(a=>a.id===editable.id).phone,'212-555-0199');
- await login('agent-a@example.test');await page.goto(`${base}/admin/#/applications/${ids.a}`);
+ await login('agent-a@example.test');
+ await page.waitForURL('**/admin/#/applications');
+ await page.getByRole('heading',{name:'My Rentals',exact:true}).waitFor();
+ eq(await page.locator('.nav [data-route="overview"]').isVisible(),false);
+ eq(await page.locator('.nav [data-route="applications"]').getAttribute('aria-current'),'page');
+ eq(await page.locator('.side .brand').getAttribute('href'),'#/applications');
+ await page.getByRole('button',{name:/Needs Attention/}).click();eq(await page.locator('[data-bucket="attention"]').getAttribute('aria-pressed'),'true');
+ await page.getByRole('button',{name:/Waiting on Others/}).click();eq(await page.locator('[data-bucket="waiting"]').getAttribute('aria-pressed'),'true');
+ await page.goto(`${base}/admin/#/overview`);await page.waitForURL('**/admin/#/applications');await page.getByRole('heading',{name:'My Rentals',exact:true}).waitFor();checks++;
+ const casey=fixture.state.applications.find(a=>a.id===ids.a);casey.status='landlord_approved';casey.workspace.landlord_decision={outcome:'accepted',at:'2026-09-09',revision:1};
+ await page.goto(`${base}/admin/#/applications/${ids.a}`);
  await page.getByRole('heading',{name:'Lease Details',exact:true}).waitFor();eq(await page.locator('[data-applicant-correction="tenant"]').count(),0);
+ await page.getByText('Blocked · application evidence incomplete',{exact:true}).waitFor();checks++;
+ await page.getByRole('tab',{name:'Lease & decision',exact:true}).click();eq(await page.getByRole('button',{name:'Download lease draft',exact:true}).count(),0);eq(await page.getByRole('button',{name:'Record this tenant’s signature',exact:true}).count(),0);
+ await page.getByRole('button',{name:'Reopen for review',exact:true}).click();await page.getByText('Collecting applications',{exact:true}).waitFor();eq(casey.status,'review');
  eq(errors,[]);console.log(`PASS ${checks} rental browser checks: grouped queue, per-person panels, mobile layout, email sign-in return, read-only links, landlord confirmation and automatic lease draft`);
 }catch(e){await page.screenshot({path:`${out}/failure.png`,fullPage:true});console.error(await page.locator('main').innerText());throw e;}
 finally{await context.close();await browser.close();await Promise.allSettled(pending);await new Promise(r=>server.close(r));restore();}
