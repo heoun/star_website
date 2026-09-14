@@ -1561,21 +1561,25 @@
 <body>
   <div class="app">
     <aside class="side">
+      <div class="sidebar-head">
       <a class="brand" href="#/overview" aria-label="Star Real Estate dashboard">
         <!-- INLINE_LOGO -->
       </a>
-
-
-      <nav class="nav">
+      <button type="button" id="sidebar-toggle" class="sidebar-toggle" aria-label="Collapse Sidebar" aria-expanded="true" aria-controls="sidebar-navigation">
+        <svg class="sidebar-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m14 6-6 6 6 6"/></svg>
+        <svg class="sidebar-menu-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg><span>Menu</span>
+      </button>
+      </div>
+      <nav class="nav" id="sidebar-navigation" aria-label="Main Navigation">
         <a href="#/overview" data-route="overview"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg><span>Overview</span><abbr title="Overview">OV</abbr></a>
         <a href="#/listings" data-route="listings"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M8 4v16M12 9h5M12 14h5"/></svg><span>Listings</span><abbr title="Listings">LS</abbr></a>
         <a href="#/properties" data-route="properties"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="3" width="16" height="18" rx="2"/><path d="M8 7h1m6 0h1M8 11h1m6 0h1M10 21v-6h4v6"/></svg><span>Properties</span><abbr title="Properties">PR</abbr></a>
         <a href="#/applications" data-route="applications"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 5H5v16h14V5h-3"/><rect x="8" y="3" width="8" height="4" rx="1"/><path d="M8 12h8M8 16h5"/></svg><span>Applications</span><abbr title="Applications">AP</abbr></a>
         <a href="#/leases" data-route="leases"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 3H5v18h14V8zM14 3v5h5M8 12h8M8 16h6"/></svg><span>Leases</span><abbr title="Leases">LE</abbr></a>
-        <a href="#/requests" data-route="requests"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-5 3V6a2 2 0 0 1 2-2z"/><path d="M8 10h8M8 14h5"/></svg><span>Change requests</span><abbr title="Change requests">CR</abbr></a>
-        <a href="#/onboarding" data-route="onboarding" data-manager-only><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8M5 9v11h9M9 20v-7h5M18 14v7M14.5 17.5h7"/></svg><span>Landlord onboarding</span><abbr title="Landlord onboarding">LO</abbr></a>
-        <a href="#/staff" data-route="staff" data-manager-only><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0112 0v2M16 5a3 3 0 010 6M18 14a5 5 0 013 4v2"/></svg><span>Accounts & access</span><abbr title="Accounts & access">AC</abbr></a>
-        <a href="#/permissions" data-route="permissions"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6"/></svg><span>Role permissions</span><abbr title="Role permissions">RP</abbr></a>
+        <a href="#/requests" data-route="requests"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 4h14a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H8l-5 3V6a2 2 0 0 1 2-2z"/><path d="M8 10h8M8 14h5"/></svg><span>Change Requests</span><abbr title="Change Requests">CR</abbr></a>
+        <a href="#/onboarding" data-route="onboarding" data-manager-only><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11l9-8 9 8M5 9v11h9M9 20v-7h5M18 14v7M14.5 17.5h7"/></svg><span>Landlord Onboarding</span><abbr title="Landlord Onboarding">LO</abbr></a>
+        <a href="#/staff" data-route="staff" data-manager-only><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0112 0v2M16 5a3 3 0 010 6M18 14a5 5 0 013 4v2"/></svg><span>Accounts & Access</span><abbr title="Accounts & Access">AC</abbr></a>
+        <a href="#/permissions" data-route="permissions"><svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3l8 3v6c0 5-8 9-8 9s-8-4-8-9V6zM8 12l3 3 5-6"/></svg><span>Role Permissions</span><abbr title="Role Permissions">RP</abbr></a>
       </nav>
 
       <div class="sidebar-account">
@@ -1766,7 +1770,7 @@
               <div><label for="listing-zip">ZIP code</label><input id="listing-zip" readonly></div>
             </div>
           </div>
-          <p class="hint" id="listing-address-hint">To correct this address, update Properties &amp; settings.</p>
+          <p class="hint" id="listing-address-hint">To correct this address, update Properties &amp; Settings.</p>
         </div>
       <div class="grid">
         <div>

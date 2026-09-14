@@ -1,4 +1,5 @@
 import { openNewProperty } from "./property-import.js";
+import "./sidebar.js";
 import { syncListingKind, syncListingProperty } from "./listing-editor.js";
 import { renderAdminDashboard } from "./admin-dashboard.js";
 import { renderOnboarding } from "./onboarding.js";
@@ -558,6 +559,11 @@ async function goto({ name, id }) {
     location.replace("#/staff");
     return;
   }
+  // Agent tasks are a filter of My Rentals, not a second destination.
+  if (session.role === "agent" && name === "overview") {
+    location.replace("#/applications");
+    return;
+  }
   route = name;
   routeId = id;
   setStatus("");
@@ -571,7 +577,7 @@ async function goto({ name, id }) {
     return renderAdminDashboard(ROUTE_HOSTS.overview, { api, session });
   }
   if (name === "onboarding") {
-    showRoute("onboarding", { rows: false }); crumbs([{ label: "Landlord onboarding", href: "#/onboarding" }, ...(id ? [{ label: id === "new" ? "Invite landlord" : "Review submission" }] : [])]);
+    showRoute("onboarding", { rows: false }); crumbs([{ label: "Landlord Onboarding", href: "#/onboarding" }, ...(id ? [{ label: id === "new" ? "Invite landlord" : "Review submission" }] : [])]);
     if (!isManager()) { ROUTE_HOSTS.onboarding.innerHTML = '<p role="alert">Only Admin can manage landlord onboarding.</p>'; return; }
     return renderOnboarding(ROUTE_HOSTS.onboarding, { api, session, id });
   }
@@ -579,7 +585,7 @@ async function goto({ name, id }) {
   if (name === "overview" || name === "applications" || (name === "leases" && session.role === "landlord")) {
     showRoute(name === "overview" ? "overview" : "cases", { rows: false });
     const host = name === "overview" ? ROUTE_HOSTS.overview : ROUTE_HOSTS.cases;
-    crumbs([{ label: name === "overview" ? "My workspace" : name === "leases" ? "Lease documents" : "Rentals", href: "#/applications" }, ...(id ? [{ label: "Rental details" }] : [])]);
+    crumbs([{ label: name === "overview" ? "My Workspace" : name === "leases" ? "Lease Documents" : session.role === "agent" ? "My Rentals" : "Rentals", href: "#/applications" }, ...(id ? [{ label: "Rental Details" }] : [])]);
     if (id) return renderCaseDetail(host, { api, session, id });
     return renderCaseQueue(host, { api, session, overview: name === "overview", files: name === "leases" });
   }
@@ -598,7 +604,7 @@ async function goto({ name, id }) {
   }
 
   if (session.role === "landlord" && name === "properties") {
-    showRoute("properties", { rows: false }); crumbs([{ label: "My properties" }]);
+    showRoute("properties", { rows: false }); crumbs([{ label: "My Properties" }]);
     return renderLandlordProperties(ROUTE_HOSTS.properties, { api, listings, id });
   }
   if (session.role === "landlord" && ["leases", "staff"].includes(name)) {
@@ -610,7 +616,7 @@ async function goto({ name, id }) {
   }
   if (["requests", "staff", "permissions"].includes(name)) {
     showRoute(name, { rows: false });
-    const titles = { overview: "Overview", requests: "Change requests", staff: "Accounts & access", permissions: "Role permissions" };
+    const titles = { overview: "Overview", requests: "Change Requests", staff: "Accounts & Access", permissions: "Role Permissions" };
     crumbs([{ label: titles[name] }]);
     const host = ROUTE_HOSTS[name];
     if (name === "permissions") return renderPermissions(host);
@@ -633,7 +639,7 @@ async function goto({ name, id }) {
     }
     showRoute("listings", { rows: true });
     dropzone.hidden = session.role === "landlord" || (!isManager() && !session.property_ids?.length);
-    ROUTE_HOSTS.listings.querySelector("h1").textContent = session.role === "landlord" ? "My listings" : "Listings";
+    ROUTE_HOSTS.listings.querySelector("h1").textContent = session.role === "landlord" ? "My Listings" : "Listings";
     ROUTE_HOSTS.listings.querySelector(".pagehead p").textContent = session.role === "landlord"
       ? "Your assigned rental properties. Request updates from your leasing team."
       : "Property marketing information. Edit listings within your assigned property access.";
@@ -948,22 +954,22 @@ function showSession() {
   const label = session.owner ? "Platform owner" : { manager: "Admin", agent: "Agent", landlord: "Landlord" }[session.role] || "Account";
   whoRoleEl.textContent = session.name || label;
   document.body.dataset.role = session.role;
-  const navigation = session.owner ? { staff: "Accounts & access" } : session.role === "manager"
-    ? { overview: "Dashboard", applications: "Rentals", onboarding: "Landlord onboarding", properties: "Properties & settings", listings: "Listings", staff: "Accounts & access", requests: "Change requests" }
+  const navigation = session.owner ? { staff: "Accounts & Access" } : session.role === "manager"
+    ? { overview: "Dashboard", applications: "Rentals", onboarding: "Landlord Onboarding", properties: "Properties & Settings", listings: "Listings", staff: "Accounts & Access", requests: "Change Requests" }
     : session.role === "agent"
-      ? { overview: "My tasks", applications: "My rentals", listings: "Listings" }
-      : { overview: "Awaiting my decision", properties: "My properties", leases: "Lease documents" };
+      ? { applications: "My Rentals", listings: "Listings" }
+      : { overview: "Awaiting My Decision", properties: "My Properties", leases: "Lease Documents" };
   document.querySelectorAll('.nav [data-route]').forEach(link => {
     const label = navigation[link.dataset.route]; link.hidden = !label;
-    if (label) { link.querySelector("span").textContent = label; link.setAttribute("aria-label", label); }
+    if (label) { link.querySelector("span").textContent = label; link.setAttribute("aria-label", label); link.title = label; link.querySelector("abbr")?.setAttribute("title", label); }
   });
   const nav = document.querySelector(".nav");
-  document.querySelector('.side .brand').href = session.owner ? "#/staff" : "#/overview";
-  document.querySelector('.side .brand').setAttribute("aria-label", session.owner ? "Star Real Estate access management" : "Star Real Estate dashboard");
+  document.querySelector('.side .brand').href = session.owner ? "#/staff" : session.role === "agent" ? "#/applications" : "#/overview";
+  document.querySelector('.side .brand').setAttribute("aria-label", session.owner ? "Star Real Estate access management" : session.role === "agent" ? "Star Real Estate my rentals" : "Star Real Estate dashboard");
   nav.querySelectorAll('.nav-section').forEach(section => section.remove());
   const groups = session.role === "manager"
     ? {overview:"Workspace", properties:"Portfolio", staff:"Administration"}
-    : {overview:"Workspace"};
+    : session.role === "agent" ? {applications:"Workspace"} : {overview:"Workspace"};
   Object.keys(navigation).forEach(key => {
     if (groups[key]) {
       const section = document.createElement("div");
@@ -1115,7 +1121,7 @@ function showPropertyName(typedName) {
   syncListingProperty(form, property, Boolean(select.value));
   document.getElementById("property-hint").textContent = select.value
     ? (property ? "Building name and address come from this property." : "Property details are unavailable. Close and reopen to retry; the existing link is preserved.")
-    : "For a standalone listing, enter its building name and address. Add managed properties through Properties & settings or landlord onboarding.";
+    : "For a standalone listing, enter its building name and address. Add managed properties through Properties & Settings or landlord onboarding.";
 }
 
 async function resolveBuildingLink() {

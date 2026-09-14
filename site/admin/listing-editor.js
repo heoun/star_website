@@ -33,6 +33,6 @@ export function syncListingProperty(form, property, linked) {
     input.placeholder = property ? "Not set on property" : "Loading property…";
   }
   form.querySelector("#listing-address-hint").textContent = property && !propertyAddress(property)
-    ? "This property has no address yet. Add it in Properties & settings before publishing."
-    : "To correct this address, update Properties & settings.";
+    ? "This property has no address yet. Add it in Properties & Settings before publishing."
+    : "To correct this address, update Properties & Settings.";
 }

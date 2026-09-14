@@ -7,8 +7,7 @@ body:not([data-role="manager"]):not([data-role="agent"]) [data-staff-only] { dis
 .nav a { min-height: 44px; border-radius: 7px; }
 .nav a[aria-current="page"] { background: #29475b; border-left-color: #bbd6cf; }
 .top { background: #fff; }
-.content { max-width: 1680px; width: 100%; margin-inline: auto; }
-.content:has(#route-cases:not([hidden])), .content:has(#route-overview:not([hidden])) { max-width: 1240px; }
+.content { max-width: var(--workspace-content-max,1680px); width: 100%; margin-inline: auto; }
 .case-queue-bar { display:flex; justify-content:space-between; align-items:center; gap:18px; margin:32px 0 18px; flex-wrap:wrap; }
 .case-tabs { display:flex; gap:6px; flex-wrap:wrap; }
 .case-tabs button { border:0; color:#687885; background:transparent; padding:11px 14px; border-radius:8px; }
@@ -287,3 +286,51 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @media (max-width: 640px) {
   .property-key-pair { grid-template-columns: 1fr; gap: 0; }
 }
+
+/* A user-controlled desktop rail, with a separate compact phone menu. */
+.sidebar-head{display:flex;align-items:center;justify-content:space-between;gap:8px;padding-bottom:16px}
+.side .sidebar-head .brand{padding:0 12px;min-width:0}
+.sidebar-toggle{display:flex;align-items:center;justify-content:center;flex-shrink:0;width:32px;height:32px;padding:6px;border:1px solid #496171;border-radius:8px;background:transparent;color:#bbced9;cursor:pointer}
+.sidebar-toggle:hover{background:#29495d;color:#fff}
+.sidebar-toggle:focus-visible{outline:2px solid #bbd6cf;outline-offset:3px}
+.sidebar-toggle svg{width:18px;height:18px;flex-shrink:0}
+.sidebar-toggle .sidebar-menu-icon,.sidebar-toggle span{display:none}
+@media(min-width:701px){
+  html[data-sidebar-collapsed="false"]{--rail:232px}
+  html[data-sidebar-collapsed="false"] .side{padding:20px 14px 14px}
+  html[data-sidebar-collapsed="false"] .side .brand svg{width:76px;height:76px}
+  html[data-sidebar-collapsed="false"] .side .nav a{justify-content:flex-start;padding:10px 12px}
+  html[data-sidebar-collapsed="false"] .side .nav a span{display:inline}
+  html[data-sidebar-collapsed="false"] .nav-section,html[data-sidebar-collapsed="false"] .sidebar-account{display:block}
+  html[data-sidebar-collapsed="false"] .sidebar-account .role{display:grid}
+  html[data-sidebar-collapsed="false"] .sidebar-account .sign-out{display:flex}
+  html[data-sidebar-collapsed="true"]{--rail:72px}
+  html[data-sidebar-collapsed="true"] .side{padding:16px 10px}
+  html[data-sidebar-collapsed="true"] .sidebar-head{flex-direction:column;gap:14px;padding-bottom:20px}
+  html[data-sidebar-collapsed="true"] .side .sidebar-head .brand{padding:0}
+  html[data-sidebar-collapsed="true"] .side .brand svg{width:44px;height:44px}
+  html[data-sidebar-collapsed="true"] .sidebar-chevron{transform:rotate(180deg)}
+  html[data-sidebar-collapsed="true"] .side .nav a{justify-content:center;padding:12px 0}
+  html[data-sidebar-collapsed="true"] .side .nav a span,
+  html[data-sidebar-collapsed="true"] .nav-section,
+  html[data-sidebar-collapsed="true"] .sidebar-account{display:none}
+  .side .nav a abbr{display:none}
+}
+@media(max-width:700px){
+  .sidebar-head{padding:0;min-height:44px}
+  .side .sidebar-head .brand{padding:0 6px}
+  .sidebar-toggle{width:auto;min-height:40px;gap:8px;padding:8px 12px;font-size:12px}
+  .sidebar-toggle .sidebar-chevron{display:none}
+  .sidebar-toggle .sidebar-menu-icon,.sidebar-toggle span{display:block}
+  html:not([data-mobile-nav-open="true"]) .side .nav{display:none}
+  html[data-mobile-nav-open="true"] .side .nav{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));padding-top:12px;overflow:visible}
+  .side .nav a{min-width:0}
+}
+
+/* Give the page the space released by the collapsed rail. */
+@media(min-width:701px){
+  html[data-sidebar-collapsed="true"]{--workspace-content-max:100%}
+  .app{transition:grid-template-columns .22s ease}
+  .content{container-type:inline-size;transition:max-width .22s ease}
+}
+@media(prefers-reduced-motion:reduce){.app,.content{transition:none}}

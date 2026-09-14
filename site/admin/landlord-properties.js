@@ -1,7 +1,7 @@
 import { esc, empty, generation } from "./admin-ui.js";
 export async function renderLandlordProperties(host, { api, listings, id }) {
   const current = generation(host);
-  const heading = '<div class="pagehead"><div><span class="k">Your portfolio</span><h1>My properties</h1><p>Your registered properties and their marketing listings. Contact your leasing team to update property details.</p></div></div>';
+  const heading = '<div class="pagehead"><div><span class="k">Your portfolio</span><h1>My Properties</h1><p>Your registered properties and their marketing listings. Contact your leasing team to update property details.</p></div></div>';
   host.innerHTML = heading + '<p role="status">Loading your properties…</p>';
   try {
     const result = await api(id ? `/buildings/${encodeURIComponent(id)}` : "/buildings");
