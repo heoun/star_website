@@ -8,9 +8,9 @@ import { fetchApplicationsByEmail } from "../../worker/supabase.js";
 let checks = 0;
 const ok = (value, label) => { assert(value, label); checks++; };
 const row = {
-  id: "app-1", name: "Casey Morgan", email: "casey@example.test", status: "needs_info", created_at: "2026-09-09T00:00:00Z",
+  id: "app-1", name: "Applicant A", email: "casey@example.test", status: "needs_info", created_at: "2026-09-09T00:00:00Z",
   move_in: "10/01/2026", lease_term_months: 12, employment_status: "employed",
-  listings: { title: "Parkside 2A", property_name: "Parkside Residences", unit: "2A", location: "100 Example Avenue" },
+  listings: { title: "Parkside 2A", property_name: "Property A", unit: "2A", location: "100 Example Avenue" },
   application_documents: [{ id: "d1", doc_type: "government_id_front", file_name: "id.pdf", size_bytes: 12, created_at: "2026-09-08T00:00:00Z", path: "app-1/id.pdf" }],
   notes: "TEAM-ONLY",
   workspace: { info_request: { message: "Please upload the back of your ID.", at: "2026-09-09T01:00:00Z", by: "agent-a@example.test" },

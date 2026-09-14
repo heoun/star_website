@@ -1,3 +1,4 @@
+import {reportFields} from '../backend/tools/screening-fixtures.mjs';
 import assert from 'node:assert/strict';
 import {handleAdminRequest} from '../worker/admin.js';
 import {createWorkspaceFixtures,ids} from '../backend/tools/workspace-fixtures.mjs';
@@ -13,7 +14,7 @@ fixture.env.LOCAL_EMAIL_SINK={send:async message=>mail.push(message)};
 const actors={admin:['manager','admin@example.test'],a:['agent','agent-a@example.test'],b:['agent','agent-b@example.test'],owner:['landlord','owner@example.test']};
 const row=id=>fixture.state.applications.find(a=>a.id===id);
 const terms={'lease.commencement_date':'2026-10-01','lease.end_date':'2027-09-30','rent.monthly':'3100','deposit.amount':'0','rent.due_day':'1','concession.terms':'None'};
-const payload={action:'review_and_recommend',confirmed:true,fee:'paid',screening:'received',documents:'verified',credit_score:'720',reason:'Synthetic report REF-123 reviewed',terms,landlord_email:'owner@example.test'};
+const payload={...reportFields(ids.a),action:'review_and_recommend',confirmed:true,fee:'paid',screening:'received',documents:'verified',credit_score:'720',reason:'Synthetic report REF-123 reviewed',terms,landlord_email:'owner@example.test'};
 let count=0;
 const eq=(actual,expected,label)=>{assert.deepEqual(actual,expected,label);count++;};
 async function call(actor,id,body,method='POST',suffix='/actions') {
@@ -68,11 +69,11 @@ try {
  eq(lease.missing,[],'lease resolves all required fields without a second entry form');
  eq((await call('a',ids.a,null,'GET','')).body.case.allowed_actions.includes('prepare_lease'),true);
  await rejected('a',ids.a,{},403);
- // An Admin reviewing an unassigned application owns it on successful send.
+ // Reviewing an unassigned application does not make the Admin its responsible Agent.
  row(ids.unassigned).status='new';row(ids.unassigned).responsible_email=null;row(ids.unassigned).workspace={};
  fixture.state.staff.find(s=>s.email==='other-owner@example.test').property_ids=[];
  const admin=await call('admin',ids.unassigned,{...payload,landlord_email:''});
- eq(admin.status,200,JSON.stringify(admin.body));eq(row(ids.unassigned).responsible_email,'admin@example.test');
+ eq(admin.status,200,JSON.stringify(admin.body));eq(row(ids.unassigned).responsible_email,null);
  eq(row(ids.unassigned).workspace.recommendation.landlord_email,'owner@example.test','single linked landlord automatically selected');
  // Failure to notify leaves the saved recommendation visible, without claiming email success.
  row(ids.b).status='new';row(ids.b).workspace={};

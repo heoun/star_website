@@ -999,7 +999,8 @@ async function handleLeaseDocument(request, env, identity, applicationId) {
   let application = await fetchApplicationForLease(env, applicationId);
   if (!application) return json({ error: "Application not found." }, 404);
   if(rentalMode(env)) {
-    const group=await rentalWorkflow(env,request).load(identity,applicationId);
+    const flow=rentalWorkflow(env,request),group=await flow.load(identity,applicationId);
+    flow.assertReady(group);
     if(group.root.id!==applicationId) return json({error:'Open the shared rental to generate its lease.'},409);
     application={...application,...householdApplication(group)};
   }

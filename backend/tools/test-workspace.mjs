@@ -1,3 +1,4 @@
+import {reportFields} from './screening-fixtures.mjs';
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { handleAdminRequest } from "../../worker/admin.js";
@@ -28,7 +29,7 @@ async function expected(actor, path, status, method = "GET", body) {
   equal(result.status, status, `${actor} ${method} ${path}: ${JSON.stringify(result.body)}`); return result.body;
 }
 const row = id => fixture.state.applications.find(row => row.id === id);
-const action = (actor, id, action, data = {}) => call(actor, `/cases/${id}/actions`, "POST", { action, version: row(id).workspace_version, ...data });
+const action = (actor, id, action, data = {}) => call(actor, `/cases/${id}/actions`, "POST", { action, version: row(id).workspace_version, ...(['checks','review_and_recommend'].includes(action)?reportFields(id):{}), ...data });
 try {
   equal((await expected("admin", "/cases", 200)).cases.length, 4);
   equal((await expected("a", "/cases", 200)).cases.map(row => row.id).sort(), [ids.a, ids.shared].sort());
@@ -42,7 +43,7 @@ try {
   equal(first.next_step.label, "Verify Payment, Screening and Documents");
   equal([first.next_step.bucket, first.next_step.owner], ["attention", "you"]);
   equal(typeof first.next_step.since, "string");
-  equal([first.move_in, first.lease_term_months, first.email], ["10/01/2026", 12, "casey.morgan@example.test"]);
+  equal([first.move_in, first.lease_term_months, first.email], ["10/01/2026", 12, "applicant-a@example.test"]);
   equal(first.application_documents.length, 1); equal("path" in first.application_documents[0], false);
   equal((await expected("admin", "/cases", 200)).cases.find(item => item.id === ids.unassigned).next_step.label, "Assign a Responsible Agent");
   const landlordQueue = await expected("owner", "/cases", 200);
@@ -84,6 +85,8 @@ try {
   equal((await action("admin", ids.a, "assign", { responsible_email: actors.a[1], collaborator_emails: [] })).status, 200);
   await expected("b", `/cases/${ids.a}`, 404);
   equal((await action("admin", ids.a, "assign", { responsible_email: actors.owner[1], collaborator_emails: [] })).status, 422);
+  equal((await action("admin", ids.a, "assign", { responsible_email: actors.admin[1], collaborator_emails: [] })).status, 422, "Admin cannot be the responsible Agent");
+  equal((await action("admin", ids.a, "assign", { responsible_email: actors.a[1], collaborator_emails: [actors.admin[1]] })).status, 200, "Admin may collaborate on an Agent-owned application");
 
   equal((await expected("owner", "/cases", 200)).cases.map(row => row.id), [ids.shared]);
   equal((await expected("other", "/cases", 200)).cases, []);
@@ -129,7 +132,7 @@ try {
   equal(sent.length, 1, "the landlord is emailed once");
   equal([sent[0].to, sent[0].reply_to], [[actors.owner[1]], actors.a[1]], "to the chosen landlord, replies to the agent");
   assert(sent[0].subject.startsWith("Rental recommendation for") && sent[0].text.includes(`/admin/#/applications/${ids.a}`), sent[0].text); checks++;
-  for (const secret of ["1234", "212-555", "casey.morgan@example.test", "TEAM-ONLY", "ADMIN-ONLY", "REF-001"]) equal(sent[0].text.includes(secret), false, `${secret} stays out of the email`);
+  for (const secret of ["1234", "212-555", "applicant-a@example.test", "TEAM-ONLY", "ADMIN-ONLY", "REF-001"]) equal(sent[0].text.includes(secret), false, `${secret} stays out of the email`);
   const offered = (await expected("owner", `/cases/${ids.a}`, 200)).case;
   equal(offered.recommendation.terms["rent.monthly"], "2950");
   equal([offered.recommendation.summary.annual_income, offered.recommendation.sent_by, offered.progress.lease_prepared], ["120000", actors.a[1], false]);

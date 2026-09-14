@@ -1,3 +1,4 @@
+import {reportFixture} from './screening-fixtures.mjs';
 import { administrationFixture } from "./administration-fixtures.mjs";
 // Synthetic records for isolated HTTP tests and the optional local role demo.
 // Never imported by the deployed Worker, never reads .dev.vars or a real database.
@@ -10,21 +11,22 @@ const today = "2026-09-08T10:00:00Z";
 const terms = { "lease.commencement_date": "2026-10-01", "lease.end_date": "2027-09-30", "rent.monthly": "3000", "deposit.amount": "3000", "rent.due_day": "1" };
 export function createWorkspaceFixtures(saved) {
   const staff = [
-    { email: "admin@example.test", name: "Morgan · Admin", role: "manager", active: true, property_ids: [] },
-    { email: "agent-a@example.test", name: "Alex · Agent A", role: "agent", active: true, property_ids: [ids.property] },
-    { email: "agent-b@example.test", name: "Jordan · Agent B", role: "agent", active: true, property_ids: [ids.otherProperty] },
-    { email: "owner@example.test", name: "Taylor · Landlord", role: "landlord", active: true, property_ids: [ids.property] },
-    { email: "other-owner@example.test", name: "Other Landlord", role: "landlord", active: true, property_ids: [ids.property] }
+    { email: "admin@example.test", name: "Admin A", role: "manager", active: true, property_ids: [] },
+    { email: "agent-a@example.test", name: "Agent A", role: "agent", active: true, property_ids: [ids.property] },
+    { email: "agent-b@example.test", name: "Agent B", role: "agent", active: true, property_ids: [ids.otherProperty] },
+    { email: "owner@example.test", name: "Landlord A", role: "landlord", active: true, property_ids: [ids.property] },
+    { email: "other-owner@example.test", name: "Landlord B", role: "landlord", active: true, property_ids: [ids.property] }
   ];
-  const buildings = [{ id: ids.property, name: "Parkside Residences", street: "100 Example Avenue", city: "New York", state: "New York", state_abbr: "NY", zip: "10001", landlord_signer_email: "owner@example.test" },
-    { id: ids.otherProperty, name: "Riverside House", street: "200 Example Avenue", city: "New York", state: "New York", state_abbr: "NY", zip: "10001" }];
+  const buildings = [{ id: ids.property, name: "Property A", street: "100 Example Avenue", city: "New York", state: "New York", state_abbr: "NY", zip: "10001", landlord_signer_email: "owner@example.test" },
+    { id: ids.otherProperty, name: "Property B", street: "200 Example Avenue", city: "New York", state: "New York", state_abbr: "NY", zip: "10001" }];
   const listings = buildings.map((b, i) => ({ id: i ? ids.otherListing : ids.listing, building_id: b.id, title: `${b.name} · ${i ? "4B" : "2A"}`, property_name: b.name, unit: i ? "4B" : "2A", price_amount: 3000, location: b.street, category: "residential", transaction_type: "rental", published: true, description: "Synthetic property for role and workflow verification.", listing_media: [], created_at: today, bedrooms: 2, bathrooms: 1 }));
   const application = (id, name, responsible, listing = listings[0]) => ({ id, name, first_name: name.split(" ")[0], last_name: name.split(" ")[1], listing_id: listing.id,
-    listings: listing, email: `${name.replace(" ", ".").toLowerCase()}@example.test`, phone: "212-555-0100", current_address: "10 Example Street", move_in: "10/01/2026", lease_term_months: 12, dob: "01/01/1990", income_note: "120000", employment_status: "employed", current_employer: {}, employment_history: [], rental_history: [], reference_contacts: [], emergency_contacts: [], pets: [], roommates: [], ssn_last4: "1234", ssn_encrypted: "TEST-ONLY-SECRET", submitted: { internal: "ORIGINAL-PRIVATE" }, notes: "TEAM-ONLY", workspace_version: 0,
+    listings: listing, email: `${name.replace(" ", "-").toLowerCase()}@example.test`, phone: "212-555-0100", current_address: "10 Example Street", move_in: "10/01/2026", lease_term_months: 12, dob: "01/01/1990", income_note: "120000", employment_status: "employed", current_employer: {}, employment_history: [], rental_history: [], reference_contacts: [], emergency_contacts: [], pets: [], roommates: [], ssn_last4: "1234", ssn_encrypted: "TEST-ONLY-SECRET", submitted: { internal: "ORIGINAL-PRIVATE" }, notes: "TEAM-ONLY", workspace_version: 0,
     responsible_email: responsible, collaborator_emails: [], status: "new", created_at: today, updated_at: today,
     workspace: { terms: { ...terms }, admin_note: "ADMIN-ONLY", activity: [] }, application_documents: [] });
-  const applications = [application(ids.a, "Casey Morgan", staff[1].email), application(ids.b, "Robin Chen", staff[2].email, listings[1]), application(ids.unassigned, "Sam Rivera", null), application(ids.shared, "Jamie Brooks", staff[1].email)];
+  const applications = [application(ids.a, "Applicant A", staff[1].email), application(ids.b, "Applicant B", staff[2].email, listings[1]), application(ids.unassigned, "Applicant C", null), application(ids.shared, "Applicant D", staff[1].email)];
   const shared = applications[3]; shared.status = "sent_to_landlord";
+  shared.workspace.screening_result=reportFixture(shared.id);
   shared.workspace.review = { by: staff[1].email, at: today };
   shared.workspace.checks = { fee: "paid", screening: "received", documents: "verified", reference: "Synthetic verification example", by: staff[1].email, at: today };
   shared.workspace.recommendation = { tenant_name: shared.name, terms: { ...terms }, property_title: listings[0].title, unit: "2A", landlord_email: staff[3].email, revision: 1, sent_at: today, sent_by: staff[1].email };

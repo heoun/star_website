@@ -38,11 +38,18 @@ export interface Recommendation {
   summary?: RecommendationSummary;
   members?: import('./rentals.ts').RentalMemberSummary[];
 }
+export interface ScreeningResult {
+  status: string; credit_score?: number | null; reference?: string; model?: string; date?: string; mock?: boolean;
+  application_id?: string; provider?: string; report_url?: string;
+  outcome?: 'scored' | 'no_score'; no_score_reason?: string;
+  source?: 'manual' | 'provider' | 'mock'; verified_by?: string; verified_at?: string;
+}
 export interface WorkspaceState {
   rental_flow?: 'automatic';
   automation_issue?: string;
   invitations?: import('./rentals.ts').RentalInvitation[];
-  screening_result?: {status: string; credit_score?: number | null; reference?: string; model?: string; date?: string; mock?: boolean};
+  screening_result?: ScreeningResult;
+  demo_screening_status?: 'pending' | 'no_score';
   delivery?: {revision: number; status: string; attempt_at: string; key: string};
   lease_draft?: {values: Record<string, unknown>; missing: string[]; error?: string; at: string; revision: number};
   signature_receipts?: Record<string, {reference: string; at: string; by: string}>;
@@ -84,4 +91,4 @@ export interface WorkspaceCommand {
 }
 
 // A review must check the current uploads using the same checklist as intake.
-export interface WorkspaceReviewPolicy { missingDocuments(row: WorkspaceApplication): string[] }
+export interface WorkspaceReviewPolicy { allowMockScreening?: boolean; missingDocuments(row: WorkspaceApplication): string[] }

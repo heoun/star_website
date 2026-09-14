@@ -1,3 +1,4 @@
+import { screeningIssue, reportEvidenceIssue, externalReport } from './screening.ts';
 import type { WorkspacePrincipal, WorkspaceProperty, WorkspaceApplication, WorkspaceCommand, WorkspaceRepository,
   WorkspaceAction, WorkspaceState, WorkspaceTerms, RecommendationSummary, WorkspaceReviewPolicy } from "../contracts/workspace.ts";
 
@@ -25,7 +26,7 @@ export function projectLandlordProperty(p: WorkspacePrincipal, row: WorkspacePro
 // Every external fact the team records before an application can be approved:
 // the fee, the screening report, the documents.
 export function checksComplete(w: WorkspaceState): boolean {
-  return w.checks?.documents === "verified" && w.checks.screening === "received" && ["paid", "waived"].includes(w.checks.fee);
+  return !!w.screening_result?.application_id && !screeningIssue({id:w.screening_result.application_id,status:'review',workspace:w},true) && w.checks?.documents === "verified" && w.checks.screening === "received" && ["paid", "waived"].includes(w.checks.fee);
 }
 
 type DocumentRow = { created_at?: string };
@@ -223,9 +224,10 @@ function normalizedChecks(command: WorkspaceCommand, actor: string, now: string)
   if (!["pending", "paid", "waived"].includes(fee) || !["pending", "received"].includes(screening) || !["pending", "verified"].includes(documents)) throw new WorkspaceError("Choose a valid verification status.");
   if (!reason) throw new WorkspaceError("Record the external provider/report reference and verification note.");
   // The score off the report, typed by the person who read it. It is
-  // the one figure a landlord sees of the screening, so it is optional
-  // and bounded rather than free text.
+  // the one figure a landlord sees of the screening. Missing scores require
+  // a documented no-score outcome and cannot pass the progression gate.
   const scoreText = text(command.credit_score, 10);
+  if (fee === "pending" && (screening === "received" || scoreText)) throw new WorkspaceError("Confirm payment before recording a credit report or score.");
   const creditScore = scoreText ? Number(scoreText) : null;
   if (scoreText && (!Number.isInteger(creditScore) || creditScore! < 300 || creditScore! > 850)) throw new WorkspaceError("Enter a credit score between 300 and 850, or leave it blank.");
   return { fee, screening, documents, reference: reason, by: actor, at: now, credit_score: creditScore };
@@ -248,6 +250,11 @@ export function makeWorkspace(repo: WorkspaceRepository, reviewPolicy?: Workspac
       const row = await load(p, id);
       if (!Number.isInteger(command.version) || command.version !== (row.workspace_version || 0)) throw new WorkspaceError("This case changed. Refresh it before saving.", 409);
       if (!allowedCaseActions(p, row).includes(command.action)) throw new WorkspaceError("This action is not available in the current stage or for this account.", 403);
+      if (["checks", "review_and_recommend"].includes(command.action) && command.fee === "pending" && row.workspace?.screening_result?.status === "complete") throw new WorkspaceError("A completed credit report cannot be moved back to payment pending. Review the payment record first.");
+      if(['approve','recommend','landlord_accept','prepare_lease','record_tenant_signature','record_landlord_signature','archive_lease'].includes(command.action)) {
+        const issue=screeningIssue(row,reviewPolicy?.allowMockScreening);
+        if(issue) throw new WorkspaceError(issue,409);
+      }
       const w: WorkspaceState = structuredClone(row.workspace || {});
       const now = new Date().toISOString();
       const patch: Record<string, unknown> = {};
@@ -258,12 +265,15 @@ export function makeWorkspace(repo: WorkspaceRepository, reviewPolicy?: Workspac
           if (!Array.isArray(command.collaborator_emails)) throw new WorkspaceError("Choose the case collaborators.");
           const collaborators = [...new Set(command.collaborator_emails.map(email))].filter(value => value && value !== owner);
           const roster = await repo.staff();
+          if (owner && !roster.some(member => same(owner, member.email) && member.active && member.role === "agent")) throw new WorkspaceError("The responsible team member must be an active Agent.");
           if ([owner, ...collaborators].filter(Boolean).some(value => !roster.some(member => same(value, member.email) && member.active && ["manager", "agent"].includes(member.role)))) throw new WorkspaceError("Assign active team members only.");
           patch.responsible_email = owner || null; patch.collaborator_emails = collaborators;
           break;
         }
         case "checks": {
           w.checks = normalizedChecks(command, p.email, now);
+          w.screening_result=externalReport(command,row.id,p.email);
+          if(w.screening_result.status==='complete') {const issue=reportEvidenceIssue(w.screening_result,row.id);if(issue) throw new WorkspaceError(issue);}
           delete w.review; delete w.recommendation; delete w.landlord_decision;
           patch.status = w.checks.fee === "pending" ? "fee_pending" : w.checks.screening === "pending" ? "screening" : "review";
           break;
@@ -292,6 +302,8 @@ export function makeWorkspace(repo: WorkspaceRepository, reviewPolicy?: Workspac
             if (missing.length) throw new WorkspaceError(`Required documents are missing: ${missing.join(", ")}.`);
             if (!text(row.name)) throw new WorkspaceError("Complete the applicant's legal name before recommending.");
             w.checks = normalizedChecks(command, p.email, now);
+            w.screening_result=externalReport(command,row.id,p.email);
+            if(w.screening_result.status==='complete') {const issue=reportEvidenceIssue(w.screening_result,row.id);if(issue) throw new WorkspaceError(issue);}
             if (!checksComplete(w)) throw new WorkspaceError("Verify payment or waiver, review the screening report and supporting documents before recommending.");
             w.terms = normalizedTerms({ ...w.terms, ...normalizedTerms(command.terms) });
             // The agreement date is resolved when the lease is prepared. An
@@ -299,7 +311,6 @@ export function makeWorkspace(repo: WorkspaceRepository, reviewPolicy?: Workspac
             if (!w.terms["lease.effective_date"]) delete w.terms["lease.effective_date"];
             if (!w.terms["rent.due_day"]) delete w.terms["rent.due_day"];
             w.review = { by: p.email, at: now };
-            if (!row.responsible_email) patch.responsible_email = p.email;
           }
           const roster = await repo.staff();
           const landlords = roster.filter(member => member.role === "landlord" && member.active && (member.property_ids || []).includes(row.listings?.building_id || ""));

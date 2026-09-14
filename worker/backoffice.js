@@ -53,7 +53,7 @@ export async function handleCaseWorkspace(request, env, identity, id, subresourc
       const people = (await fetchStaff(env)).filter(member => member.active);
       return json({ landlords: people.filter(member => member.role === "landlord" && propertyIdsOf(member).includes(row.listings?.building_id))
         .map(member => ({ email: member.email, name: member.name })),
-      team: identity.role === "manager" ? people.filter(member => ["agent", "manager"].includes(member.role)).map(member => ({ email: member.email, name: member.name })) : [] });
+      team: identity.role === "manager" ? people.filter(member => ["agent", "manager"].includes(member.role)).map(member => ({ email: member.email, name: member.name, role: member.role })) : [] });
     }
     if (subresource === "actions" && request.method === "POST") {
       const command = await request.json();
@@ -91,6 +91,8 @@ export async function handleCaseWorkspace(request, env, identity, id, subresourc
         "X-Content-Type-Options": "nosniff", "Content-Disposition": `attachment; filename="signed-lease-${id}.pdf"` } });
     }
     if (subresource === "signed-lease" && request.method === "POST") {
+      const flow=rentalMode(env) ? rentalWorkflow(env,request) : null;
+      if(flow) flow.assertReady(await flow.load(identity,id));
       const row = await workspace.load(identity, id);
       if (!projectCase(identity, row).allowed_actions.includes("archive_lease")) return json({ error: "Record tenant and landlord signature receipts first." }, 403);
       const form = await request.formData();
@@ -101,7 +103,7 @@ export async function handleCaseWorkspace(request, env, identity, id, subresourc
       const bucket = requireDocsBucket(env);
       await bucket.put(path, file.stream(), { httpMetadata: { contentType: "application/pdf" } });
       try {
-        return json({ case: await workspace.execute(identity, id, { action: "archive_lease", version,
+        return json({ case: await (flow || workspace).execute(identity, id, { action: "archive_lease", version,
           file: { path, name: file.name.slice(0, 200), size: file.size, uploaded_at: new Date().toISOString() } }) });
       } catch (error) { await bucket.delete(path); throw error; }
     }

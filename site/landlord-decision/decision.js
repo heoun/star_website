@@ -8,6 +8,7 @@ async function start(){
  const row=data.case,r=row.recommendation;
  if(!r){host.innerHTML='<h1>Landlord account required</h1><p>Open this email with the landlord account it was sent to.</p>';return;}
  if(r.revision!==revision){host.innerHTML='<h1>This email is out of date</h1><p>The application group or terms have changed. Open the latest email to decide.</p>';return;}
+ if(row.progression_blocked){host.innerHTML='<h1>Application review on hold</h1><p>The application evidence is incomplete. Any previous decision is retained in the activity record, but this application cannot progress. The leasing team needs to resolve the missing information.</p>';return;}
  const decision=row.landlord_decision;
  if(decision){host.innerHTML=`<div class="success"><h1>Decision recorded</h1><p>${decision.outcome==='accepted'?'You agreed to proceed. The leasing team will prepare the lease.':'You chose not to proceed. The leasing team has been notified.'}</p><p>${esc(decision.at)}</p></div>`;return;}
  const t=r.terms || {};
