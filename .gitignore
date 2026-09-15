@@ -33,6 +33,8 @@ coverage/
 
 # Requirement spreadsheets belong under ignored notes/, not the repository root.
 /lease-information*.xlsx
+# Local lease reference PDFs may contain applicant data; archive under notes/.
+/*Lease Template*.pdf
 
 # Generated artifacts and patch scratch files; keep source assets under site/.
 /tmp/
