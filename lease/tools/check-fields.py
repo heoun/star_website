@@ -4,7 +4,8 @@
     python3 lease/tools/check-fields.py
 
 Every {{placeholder}} in lease/template/lease-template.docx must have an entry
-in lease/schema/fields.json, and every entry must appear in the template. Run
+in lease/schema/fields.json. Entries must appear in the template unless explicitly
+marked as non-template property defaults. Run
 this after editing either one. A placeholder nobody registered would render as
 literal "{{...}}" text in a signed lease; a registered field that no longer
 exists in the template would silently collect data that goes nowhere.
@@ -137,7 +138,12 @@ def main():
 
     for missing in sorted(in_template - in_registry):
         problems.append(f"in the template but not registered: {{{{{missing}}}}}")
-    for orphan in sorted(in_registry - in_template - composed_parts()):
+    # Property defaults are stored settings, without their own printed placeholder.
+    contacts = {f["id"] for f in fields if f.get("template") is False}
+    for field in fields:
+        if field["id"] in contacts and (field["source"] != "manager" or field.get("required")):
+            problems.append(f"{field['id']}: non-template defaults must be optional manager settings")
+    for orphan in sorted(in_registry - in_template - composed_parts() - contacts):
         problems.append(f"registered but absent from the template: {orphan}")
 
     for field in fields:
@@ -165,7 +171,7 @@ def main():
             print(f"  - {p}")
         return 1
 
-    print(f"OK: {len(fields)} fields, all present in the template and registered.")
+    print(f"OK: {len(fields)} registered fields, including {len(contacts)} non-template property defaults.")
     print(f"    {len(registry.get('rules', []))} disclosure rules, all naming real checkboxes.")
     pending = [f["id"] for f in fields if f.get("needs_setup")]
     if pending:

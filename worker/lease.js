@@ -203,6 +203,17 @@ export function fieldProvenance(layers) {
 // quietly substituting a blank.
 export function resolveValues({ layers, deal, overrides = {} }) {
   const settings = mergeLayers(layers);
+  // Property-level choices provide starting values; explicit rental overrides win.
+  deal={...deal};
+  if(!deal['concession.terms'] && settings['concession.default_terms'])deal['concession.terms']=settings['concession.default_terms'];
+  if(settings['dhcr.lease_type']){
+    deal['dhcr.mark_vacancy']=settings['dhcr.lease_type']==='Vacancy lease';
+    deal['dhcr.mark_renewal']=settings['dhcr.lease_type']==='Renewal lease';
+  }
+  const sprinkler={...settings,...overrides};
+  if(sprinkler['sprinkler.mark_option2']===true && sprinkler['sprinkler.mark_option1']!==true){
+    if(!settings['sprinkler.last_inspection'])settings['sprinkler.last_inspection']=deal['lease.vacancy_lease_date'] || '';
+  } else settings['sprinkler.last_inspection']='';
   const values = {};
   const missing = [];
 
@@ -216,6 +227,8 @@ export function resolveValues({ layers, deal, overrides = {} }) {
     } else if (field.source === "deal") {
       value = deal[field.id];
     }
+
+    if(field.id==='sprinkler.last_inspection' && (sprinkler['sprinkler.mark_option2']!==true || sprinkler['sprinkler.mark_option1']===true))value='';
 
     if (field.type === "checkbox") {
       // A checkbox is answered by definition — false is an answer, and it is
@@ -238,6 +251,16 @@ export function resolveValues({ layers, deal, overrides = {} }) {
 
     if (text === "" && field.required) missing.push(field.id);
     values[field.id] = text;
+  }
+
+  // The registry's idle_unless rules. A spare row nobody named prints its idle
+  // value; a named row with nobody set to pay for it is the one blank that
+  // stops generation, whatever the payer's own required flag says. A stored
+  // payer on an unnamed row is left as it is; the review panel names it.
+  for (const rule of registry.rules || []) {
+    if (rule.kind !== "idle_unless" || values[rule.then] !== "") continue;
+    if (values[rule.when_filled] === "") values[rule.then] = rule.idle;
+    else if (!missing.includes(rule.then)) missing.push(rule.then);
   }
 
   // Recomposed after the loop so it reflects any correction made to a part.

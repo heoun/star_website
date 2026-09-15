@@ -2,20 +2,20 @@
 // This is a presentation map: field IDs, permissions and storage scopes stay fixed.
 export const PROPERTY_SECTIONS = [
   { id: "property", label: "Properties", note: "Start with the property's address.", ids: [], always: true },
-  { id: "signing", label: "Landlord & signing", note: "Identify the landlord and the person who signs the lease.", ids: ["landlord.print_name", "landlord.entity_name", "landlord.address"], groups: ["parties"] },
-  { id: "management", label: "Management & notices", note: "Set management, notice recipients and the housing emergency contact.", ids: ["manager.name", "manager.address", "manager.phone", "legal_notice.name", "legal_notice.address", "legal_notice.phone", "emergency.phone"] },
-  { id: "payments", label: "Lease terms, payments & policies", note: "Work through lease timing, payments, deposits and standing policies.", ids: ["lease.end_time", "rent.due_day", "fee.returned_payment", "payee.name", "payee.address", "payee.phone", "deposit.bank_name", "deposit.bank_address", "guest.consecutive_days", "guest.total_days", "guest.window_days", "fee.lock_change_admin", "fee.animal_liability_cap", "insurance.required_yes", "insurance.required_no", "fee.lptli_monthly", "attorney_fees.cap_enabled", "attorney_fees.cap_amount", "smoking.in_unit_yes", "smoking.in_unit_no"] },
-  { id: "utilities", label: "Utility", note: "Choose who pays for each service and name any additional utilities.", groups: ["utilities"] },
-  { id: "keys", label: "Key rider", note: "For each key or remote, record the quantity and replacement charge.", groups: ["keys"] },
-  { id: "insurance", label: "New York renters insurance rider", note: "Set required liability coverage and insurance-related monthly charges.", ids: ["insurance.min_liability", "fee.renters_insurance_waiver_monthly", "fee.lptli_admin_monthly"] },
-  { id: "fines", label: "Fine schedule", note: "Review the amount or description printed for each violation.", groups: ["fines"] },
+  { id: "signing", label: "Landlord & Signing", note: "Identify the landlord and the person who signs the lease.", ids: ["landlord.print_name", "landlord.signer_mailing_address", "landlord.entity_name", "landlord.address", "landlord.phone"], groups: ["parties"] },
+  { id: "management", label: "Management & Notices", note: "Set management, notice recipients and the housing emergency contact.", ids: ["manager.name", "manager.address", "manager.phone", "legal_notice.name", "legal_notice.address", "legal_notice.phone", "emergency.phone"] },
+  { id: "payments", label: "Lease Terms, Payments & Policies", note: "Work through lease timing, payments, deposits and standing policies.", ids: ["lease.end_time", "rent.due_day", "fee.returned_payment", "payee.name", "payee.address", "payee.phone", "deposit.bank_name", "deposit.bank_address", "guest.consecutive_days", "guest.total_days", "guest.window_days", "fee.lock_change_admin", "fee.animal_liability_cap", "insurance.required_yes", "insurance.required_no", "fee.lptli_monthly", "attorney_fees.cap_enabled", "attorney_fees.cap_amount", "smoking.in_unit_yes", "smoking.in_unit_no"] },
+  { id: "utilities", label: "Utility", note: "Choose who pays for each service. For additional utilities, enter the name before choosing who pays.", ids: ["utility.water", "utility.sewer", "utility.stormwater", "utility.gas", "utility.heating", "utility.steam_heat", "utility.electricity", "utility.hot_water", "utility.trash", "utility.pest_control", "utility.cable", "utility.internet", "utility.other1_label", "utility.other1", "utility.other2_label", "utility.other2"], groups: ["utilities"] },
+  { id: "keys", label: "Key Rider", note: "For each key or remote, record the quantity and replacement charge.", groups: ["keys"] },
+  { id: "insurance", label: "New York Renters Insurance Rider", note: "Set required liability coverage and insurance-related monthly charges.", ids: ["insurance.min_liability", "fee.renters_insurance_waiver_monthly", "fee.lptli_admin_monthly"] },
+  { id: "fines", label: "Fine Schedule", note: "Review the amount or description printed for each violation.", groups: ["fines"] },
   { id: "bedbug", label: "Bedbug", note: "Review the infestation history used in the disclosure.", prefixes: ["bedbug."] },
-  { id: "sprinkler", label: "Sprinkler system notice", note: "Record the system's status and the actual inspection date.", prefixes: ["sprinkler."] },
-  { id: "gas", label: "NYC gas leak, carbon monoxide and smoke alarm rider", note: "Provide the gas supplier and its emergency telephone number.", ids: ["gas.provider_name", "gas.provider_phone"] },
-  { id: "smoking", label: "New York smoking policy rider", note: "Specify restricted areas, exceptions and the complaint contact.", prefixes: ["smoking."] },
-  { id: "concession", label: "Rent concession rider", note: "Offer details are confirmed for each rental when preparing its lease.", ids: [], always: true },
-  { id: "dhcr", label: "DHCR electronic lease consent", note: "Review the owner's consent contact. Lease type is confirmed for each rental.", ids: ["owner_rep.name", "owner_rep.email", "owner_rep.mailing_address"] },
-  { id: "good_cause", label: "Good Cause Eviction notice", note: "Work through applicability, exemptions, rent increases and nonrenewal reasons.", groups: ["good_cause"] }
+  { id: "sprinkler", label: "Sprinkler System Notice", note: "Record the system's status and the actual inspection date.", prefixes: ["sprinkler."] },
+  { id: "gas", label: "NYC Gas Leak, Carbon Monoxide and Smoke Alarm Rider", note: "Provide the gas supplier and its emergency telephone number.", ids: ["gas.provider_name", "gas.provider_phone"] },
+  { id: "smoking", label: "New York Smoking Policy Rider", note: "Specify restricted areas, exceptions and the complaint contact.", prefixes: ["smoking."] },
+  { id: "concession", label: "Rent Concession Rider", note: "Set the default offer details; confirm the offer for each rental.", ids: ["concession.default_terms"], always: true },
+  { id: "dhcr", label: "DHCR Electronic Lease Consent", title: "DHCR – Electronic Lease Offer: Tenant’s Voluntary Consent", note: "Choose the lease description and confirm the owner’s consent contact.", ids: ["dhcr.lease_type", "owner_rep.name", "owner_rep.email", "owner_rep.mailing_address"] },
+  { id: "good_cause", label: "Good Cause Eviction Notice", title: "Notice to Tenant of Applicability or Inapplicability of the New York State Good Cause Eviction Law", note: "Work through applicability, exemptions, rent increases and nonrenewal reasons.", groups: ["good_cause"] }
 ];
 
 export function sectionsFor(fields) {
@@ -52,7 +52,7 @@ const CHECKS = [
     blocking: "A lease has no Landlord to name." },
   { id: "signer", label: "Landlord signer", ids: ["landlord.print_name"], signer: true,
     blocking: "Landlord signer must be set before agents can send leases." },
-  { id: "notices", label: "Management & notices", section: "management",
+  { id: "notices", label: "Management & Notices", section: "management",
     blocking: "The notices that go out with the lease have no contact on them." },
   { id: "payments", label: "Payment profile", section: "payments",
     blocking: "The lease cannot say where rent goes or where the deposit is held." },

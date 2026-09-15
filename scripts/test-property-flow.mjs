@@ -12,6 +12,9 @@ assert.equal(new Set(ids).size,fields.length,'Every stored property field appear
 assert.deepEqual([...ids].sort(),fields.map(field=>field.id).sort());
 assert.equal(sections.find(s=>s.id==='insurance').fields.some(f=>f.id==='insurance.min_liability'),true);
 assert.equal(sections.find(s=>s.id==='payments').fields.some(f=>f.id==='insurance.required_yes'),true);
+assert.deepEqual(sections.find(s=>s.id==='signing').fields.map(f=>f.id),[
+  'landlord.print_name','landlord.signer_mailing_address','landlord.entity_name','landlord.address','landlord.phone'
+], 'All landlord contacts appear in the requested signing order; email is rendered separately');
 for (const field of fields.filter(f=>f.required)) {
   const result=readiness({fields,answered:f=>f.id!==field.id,hasSigner:true});
   assert.equal(result.missing,1,`Readiness must still detect ${field.id} after regrouping`);
@@ -43,4 +46,14 @@ ui.editingGroup='payments';
 let redrawn=false;
 await handleDefaultsClick({target:{closest:selector=>selector==='[data-property-step]'?{dataset:{propertyStep:'keys'},closest:()=>null}:null}}, {...ctx,host:{querySelector:()=>null},rerender:async()=>{redrawn=true;}});
 assert.equal(ui.activeSection,'payments'); assert.equal(redrawn,false,'Step change cannot discard an open edit');
+ui.activeSection='signing';ui.editingGroup='signing';
+const contactValues={'landlord.signer_mailing_address':'123 Example Lane','landlord.phone':'212-555-0199'};
+const contactPanel={querySelectorAll:selector=>selector==='[data-setting]'?Object.entries(contactValues).map(([setting,value])=>({dataset:{setting},value})):[]};
+await handleDefaultsClick({target:{closest:selector=>selector==='[data-settings-save]'?{dataset:{settingsSave:'signing'}}:null,matches:()=>false}},
+  {...ctx,host:{querySelector:()=>contactPanel}});
+assert.deepEqual(lastPatch,contactValues,'Signer address and landlord phone use the persisted settings save path');
+ui.editingGroup='';
+const signing=defaultsMarkup({fields,values:stored,ui,buildingId:'test-property'});
+for(const value of Object.values(contactValues))assert(signing.includes(value),'Saved contacts render in the signing panel');
+assert(signing.includes('Landlord &amp; Signing') || signing.includes('Landlord & Signing'));
 console.log(`PASS property flow: ${fields.length} fields mapped once, 15 steps rendered, required-field coverage, atomic paired choice and scoped save`);

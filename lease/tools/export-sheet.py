@@ -449,9 +449,9 @@ NOTES = {
                          "service of process」——填房东本身即可，不必另设代理人",
     "manager.name": "§25 左栏「for repairs, billing, building management, questions etc.」",
     "utility.water": "批注：Landlord ＝ 房东付；Tenant ＝ 租客付；N/A ＝ 无此项服务",
-    "utility.other1": "⚑ 待改代码：默认值改为 N/A。现在是 Landlord 而名称栏空着，"
-                      "每份租约都会印出「Other: ___ ┆ Landlord」——让人为一个空白负责",
-    "utility.other2": "⚑ 待改代码：同上，现在默认 Tenant",
+    "utility.other1": "名称栏空着时固定印 N/A，填了名称才需要选付款方，"
+                      "不会再印出「Other: ___ ┆ Landlord」让人为一个空白负责",
+    "utility.other2": "同上，第二个备用行",
     "fee.lptli_monthly": "批注确认保留，$25.00 为默认",
     "fee.renters_insurance_waiver_monthly": "批注确认保留，$25.00 为默认",
     "fee.lptli_admin_monthly": "原件此格留空",

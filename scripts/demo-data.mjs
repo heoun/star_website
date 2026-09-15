@@ -28,8 +28,10 @@ export function mockPropertyDefaults(building, landlord, index = 0, supplied = {
   const entity = supplied["landlord.entity_name"] || `${building.name} Example Holdings LLC`;
   const signer = supplied["landlord.print_name"] || landlord.name;
   const specific = {
-    "lease.end_time": "12:00 PM", "rent.due_day": "1",
+    "concession.default_terms": "No rent concession in this mock tenancy.", "dhcr.lease_type":"Vacancy lease",
+    "lease.end_time": "11:59 PM", "rent.due_day": "1",
     "landlord.entity_name": entity, "landlord.print_name": signer, "landlord.address": address,
+    "landlord.signer_mailing_address": address, "landlord.phone": "212-555-0110",
     "deposit.bank_name": "Example Deposit Bank", "deposit.bank_address": "500 Example Bank Avenue, New York, NY 10001",
     "payee.name": entity, "payee.address": address, "payee.phone": "212-555-0110",
     "manager.name": `Property Manager ${alphabet(index)}`, "manager.address": address, "manager.phone": "212-555-0120",

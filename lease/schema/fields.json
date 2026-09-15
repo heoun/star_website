@@ -485,6 +485,28 @@
       "scope": "building"
     },
     {
+      "id": "landlord.signer_mailing_address",
+      "label": "Landlord signer's mailing address",
+      "group": "parties",
+      "source": "manager",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "scope": "building",
+      "template": false
+    },
+    {
+      "id": "landlord.phone",
+      "label": "Landlord phone number",
+      "group": "parties",
+      "source": "manager",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "scope": "building",
+      "template": false
+    },
+    {
       "id": "property.address_full",
       "label": "Unit address, one line",
       "group": "property",
@@ -1040,8 +1062,8 @@
         "Tenant",
         "N/A"
       ],
-      "required": true,
-      "default": "Landlord",
+      "required": false,
+      "default": "N/A",
       "scope": "building"
     },
     {
@@ -1055,8 +1077,8 @@
         "Tenant",
         "N/A"
       ],
-      "required": true,
-      "default": "Tenant",
+      "required": false,
+      "default": "N/A",
       "scope": "building"
     },
     {
@@ -2088,6 +2110,33 @@
       "default": false,
       "from": "applications.wants_window_guards",
       "note": "Answered by the application form's window guard checkbox."
+    },
+    {
+      "id": "concession.default_terms",
+      "label": "Offer Details",
+      "group": "contacts",
+      "source": "manager",
+      "type": "multiline",
+      "required": false,
+      "default": null,
+      "scope": "building",
+      "template": false,
+      "note": "Default offer for new leases. Each rental can confirm or change its offer."
+    },
+    {
+      "id": "dhcr.lease_type",
+      "label": "Lease Description",
+      "group": "contacts",
+      "source": "manager",
+      "type": "choice",
+      "options": [
+        "Vacancy lease",
+        "Renewal lease"
+      ],
+      "required": false,
+      "default": "Vacancy lease",
+      "scope": "building",
+      "template": false
     }
   ]
 }

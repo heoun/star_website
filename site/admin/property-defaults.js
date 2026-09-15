@@ -19,6 +19,8 @@
 // two editors for one set of values is how two screens come to disagree about
 // what a property says.
 
+import { PROPERTY_LABELS, CHOICE_PAIRS, KEY_TYPES, GOOD_CAUSE_QUESTIONS } from "./property-form-layout.js";
+import { propertySetupDefaults } from "../shared/property-setup.js";
 import { formatSettingValue, isAnswered } from "../shared/lease-values.js";
 import { isOptionalSection, sectionsFor } from "./property-sections.js";
 
@@ -132,19 +134,13 @@ function control(field, resolved, docLinked) {
   return `<input type="${type}" ${attrs} value="${escapeHtml(resolved.value)}">`;
 }
 
-const PROPERTY_FIELD_LABELS = {
-  "legal_notice.name": "Landlord / authorized recipient’s name",
-  "legal_notice.address": "Landlord / authorized recipient’s address",
-  "legal_notice.phone": "Landlord / authorized recipient’s phone number",
-  "emergency.phone": "Housing emergency contact"
-};
 function settingRow(field, values, editing, docLinked) {
   const resolved = resolve(field, values);
   const needed = field.required && !resolved.answered;
 
   return `<div class="line${needed && !editing ? " is-needed" : ""}"
     data-setting-row="${escapeHtml(field.id)}">
-    <label class="lbl" for="set-${escapeHtml(field.id)}">${escapeHtml(PROPERTY_FIELD_LABELS[field.id] || field.label)}${field.required?'<span class="required-mark" aria-hidden="true"></span>':''}</label>
+    <label class="lbl" for="set-${escapeHtml(field.id)}">${escapeHtml(PROPERTY_LABELS[field.id] || field.label)}${field.required?'<span class="required-mark" aria-hidden="true"></span>':''}</label>
     <div>
       ${editing ? control(field, resolved, docLinked) : valueCell(field, resolved)}
       ${field.note ? `<span class="panel-hint">${escapeHtml(field.note)}</span>` : ""}
@@ -168,7 +164,8 @@ function editTools(sectionId, editing) {
 // agent sending, so it gets its own affordance rather than being row 47 of a
 // table of ninety-three.
 function signingPanel(section, ctx) {
-  const { values, ui, signerEmail, emailKnown, docLinked } = ctx;
+  const { ui, signerEmail, emailKnown, docLinked } = ctx;
+  const values=ui.editingGroup ? propertySetupDefaults(ctx.values,signerEmail) : ctx.values;
   const signer = resolve(byId(ctx.fields, "landlord.print_name"), values);
   const editing = ui.editingGroup === section.id;
   const set = signer.answered && (Boolean(signerEmail) || !emailKnown);
@@ -179,7 +176,7 @@ function signingPanel(section, ctx) {
   return `<article class="panel" data-group-panel="${escapeHtml(section.id)}">
     <div class="phead">
       <div>
-        <h2>${escapeHtml(section.label)}</h2>
+        <h2>${escapeHtml(section.title || section.label)}</h2>
         <p>${escapeHtml(section.note)}</p>
       </div>
       <div class="phead-tools">
@@ -190,7 +187,7 @@ function signingPanel(section, ctx) {
     <div class="pbody">
       <div class="lines">
         <div class="line${set ? "" : " is-needed"}" data-setting-row="landlord.print_name">
-          <span class="lbl">Landlord signer’s name</span>
+          <span class="lbl">Landlord signer’s name<span class="required-mark" aria-hidden="true"></span></span>
           <div>
             ${signer.answered
               ? `<b>${escapeHtml(signer.value)}</b>`
@@ -209,7 +206,8 @@ function signingPanel(section, ctx) {
 }
 
 function sectionPanel(section, ctx) {
-  const { values, ui, docLinked } = ctx;
+  const { ui, docLinked } = ctx;
+  const values=ui.editingGroup ? propertySetupDefaults(ctx.values,ctx.signerEmail) : ctx.values;
   const editing = ui.editingGroup === section.id;
   const short = section.fields.filter((field) => field.required && !resolve(field, values).answered).length;
   const optional = isOptionalSection(section);
@@ -217,7 +215,7 @@ function sectionPanel(section, ctx) {
   return `<article class="panel" data-group-panel="${escapeHtml(section.id)}">
     <div class="phead">
       <div>
-        <h2>${escapeHtml(section.label)}</h2>
+        <h2>${escapeHtml(section.title || section.label)}</h2>
         <p>${escapeHtml(section.note)}</p>
       </div>
       <div class="phead-tools">
@@ -251,11 +249,6 @@ function byId(fields, id) {
 //
 // The host decides what surrounds it: a page with a readiness column, or the
 // right half of the lease.
-const CHOICE_PAIRS = [
-  {positive:"insurance.required_yes", negative:"insurance.required_no", label:"Renters insurance", yes:"IS required", no:"IS NOT required"},
-  {positive:"smoking.in_unit_yes", negative:"smoking.in_unit_no", label:"Smoking allowance", yes:"IS allowed", no:"IS NOT allowed"},
-  {positive:"sprinkler.mark_option2", negative:"sprinkler.mark_option1", label:"Sprinkler system", yes:"Present and maintained", no:"No sprinkler system in the unit"}
-];
 function pairedRow(pair, fields, values, editing) {
   const yes = values[pair.positive] === true, no = values[pair.negative] === true;
   const value = yes !== no ? (yes ? "yes" : "no") : "";
@@ -265,7 +258,7 @@ function pairedRow(pair, fields, values, editing) {
 
 function sectionRows(section, values, editing, docLinked) {
   if (section.id === "keys") {
-    const types = [["unit","Unit key"],["building","Building key"],["mailbox","Mailbox key"],["fob","Keyless entry remote / FOB"],["garage","Garage door remote"],["other","Other"]];
+    const types = KEY_TYPES;
     const rows = types.map(([id,label]) => `<section class="property-key-item"><h3>${label}</h3><div class="property-key-pair">${["qty","charge"].map(suffix => {
       const field = section.fields.find(item => item.id === `key.${id}_${suffix}`);
       return field ? settingRow({...field,label:suffix === "qty" ? "Quantity issued" : "Replacement charge per key / FOB"},values,editing,docLinked) : "";
@@ -278,19 +271,15 @@ function sectionRows(section, values, editing, docLinked) {
     if (pair) return field.id === section.fields.find(other => [pair.positive,pair.negative].includes(other.id)).id ? pairedRow(pair, section.fields, values, editing) : "";
     return settingRow(field, values, editing, docLinked);
   }).join("");
-  const questions = [
-    ["1. Is this unit subject to Good Cause Eviction?", field => ["good_cause.mark_yes", "good_cause.mark_no"].includes(field.id)],
-    ["2. If exempt, why is it exempt?", field => field.id.startsWith("good_cause.exempt_")],
-    ["3. If the rent increase exceeds the threshold, what is the justification?", field => field.id.startsWith("good_cause.increase_")],
-    ["4. If the lease is not being renewed, what is the reason?", field => field.id.startsWith("good_cause.nonrenewal_")]
-  ];
+  const questions = GOOD_CAUSE_QUESTIONS;
   return questions.map(([label, matches]) => `<h3 class="property-question">${label}</h3>${section.fields.filter(matches).map(field => settingRow(field, values, editing, docLinked)).join("")}`).join("");
 }
 
 function sectionContext(id, ctx, building) {
-  if (id === "bedbug") return `<div class="property-context"><b>Date of vacancy lease</b><p>This date is entered for each rental in its lease details. The infestation history below is saved for this property.</p></div>`;
+  if (id === "bedbug") return `<div class="property-context"><b>Date of vacancy lease</b><p>Defaults to the listing release date when preparing each lease. The infestation history below is saved for this property.</p></div>`;
   if (id === "smoking") return `<div class="property-context"><b>Complaint procedure</b><p>Property manager: ${escapeHtml(ctx.values["manager.name"] || "Not entered")} · ${escapeHtml(ctx.values["manager.phone"] || "Phone not entered")}</p><button type="button" class="link" data-property-step="management">Edit management contact →</button></div>`;
-  if (id === "dhcr") return `<div class="property-context"><b>Lease description: Vacancy / Renewal</b><p>Confirm the lease type in the rental's lease details. The consent contact below is saved for this property.</p></div>`;
+  if (id === "sprinkler") return `<div class="property-context"><b>Last Date Maintained</b><p>If a maintained system is selected and no date is entered, the listing release date is used when preparing the lease. Otherwise the date stays blank.</p></div>`;
+  if (id === "dhcr") return `<div class="property-context"><b>Owner Consent Contact</b><p>New entries default to the landlord signer’s name, email and mailing address. You can enter a different consent contact.</p></div>`;
   return "";
 }
 
@@ -309,13 +298,11 @@ export function defaultsMarkup(ctx) {
   if (section.id === "property") {
     const address = [building?.street, building?.city, building?.state_abbr, building?.zip].filter(Boolean).join(", ");
     panel = `<article class="panel"><div class="phead"><div><h2>Properties</h2><p>${section.note}</p></div>${isManager() ? '<button type="button" class="link" id="property-address">Edit address</button>' : ''}</div><div class="pbody"><div class="line"><span class="lbl">Property address</span><b>${escapeHtml(address || "No address recorded")}</b></div><p class="note">The apartment number is added from the listing when preparing a lease.</p></div></article>`;
-  } else if (section.id === "concession") {
-    panel = `<article class="panel"><div class="phead"><div><h2>Rent concession rider</h2><p>${section.note}</p></div><span class="pill">Per rental</span></div><div class="pbody"><h3>Offer details</h3><p class="note">Enter the agreed concession in the rental's lease details. Each rental retains its own offer and rider.</p><a class="desk-button" href="#/applications">Open rentals →</a></div></article>`;
   } else panel = sectionContext(section.id, ctx, building) + (section.id === "signing" ? signingPanel(section, inner) : sectionPanel(section, inner));
   return `
-    <div class="property-flow-intro"><h2 class="section-title">Lease information</h2><p class="note">Follow the lease from property details through its riders. ${isManager() ? "Save each section as you go." : "View only · Admin maintains property values."}</p></div>
+    <div class="property-flow-intro"><h2 class="section-title">Lease Information</h2><p class="note">Follow the lease from property details through its riders. ${isManager() ? "Save each section as you go." : "View only · Admin maintains property values."}</p></div>
     <div class="property-flow${ctx.docLinked ? " is-document" : ""}">
-      <nav class="property-steps" aria-label="Lease information sections">
+      <nav class="property-steps" aria-label="Lease Information Sections">
         ${sections.map((item, n) => {
           const missing = item.fields.filter(field => field.required && !resolve(field, ctx.values).answered).length;
           return `<button type="button" data-property-step="${item.id}" ${item.id === section.id ? 'aria-current="step"' : ''}><span class="property-step-number">${String(n + 1).padStart(2, "0")}</span><span>${escapeHtml(item.label)}</span>${missing ? `<span class="property-step-missing" aria-label="${missing} required values missing">${missing}</span>` : ''}</button>`;
