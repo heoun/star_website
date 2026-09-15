@@ -85,22 +85,33 @@ function extractText(xml) {
   const document = new DOMParser().parseFromString(xml, "application/xml");
   if (document.querySelector("parsererror")) throw new Error("The .docx contents could not be read.");
 
-  const paragraphs = document.getElementsByTagNameNS(WORD_NAMESPACE, "p");
-  const lines = [];
-
-  for (const paragraph of paragraphs) {
-    const runs = paragraph.getElementsByTagNameNS(WORD_NAMESPACE, "t");
-    let line = "";
-    for (const run of runs) {
-      // Tracked deletions are not part of the current agreement.
-      let deleted = false;
-      for (let parent = run.parentElement; parent; parent = parent.parentElement) {
-        if (parent.namespaceURI === WORD_NAMESPACE && parent.localName === "del") { deleted = true; break; }
+  const textOf = node => {
+    let text = '';
+    const walk = el => {
+      if (el.namespaceURI === WORD_NAMESPACE && ['del','moveFrom'].includes(el.localName)) return;
+      if (el.namespaceURI === WORD_NAMESPACE && el.localName === 't') {text += el.textContent;return;}
+      if (el.namespaceURI === WORD_NAMESPACE && ['tab','br','cr'].includes(el.localName)) {text += el.localName === 'tab' ? '\t' : '\n';return;}
+      for (const child of el.children) walk(child);
+    };
+    walk(node);return text.trim();
+  };
+  const paragraphs = node => [...node.getElementsByTagNameNS(WORD_NAMESPACE,'p')].map(textOf).join('\n');
+  const lines=[];
+  const body=document.getElementsByTagNameNS(WORD_NAMESPACE,'body')[0];
+  for (const node of body.children) {
+    if(node.localName==='tbl') {
+      const rows=[...node.children].filter(n=>n.localName==='tr').map(row=>[...row.children].filter(n=>n.localName==='tc').map(paragraphs));
+      const headers=rows[0] || [];
+      // Side-by-side role/contact tables must remain separate columns, otherwise
+      // a manager's address could inherit the neighbouring landlord heading.
+      if(headers.length>1 && headers.every(h=>h.length<140 && /^(?:property manager|management|landlord|owner|lessor|tenant)\b/i.test(h))) {
+        headers.forEach((heading,i)=>{lines.push(heading+':');for(const row of rows.slice(1))lines.push(row[i] || '');lines.push('');});
+      } else for(const row of rows){
+        if(row.length===2 && !row[0].includes('\n'))lines.push(row[0].replace(/[:：]$/,'')+':\t'+row[1]);
+        else lines.push(row.join('\n'));
       }
-      if (!deleted) line += run.textContent;
-    }
-    lines.push(line.trim());
+    } else if(node.localName==='p')lines.push(textOf(node));
+    else lines.push(paragraphs(node));
   }
-
-  return lines.join("\n");
+  return lines.join('\n');
 }
