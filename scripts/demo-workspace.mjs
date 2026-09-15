@@ -49,12 +49,12 @@ async function asset(request) {
   if (!file.startsWith(`${dist}/`)) return new Response("Not found", { status: 404 });
   try {
     let bytes = await readFile(file);
-    if (path === "/admin/lease-template.docx") {
+    if (path === "/admin/lease-template.docx" && new URL(request.url).searchParams.get("purpose") !== "property-setup") {
       mockTemplate ||= annotateDemoTemplate(bytes);
       bytes = Buffer.from(await mockTemplate);
     }
     if (path === "/admin/" || path === "/admin/index.html") bytes = Buffer.from(bytes.toString().replace('<div class="topright">', '<div class="topright"><a href="/__demo/scenarios" style="white-space:nowrap;font-size:12px">Demo scenarios</a><a href="/__demo" style="white-space:nowrap;font-size:12px">Demo roles</a>'));
-    if (extname(file) === ".html") bytes = Buffer.from(bytes.toString().replace('</body>', '<script type="module" src="/__demo/annotations.js"></script></body>'));
+    if (extname(file) === ".html" && path !== "/admin/property-draft-document.html") bytes = Buffer.from(bytes.toString().replace('</body>', '<script type="module" src="/__demo/annotations.js"></script></body>'));
     return new Response(bytes, { headers: { "Content-Type": mime[extname(file)] || "application/octet-stream", "Cache-Control": "no-store" } });
   } catch { return new Response("Not found", { status: 404 }); }
 }

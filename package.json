@@ -19,7 +19,7 @@
     "test:administration:db": "node backend/tools/test-administration-schema.mjs",
     "test:demo": "node scripts/test-demo-data.mjs && node scripts/test-demo-names.mjs && node scripts/test-demo-listing-media.mjs && node scripts/test-demo-journey.mjs",
     "demo:workspace": "npm run build && node scripts/demo-workspace.mjs",
-    "test:property": "node scripts/test-property-flow.mjs",
+    "test:property": "node scripts/test-property-flow.mjs && node scripts/test-property-setup.mjs && node scripts/test-property-draft.mjs",
     "test:lease-import": "node scripts/test-lease-import.mjs",
     "test:property-create:db": "node scripts/test-property-create-schema.mjs",
     "test:lease-import:ui": "npm run build && node scripts/test-lease-import-ui.mjs",

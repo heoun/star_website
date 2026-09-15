@@ -1602,7 +1602,7 @@ ROUTE_HOSTS.properties.addEventListener("click", async event => {
   button.disabled = true;
   try {
     const {registry} = await api('/lease/fields');
-    openNewProperty({fields:registry.fields.filter(field=>field.source==='manager'),api,escapeHtml,setStatus,
+    openNewProperty({draftOwner:session.email,fields:registry.fields.filter(field=>field.source==='manager'),api,escapeHtml,setStatus,
       onSaved: async building => { buildingRowsLoaded=false; location.hash=`#/properties/${building.id}`; }
     });
   } catch(error) {setStatus(error.message,'error');}

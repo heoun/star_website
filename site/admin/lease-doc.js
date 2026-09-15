@@ -71,7 +71,7 @@ async function loadRenderer() {
 // that Word split across two runs would simply not be found here, and a lease
 // would then be produced with a value the screen never showed. That must be
 // loud, never silent.
-export async function mountDocument(container, { onSlotClick } = {}) {
+export async function mountDocument(container, { onSlotClick, templatePath = TEMPLATE_PATH } = {}) {
   host = container;
   host.textContent = "";
   slotsByField = new Map();
@@ -79,7 +79,7 @@ export async function mountDocument(container, { onSlotClick } = {}) {
   sections = [];
   clauseMarks = [];
 
-  const response = await fetch(TEMPLATE_PATH, { headers: { Accept: "*/*" } });
+  const response = await fetch(templatePath, { headers: { Accept: "*/*" } });
   if (!response.ok) {
     throw new Error(`The lease template could not be loaded (${response.status}).`);
   }
@@ -476,12 +476,12 @@ export function sectionOfField(fieldId) {
 
 let highlighted = [];
 
-export function scrollToOccurrence(fieldId, index = 0) {
+export function scrollToOccurrence(fieldId, index = 0, {behavior = "smooth"} = {}) {
   const slots = slotsByField.get(fieldId) || [];
   if (slots.length === 0) return null;
 
   const slot = slots[Math.max(0, Math.min(index, slots.length - 1))];
-  slot.scrollIntoView({ block: "center", behavior: "smooth" });
+  slot.scrollIntoView({ block: "center", behavior });
 
   // Every place the value prints lights up, not only the one scrolled to: a
   // tenant name is in the parties clause, the occupants clause and above the
