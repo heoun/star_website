@@ -16,6 +16,7 @@ import { groupedQueue, rentalGroupMarkup, bindRentalGroup } from "./rental-group
 // the queue row and the case page lead with.
 
 import { documentSummary, money, requestedItems, shortDay } from "./application-view.js";
+import { parseDate, shortDate } from "../shared/lease-dates.js";
 
 // Styled by case-workspace.css, linked from the console page beside this module.
 
@@ -106,7 +107,7 @@ function initialTerms(row) {
 const termText = (key, value) => {
   if (value === undefined || value === null || value === "") return "";
   if (key === "rent.monthly" || key === "deposit.amount") return money(value) || String(value);
-  if (key.startsWith("lease.")) return shortDay(`${value}T12:00:00Z`);
+  if (key.startsWith("lease.")) return shortDate(parseDate(value)) || String(value);
   return String(value);
 };
 
@@ -712,7 +713,9 @@ function documentsPanel({ row, docs, mail, types }) {
 function termsPanel(ctx) {
   const { row, terms, w, allowed } = ctx;
   const saved = Boolean(w.terms);
-  const rows = TERM_IDS.map(key => line(TERM_LABELS[key], terms[key] ? `<b>${esc(termText(key, terms[key]))}</b>` : '<span class="soft">Not set</span>')).join("");
+  // Once prepared, show the resolved contract values, including its default date.
+  const displayed = { ...terms, ...(w.lease_preparation ? w.lease_draft?.values : {}) };
+  const rows = TERM_IDS.map(key => line(TERM_LABELS[key], displayed[key] ? `<b>${esc(termText(key, displayed[key]))}</b>` : '<span class="soft">Not set</span>')).join("");
   const asked = [row.move_in && `move in ${row.move_in}`, row.lease_term_months && `${row.lease_term_months} months`].filter(Boolean).join(", ");
   const inPrimary = row.status === "review" && w.landlord_decision?.outcome === "changes";
   return panel("Terms for This Lease", saved ? "Saved for this rental. Property defaults are not changed." : `Suggested from the application${asked ? ` (${asked})` : ""} and the listing. Not saved yet.`,

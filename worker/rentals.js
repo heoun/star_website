@@ -18,7 +18,7 @@ export function rentalWorkflow(env,request) {
       const application=householdApplication(group),listing=group.root.listings;
       if(!listing) throw new Error('Listing unavailable');
       const building=listing.building_id ? await fetchBuilding(env,listing.building_id) : null;
-      return resolveValues({layers:await fetchLeaseLayers(env,listing.id),deal:dealValues({application,listing,building,today:parseDate(new Date().toISOString().slice(0,10))}),overrides:terms});
+      return resolveValues({layers:await fetchLeaseLayers(env,listing.id),deal:dealValues({application,listing,building,today:parseDate(new Date().toISOString().slice(0,10))}),overrides:{...group.root.workspace?.lease_overrides,...terms}});
     }
   });
 }

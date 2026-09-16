@@ -55,6 +55,7 @@ export interface WorkspaceState {
   lease_draft?: {values: Record<string, unknown>; missing: string[]; error?: string; at: string; revision: number};
   signature_receipts?: Record<string, {reference: string; at: string; by: string}>;
   terms?: WorkspaceTerms;
+  lease_overrides?: Record<string, unknown>;
   checks?: { fee: string; screening: string; documents: string; reference: string; by: string; at: string; credit_score?: number | null };
   // What the team asked the applicant for, so the request can be repeated
   // verbatim and new uploads can be read against when it was made.

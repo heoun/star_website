@@ -18,6 +18,7 @@
 
 import * as doc from "./lease-doc.js";
 import * as workspace from "./lease-workspace.js";
+import { signingMarkup, bindSigning } from './rental-signing.js';
 import { mapDocuments, verifyDocuments } from "../shared/lease-documents.js";
 import { ADDRESS_FIELD, ADDRESS_PARTS, composeAddress } from "../shared/lease-address.js";
 import { applicationWrite } from "../shared/lease-application.js";
@@ -55,7 +56,14 @@ let docHost = null;
 let mounted = false;
 
 export function initLeaseScreen(deps) {
-  ({ api, setStatus, escapeHtml } = deps);
+  ({ api, escapeHtml } = deps);
+  setStatus = (message, tone) => {
+    const feedback = screen.querySelector('#lease-review-feedback');
+    if (!feedback || screen.hidden || state?.mode === 'defaults') return deps.setStatus(message, tone);
+    feedback.hidden = !message;
+    feedback.textContent = message || '';
+    feedback.dataset.tone = tone || '';
+  };
   isManager = deps.isManager || (() => false);
   listingsOf = deps.listings;
   onApplicationChanged = deps.onApplicationChanged || (() => {});
@@ -108,6 +116,8 @@ function blankState() {
 // edited round — applyChange consults this before recording anything, so a
 // field that is not editable cannot even become dirty.
 function canEdit(field) {
+  if(state?.readOnly)return false;
+  if(state?.mode==='lease' && (field.id.startsWith('tenant.') || field.id.startsWith('property.') || field.template===false))return false;
   return isManager() || agentMayWriteField(field.id);
 }
 
@@ -146,11 +156,24 @@ function targetLabelFor() {
 
 async function fetchValues() {
   if (state.mode === "lease") {
+    const {case:caseRow}=await api(`/cases/${encodeURIComponent(state.application.id)}`);
+    state.caseRow=caseRow;
+    state.signing=await api(`/cases/${encodeURIComponent(state.application.id)}/signing`).catch(()=>({configuration:{enabled:false}}));
+    const phase=caseRow.workspace?.signing?.phase;
+    state.readOnly=state.requestedReadOnly || ['lease_sent','lease_signed','declined'].includes(caseRow.status) || !!(phase && !['voided','declined'].includes(phase));
+    state.landlordEmail=state.signing?.signing?.signers?.find(s=>s.role==='landlord')?.email || caseRow.workspace?.recommendation?.landlord_email || '';
+    if(!state.landlordEmail){
+      const {landlords=[]}=await api(`/cases/${encodeURIComponent(state.application.id)}/participants`).catch(()=>({}));
+      const building=buildings.find(b=>b.id===caseRow.listings?.building_id);
+      state.landlordEmail=landlords.find(l=>l.email===building?.landlord_signer_email)?.email || (landlords.length===1?landlords[0].email:'');
+    }
     const payload = await api(`/lease/document/${encodeURIComponent(state.application.id)}`, {
       method: "POST",
       body: JSON.stringify({ mode: "values" })
     });
     state.values = payload.values;
+    state.frozen=payload.frozen;
+    state.baseValues=structuredClone(payload.values);
     state.provenance = payload.provenance || {};
     state.missingLabels = {};
     for (let i = 0; i < payload.missing.length; i += 1) {
@@ -194,6 +217,7 @@ export async function openLeaseScreen(options = {}) {
   // goes to the property layer, so a stray edit here — which would land on one
   // apartment instead — must not be possible at all.
   state.readOnly = options.readOnly === true || state.mode === "defaults";
+  state.requestedReadOnly=state.readOnly;
   // Where "back" goes. The workspace covers the console, so leaving it is a
   // route change rather than a hide — otherwise the address bar still names a
   // lease nobody is looking at.
@@ -261,7 +285,7 @@ export async function openLeaseScreen(options = {}) {
     // Every document, unless the caller named one — the property screen opens
     // a single document from its package list, and landing on the whole
     // package would make that button look broken.
-    showDocument(options.document || "");
+    showDocument(options.document || (state.mode==='lease'?'lease':''));
     if (options.document) state.tab = "documents";
     renderFormPane();
     // Again, now that the values are in: the header states the status, and a
@@ -294,7 +318,10 @@ function verifyTemplate(summary) {
   // one-line address the document does print — the state's abbreviation, since
   // the bedbug form stopped spelling the address out a second way.
   const composed = new Set(ADDRESS_PARTS);
-  const absent = [...expected].filter((id) => !found.has(id) && !composed.has(id));
+  // Contact details and settings that feed other fields need no placeholder.
+  const absent = registry.fields
+    .filter((field) => field.template !== false && !found.has(field.id) && !composed.has(field.id))
+    .map((field) => field.id);
   const unknown = [...found].filter((id) => !expected.has(id));
   const boxes = summary.textBoxes || 0;
   if (absent.length === 0 && unknown.length === 0 && boxes === 0
@@ -334,6 +361,7 @@ let shellRendered = false;
 function renderFormPane() {
   if (state.mode !== "defaults") {
     workspace.renderWorkspace(formHost, state);
+    renderSigningPanel();
     return;
   }
 
@@ -383,9 +411,9 @@ function renderBar() {
   const status = leaseStatus();
 
   screen.querySelector("#lease-bar").innerHTML = `
-    <button type="button" id="lease-back">← ${state.readOnly ? "Back to the property" : "Back to leases"}</button>
+    <button type="button" id="lease-back">← ${state.mode==='lease'?'Back to Rental':state.readOnly ? "Back to Property" : "Back to Leases"}</button>
     <div class="lease-head">
-      <h2>${escapeHtml(state.readOnly
+      <h2>${escapeHtml(state.readOnly && state.mode!=='lease'
         ? "The lease, as this apartment's settings fill it"
         : tenants || "New lease")}</h2>
       <p>${escapeHtml(unitLabel(listing) || "No apartment chosen yet")}</p>
@@ -414,12 +442,14 @@ function renderBar() {
 // that only what the application says. "Partially signed" is deliberately
 // absent — nothing here talks to a signing service, so nothing could set it.
 function leaseStatus() {
-  const applicationStatus = state.application?.status;
+  const applicationStatus = state.caseRow?.status || state.application?.status;
   if (applicationStatus === "declined") return { label: "Cancelled", tone: "off" };
   if (applicationStatus === "lease_signed") return { label: "Fully signed", tone: "good" };
   if (applicationStatus === "lease_sent") return { label: "Sent for signature", tone: "busy" };
   if (state.missing.size > 0) return { label: "Draft", tone: "off" };
-  return { label: "Ready to send", tone: "good" };
+  if(state.dirty.size)return {label:'Unsaved Corrections',tone:'off'};
+  if(state.mode==='lease' && !['landlord_approved','lease_sent','lease_signed'].includes(applicationStatus))return {label:'Awaiting Approval',tone:'off'};
+  return { label: "Ready for Review", tone: "good" };
 }
 
 function termLabel() {
@@ -442,6 +472,7 @@ function renderShell() {
         <div class="lease-pane-head">
           <span id="lease-position">—</span>
           <span id="lease-doc-name" class="lease-doc-name"></span>
+          <button type="button" id="lease-all-documents" aria-pressed="false">View All Documents</button>
           <span class="lease-tools">
             <button type="button" data-lease-zoom="-1" aria-label="Zoom out">−</button>
             <span id="lease-zoom-label">100%</span>
@@ -455,6 +486,7 @@ function renderShell() {
       <div class="lease-pane lease-pane-form">
         <div id="lease-fields"></div>
         <div class="lease-actions" id="lease-actions">
+          <p id="lease-review-feedback" role="status" hidden></p>
           <div class="lease-warnings" id="lease-warnings"></div>
           <button type="button" id="lease-save" disabled>Save settings</button>
           <button type="button" id="lease-draft" hidden>Preview package</button>
@@ -464,7 +496,7 @@ function renderShell() {
     </div>
     <div class="lease-tabs">
       <button type="button" class="chip is-on" data-lease-tab="doc">Document</button>
-      <button type="button" class="chip" data-lease-tab="form">Lease information</button>
+      <button type="button" class="chip" data-lease-tab="form">Lease Information</button>
     </div>`;
 
   const saved = Number(localStorage.getItem("lease-split") || 0);
@@ -499,7 +531,8 @@ function showDocument(id) {
   else doc.showSections(null);
 
   const label = screen.querySelector("#lease-doc-name");
-  if (label) label.textContent = found ? found.name : "The whole package";
+  if (label) label.textContent = found ? found.name : "All Documents";
+  screen.querySelector('#lease-all-documents')?.setAttribute('aria-pressed',String(!found));
 
   const scroller = screen.querySelector("#lease-doc-scroll");
   if (scroller) scroller.scrollTop = 0;
@@ -538,6 +571,7 @@ let bound = false;
 let zoom = 1;
 
 function focusField(fieldId) {
+  if(state.mode!=='defaults' && state.tab!=='information') {state.tab='information';workspace.renderTab(formHost,state);}
   const input = formHost.querySelector(`[data-lease-input="${CSS.escape(fieldId)}"]`);
 
   // In the property editor a value has an input only while its panel is open
@@ -547,7 +581,7 @@ function focusField(fieldId) {
     return locateRow(formHost.querySelector(`[data-setting-row="${CSS.escape(fieldId)}"]`));
   }
 
-  if (!input) return;
+  if (!input) return locateRow(formHost.querySelector(`[data-ws-row="${CSS.escape(fieldId)}"]`));
   // The value may be on a tab that is not open; the information tab is the one
   // that holds every editable value.
   if (!input.offsetParent && state.mode !== "defaults" && state.tab !== "information") {
@@ -556,7 +590,7 @@ function focusField(fieldId) {
     return focusField(fieldId);
   }
   // …or inside a section somebody has left shut.
-  input.closest("details")?.setAttribute("open", "");
+  for(let parent=input.parentElement;parent;parent=parent.parentElement)if(parent.tagName==='DETAILS')parent.open=true;
   input.scrollIntoView({ block: "center", behavior: "smooth" });
   input.focus();
   locateRow(input.closest("[data-lease-row], [data-setting-row]"), false);
@@ -583,6 +617,7 @@ function onInput(fieldId, rawValue, isCheckbox) {
   }
 
   state.dirty.add(fieldId);
+  if(state.baseValues && state.values[fieldId]===state.baseValues[fieldId])state.dirty.delete(fieldId);
 
   // The end date is half move-in, half term; a new move-in moves it now, the
   // same way a new term does.
@@ -625,6 +660,8 @@ function onInput(fieldId, rawValue, isCheckbox) {
 
 async function writeBack(fieldId) {
   if (state.mode !== "lease" || !state.application) return;
+  // Lease corrections are saved together, with approval invalidation and audit.
+  if(state.caseRow?.workspace?.rental_flow==='automatic')return;
   if (!state.dirty.has(fieldId)) return;
 
   const field = state.byId.get(fieldId);
@@ -681,6 +718,7 @@ function applyEndDate() {
 
   state.values["lease.end_date"] = next;
   state.dirty.add("lease.end_date");
+  if(next===state.baseValues?.['lease.end_date'])state.dirty.delete('lease.end_date');
   recomputeMissing();
   doc.patchField("lease.end_date", next,
     state.missing.has("lease.end_date") ? state.byId.get("lease.end_date").label : null);
@@ -698,6 +736,15 @@ function updateActions() {
   }
 
   screen.querySelector("#lease-actions").hidden = false;
+  if(state.mode==='lease' && state.caseRow?.workspace?.rental_flow==='automatic') {
+    const save=screen.querySelector('#lease-save'),review=screen.querySelector('#lease-final'),draft=screen.querySelector('#lease-draft');
+    const problems=workspace.reviewIssues(state).length;
+    save.hidden=state.readOnly || !state.dirty.size;save.textContent='Save & Request Approval';save.disabled=problems>0;
+    draft.hidden=true;review.hidden=false;review.textContent=state.readOnly?'View Signing Status':'Review & Send';
+    review.disabled=!!state.dirty.size || !state.signing?.configuration?.enabled || !screen.querySelector('#lease-alarm').hidden || (!state.readOnly && (problems>0 || state.caseRow.status!=='landlord_approved'));
+    screen.querySelector('#lease-warnings').textContent=state.dirty.size?`${state.dirty.size} unsaved correction${state.dirty.size===1?'':'s'} · This lease only`:state.caseRow.status==='sent_to_landlord'?'Waiting for landlord approval':'';
+    return;
+  }
 
   const warnings = screen.querySelector("#lease-warnings");
   const dirtyManager = [...state.dirty].filter((id) => state.byId.get(id)?.source === "manager");
@@ -722,6 +769,7 @@ function updateActions() {
 }
 
 async function saveSettings() {
+  if(state.mode==='lease' && state.caseRow?.workspace?.rental_flow==='automatic')return saveLeaseCorrections();
   const dirtyManager = [...state.dirty].filter((id) => state.byId.get(id)?.source === "manager");
   if (dirtyManager.length === 0) return;
 
@@ -758,6 +806,29 @@ async function saveSettings() {
   } catch (error) {
     setStatus(error.message, "error");
   }
+}
+
+async function saveLeaseCorrections() {
+  const overrides={};
+  for(const id of state.dirty){const field=state.byId.get(id);overrides[id]=field.type==='checkbox'?state.checked.has(id):state.values[id];}
+  if(!Object.keys(overrides).length)return;
+  if(!window.confirm('Save these corrections for this lease and request landlord approval? The previous approval and signing previews will no longer be valid. Property defaults will stay unchanged.'))return;
+  const button=screen.querySelector('#lease-save');button.disabled=true;
+  try {
+    await api(`/lease/document/${encodeURIComponent(state.application.id)}`,{method:'POST',body:JSON.stringify({mode:'corrections',version:state.caseRow.workspace_version,overrides})});
+    state.dirty.clear();await refreshReview();setStatus('Corrections saved. A new landlord approval is required.','ok');
+  }catch(error){setStatus(error.message,'error');updateActions();}
+}
+
+async function refreshReview() {
+  await fetchValues();syncChecked();recomputeMissing();doc.patchValues(state.values,state.missingLabels);renderFormPane();renderBar();updateActions();
+}
+function renderSigningPanel() {
+  const host=formHost?.querySelector('[data-workspace-signing]');if(!host)return;
+  if(!state.caseRow){host.innerHTML='<p class="ws-hint">Open a rental to review and send its lease.</p>';return;}
+  if(state.dirty.size){host.innerHTML='<p role="status">Save your corrections and obtain approval before preparing a signing package.</p>';return;}
+  const ctx={id:state.application.id,row:state.caseRow,w:state.caseRow.workspace || {},signing:state.signing,api};
+  host.innerHTML=signingMarkup(ctx);bindSigning(host,ctx,refreshReview);
 }
 
 async function produce(mode) {
@@ -859,6 +930,7 @@ function bindOnce() {
   });
 
   screen.addEventListener("click", async (event) => {
+    if(state?.mode==='lease' && state.dirty.size && event.target.closest('a[href^="#"]') && !window.confirm('Leave without saving these lease corrections?')){event.preventDefault();return;}
     // The property editor owns its panels, its two dialogs and its writes.
     // Asked first, because a dialog's backdrop is not a button.
     if (state?.mode === "defaults") {
@@ -877,6 +949,7 @@ function bindOnce() {
     if (!button) return;
 
     if (button.id === "lease-back") {
+      if(state.mode==='lease' && state.dirty.size && !window.confirm('Leave without saving these lease corrections?'))return;
       if (state.mode === "defaults" && !mayLeaveEditor(formHost, defaultsUi)) return;
       // Both ways of opening this screen from the property page leave the hash
       // already naming the property, so assigning it fires no hashchange and
@@ -890,7 +963,17 @@ function bindOnce() {
     }
     if (button.id === "lease-save") return saveSettings();
     if (button.id === "lease-draft") return produce("draft");
-    if (button.id === "lease-final") return produce("final");
+    if (button.id === "lease-final") {
+      if(state.mode==='lease' && state.caseRow?.workspace?.rental_flow==='automatic') {
+        if(state.dirty.size)return;
+        state.tab='recipients';workspace.renderTab(formHost,state);renderSigningPanel();
+        formHost.querySelector('[data-signing-prepare]')?.click();return;
+      }
+      return produce("final");
+    }
+    if(button.id==='lease-all-documents'){showDocument('');if(state.tab==='documents')workspace.renderTab(formHost,state);return;}
+    if(button.dataset.wsIssue){focusField(button.dataset.wsIssue);showFieldInDocument(button.dataset.wsIssue);return;}
+    if(button.dataset.wsDone){button.closest('details').open=false;return;}
 
     if (button.dataset.leaseLocate) {
       // The value may print inside a document that is filtered out of view.
@@ -909,6 +992,7 @@ function bindOnce() {
     if (button.dataset.wsTab) {
       state.tab = button.dataset.wsTab;
       workspace.renderTab(formHost, state);
+      renderSigningPanel();
       return;
     }
 
@@ -939,10 +1023,12 @@ function bindOnce() {
   // Reading and filling in are the same gesture here: the field you are in is
   // the sentence you are shown.
   screen.addEventListener("focusin", (event) => {
-    if (state?.mode !== "defaults") return;
     const input = event.target.closest("[data-lease-input]");
     if (input) showFieldInDocument(input.dataset.leaseInput);
   });
+  screen.addEventListener('toggle',event=>{
+    if(event.target.matches?.('details.ws-review-field') && event.target.open)showFieldInDocument(event.target.dataset.wsRow);
+  },true);
 
   const scroller = screen.querySelector("#lease-doc-scroll");
   let ticking = false;

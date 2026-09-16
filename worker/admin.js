@@ -1,4 +1,5 @@
 import { propertyAddress } from "../site/shared/property-address.js";
+import { parseDate as parseLeaseDate } from "../site/shared/lease-dates.js";
 import { handleAdministration } from "./administration.js";
 import { readSession, sameOriginMutation } from "./auth.js";
 import { handleLandlordRead, handleChangeRequests, handleCaseWorkspace, requireCaseAccess, caseWorkspace } from "./backoffice.js";
@@ -997,12 +998,12 @@ async function handleLeaseDocument(request, env, identity, applicationId) {
   const body = await request.json().catch(() => ({}));
   const scoped = await requireCaseAccess(env, identity, applicationId);
   if (body.mode === "final" && (!scoped.workspace?.landlord_decision || scoped.workspace.landlord_decision.outcome !== "accepted")) return json({ error: "Landlord confirmation is required before producing the final lease." }, 409);
-  if (["landlord_approved", "lease_sent", "lease_signed"].includes(scoped.status) && Object.keys(body.overrides || {}).length) return json({ error: "These terms were confirmed by the landlord. Use the saved version." }, 409);
+  if (body.mode !== 'corrections' && ["landlord_approved", "lease_sent", "lease_signed"].includes(scoped.status) && Object.keys(body.overrides || {}).length) return json({ error: "These terms were confirmed by the landlord. Use the saved version." }, 409);
   let application = await fetchApplicationForLease(env, applicationId);
   if (!application) return json({ error: "Application not found." }, 404);
   if(rentalMode(env)) {
     const flow=rentalWorkflow(env,request),group=await flow.load(identity,applicationId);
-    flow.assertReady(group);
+    if(!['values','corrections'].includes(body.mode)) flow.assertReady(group);
     if(group.root.id!==applicationId) return json({error:'Open the shared rental to generate its lease.'},409);
     application={...application,...householdApplication(group)};
   }
@@ -1017,10 +1018,30 @@ async function handleLeaseDocument(request, env, identity, applicationId) {
   if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
   if (refused.length > 0) return overrideRefusal(refused);
 
+  if(body.mode==='corrections') {
+    if(!rentalMode(env) || identity.owner || !['manager','agent'].includes(identity.role))return json({error:'Staff rental access is required.'},403);
+    if(!body.overrides || typeof body.overrides!=='object' || Array.isArray(body.overrides))return json({error:'Choose lease corrections.'},422);
+    for(const [id,value] of Object.entries(overrides)) {
+      const field=LEASE_REGISTRY.fields.find(f=>f.id===id);
+      if(id.startsWith('tenant.') || id.startsWith('property.') || field.template===false)return json({error:'Update applicant identity or property information in its source record.'},422);
+      if(field.type==='date' && value && !parseLeaseDate(value))return json({error:`Enter a valid date for ${field.label}.`},422);
+      if(field.type==='checkbox' && typeof body.overrides[id]!=='boolean')return json({error:`Choose Yes or No for ${field.label}.`},422);
+      if(['rent.monthly','deposit.amount','rent.due_day'].includes(id)) {
+        const n=Number(String(value).replace(/[$,\s]/g,''));
+        if(value==='' || !Number.isFinite(n) || n<0 || (id==='rent.monthly' && n===0) || (id==='rent.due_day' && (!Number.isInteger(n) || n<1 || n>31)))return json({error:`Check ${field.label}.`},422);
+      }
+    }
+    const dates={...scoped.workspace?.terms,...overrides};
+    const start=parseLeaseDate(dates['lease.commencement_date']),end=parseLeaseDate(dates['lease.end_date']);
+    const stamp=p=>p?Date.UTC(p.year,p.month-1,p.day):null;
+    if(start && end && stamp(end)<stamp(start))return json({error:'The lease end must follow the start date.'},422);
+    return json({case:await rentalWorkflow(env,request).correctLease(identity,applicationId,body.version,overrides)});
+  }
+
   const today = todayParts(body.today);
   const deal = dealValues({ application, listing, building, today });
   const savedTerms = scoped.workspace?.recommendation?.terms || scoped.workspace?.terms || {};
-  const live = resolveValues({ layers, deal, overrides: { ...savedTerms, ...overrides } });
+  const live = resolveValues({ layers, deal, overrides: { ...scoped.workspace?.lease_overrides, ...savedTerms, ...overrides } });
 
   // A lease that has gone out is no longer a view of the settings screen. It
   // was generated from particular values, somebody has it in front of them,

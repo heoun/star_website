@@ -1,482 +1,152 @@
-// The right half of the lease workspace.
-//
-// It replaces the field browser that listed all 147 template values in one
-// column. That list answered "what placeholders exist"; the person sending a
-// lease needs to know what the lease will say, who decided it, and what they
-// may change — so this groups by ownership instead:
-//
-//   Tenant information     came from the approved application
-//   Transaction terms      this tenancy, and the agent's to set
-//   Landlord defaults      the manager's, read-only here, collapsed
-//   Filled in for you      derived; nobody types these
-//
-// Editing goes through the same `data-lease-input` attribute the old form used,
-// so lease-screen.js patches the document on the keystroke, writes tenant
-// corrections back to the application on blur, and recounts what is missing —
-// all unchanged. This module decides what to show, never how a value is stored.
-// There is exactly one editor.
-//
-// Two values are not lease placeholders at all — the tenant's phone and the
-// length of the term — but both belong on this screen: the phone is who the
-// signing request goes to, and the term is what the end date is computed from.
-// They carry `data-ws-app` and are written straight to the application row.
-
-import { endDateFor } from "../shared/lease-dates.js";
-import { DOCUMENTS } from "../shared/lease-documents.js";
-
-let escapeHtml = (value) => String(value ?? "");
-
-export function initWorkspace(deps) {
-  escapeHtml = deps.escapeHtml;
-}
-
-// ------------------------------------------------------------ what goes where
-
-// The application answers these. They are the tenant's identity, so a manager
-// corrects them and an agent reads them — the same rule as the application
-// page. Anything the application collected for screening — date of birth,
-// social security number, income, employment, references, rental history,
-// emergency contacts — is deliberately absent: it is not on the lease and
-// this is not the screen for deciding on a tenant.
-const TENANT_FIELDS = [
-  { id: "tenant.names", hint: "As they will be printed and as they will sign." },
-  { id: "tenant.email", hint: "Where the signing request goes." },
-  { app: "phone", label: "Phone", manager: true,
-    hint: "Contact only — the lease does not print a phone number." },
-  { id: "tenant.mailing_address", hint: "Starts as the applicant's current address. Clear it when notices go to the unit." }
-];
-
-// The terms of this one tenancy — the values an agent settles.
-const TRANSACTION_FIELDS = [
-  { id: "lease.effective_date", hint: "The date on page one. Defaults to the day the lease goes out." },
-  { id: "lease.commencement_date", hint: "The day the tenancy starts." },
-  { app: "lease_term_months", label: "Lease term", hint: "Months. The end date follows from this.", type: "number" },
-  { id: "lease.end_date", derived: true, hint: "The last day of the term — the day before the same date, a term later." },
-  { id: "rent.monthly", hint: "Starts from the listing's asking rent." },
-  { id: "rent.due_day", hint: "The day of the month the rent falls due. Starts from the property's default." },
-  { id: "deposit.amount", hint: "One month is the New York maximum." },
-  { id: "concession.terms", hint: "Fills the Rent Concession Rider." }
-];
-
-// The landlord's own terms, as they will print. Grouped so the section can stay
-// shut: an agent checking a lease needs to be able to see them, not to read all
-// 125 of them every time.
-const MANAGER_GROUPS = [
-  {
-    title: "Landlord and signer",
-    ids: ["landlord.entity_name", "landlord.print_name", "landlord.address"]
-  },
-  {
-    title: "Management and notices",
-    ids: ["manager.name", "manager.address", "manager.phone",
-      "legal_notice.name", "legal_notice.address", "legal_notice.phone",
-      "emergency.phone"]
-  },
-  {
-    title: "Rent payment",
-    ids: ["payee.name", "payee.address", "payee.phone",
-      "deposit.bank_name", "deposit.bank_address"]
-  },
-  {
-    title: "Fees and insurance",
-    ids: ["fee.returned_payment", "fee.lock_change_admin", "insurance.min_liability",
-      "fee.lptli_monthly", "fee.lptli_admin_monthly", "fee.animal_liability_cap"]
-  }
-];
-
-// Filled in when the lease is generated, shown so a wrong one is noticed
-// before it is signed. The marks and the vacancy date are a manager's to
-// correct; the address follows the apartment.
-const SYSTEM_FIELDS = [
-  { id: "property.address_full", derived: true, hint: "Composed from the apartment you selected." },
-  { id: "lease.vacancy_lease_date", hint: "The bedbug disclosure's date. Defaults to the day the listing went on the website." },
-  { id: "dhcr.mark_vacancy", hint: "Ticked for a new tenancy." },
-  { id: "dhcr.mark_renewal", hint: "The renewal half of the same answer." }
-];
-
-const UTILITY_PREFIX = "utility.";
-
-// ----------------------------------------------------------------- rendering
-
-export function renderWorkspace(host, state) {
-  host.innerHTML = `
-    <div class="ws-tabs" role="tablist">
-      ${[["information", "Lease information"], ["documents", "Documents"], ["recipients", "E-sign recipients"]]
-        .map(([id, label]) => `<button type="button" class="ws-tab" role="tab" data-ws-tab="${id}"
-          aria-selected="${state.tab === id}">${label}</button>`).join("")}
-    </div>
-    <div class="ws-body" id="ws-body">${panelFor(state)}</div>`;
-  annotateWorkspace(host, state);
-}
-
-function panelFor(state) {
-  if (state.tab === "documents") return documentsPanel(state);
-  if (state.tab === "recipients") return recipientsPanel(state);
-  return informationPanel(state);
-}
-
-// Re-renders only the tab body, so switching tabs does not disturb the preview.
-export function renderTab(host, state) {
-  const body = host.querySelector("#ws-body");
-  if (body) body.innerHTML = panelFor(state);
-  for (const tab of host.querySelectorAll("[data-ws-tab]")) {
-    tab.setAttribute("aria-selected", String(tab.dataset.wsTab === state.tab));
-  }
-  annotateWorkspace(host, state);
-}
-
-// ------------------------------------------------------------- lease information
-
-function informationPanel(state) {
-  return `
-    ${section("Tenant", "From the approved application",
-      TENANT_FIELDS.map((entry) => row(entry, state)).join(""))}
-
-    ${section("Transaction terms", "This tenancy. Yours to set.",
-      `${unitRow(state)}${TRANSACTION_FIELDS.map((entry) => row(entry, state)).join("")}`)}
-
-    ${managerSection(state)}
-
-    ${systemSection(state)}`;
-}
-
-function section(title, note, body, extra = "") {
-  return `<section class="ws-section">
-    <header class="ws-section-head">
-      <h3>${escapeHtml(title)}</h3>
-      ${note ? `<p>${escapeHtml(note)}</p>` : ""}
-      ${extra}
-    </header>
-    ${body}
-  </section>`;
-}
-
-// The apartment decides the address, the rent it starts from, and which
-// building's settings the lease reads. It is the one selection that moves
-// everything else, so it sits at the top of the terms.
-function unitRow(state) {
-  const listing = state.listings.find((row) => row.id === state.listingId);
-  const address = state.values["property.address_full"] || "";
-
-  return `<div class="ws-row" data-ws-row="listing">
-    <label class="ws-label" for="lease-listing">Apartment</label>
-    <div class="ws-value">
-      <select id="lease-listing"${state.canPickUnit ? "" : " disabled"}>
-        <option value="">— choose an apartment —</option>
-        ${state.listings.map((row) => `<option value="${escapeHtml(row.id)}"${
-          row.id === state.listingId ? " selected" : ""}>${escapeHtml(unitLabel(row))}</option>`).join("")}
-      </select>
-      <p class="ws-hint">${address
-        ? `Address on the lease: <b>${escapeHtml(address)}</b>`
-        : "Choose an apartment and its address fills the lease."}</p>
-      ${state.canPickUnit ? "" : `<p class="ws-hint">${state.application
-        ? "Fixed to the apartment this application was made for. Starting a lease for a different one means an application for it."
-        : "Set by the property this document is being read for."}</p>`}
-      ${listing && !listing.building_id
-        ? '<p class="ws-hint is-warn">This apartment is under no property, so it has no landlord values at all.</p>'
-        : ""}
-    </div>
-  </div>`;
-}
-
-function unitLabel(listing) {
-  return [listing.property_name, listing.unit ? `Unit ${listing.unit}` : ""].filter(Boolean).join(" · ")
-    || listing.title || "Untitled";
-}
-
-function row(entry, state) {
-  if (entry.app) return applicationRow(entry, state);
-
-  const field = state.byId.get(entry.id);
-  if (!field) return "";
-
-  const missing = state.missing.has(entry.id);
-  const editable = state.editable(field) && !entry.derived;
-
-  return `<div class="ws-row${missing ? " is-missing" : ""}" data-lease-row="${escapeHtml(entry.id)}"
-               data-ws-row="${escapeHtml(entry.id)}">
-    <label class="ws-label" for="lease-input-${escapeHtml(entry.id)}">${escapeHtml(field.label)}</label>
-    <div class="ws-value">
-      ${entry.derived
-        ? `<output class="ws-derived" data-ws-derived="${escapeHtml(entry.id)}">${
-            escapeHtml(state.values[entry.id] || "—")}</output>`
-        : control(field, state, editable)}
-      <p class="ws-status" data-lease-status="${escapeHtml(entry.id)}"></p>
-      ${entry.hint || field.note
-        ? `<p class="ws-hint">${escapeHtml(entry.hint || field.note)}</p>` : ""}
-      ${!editable && !entry.derived && !state.readOnly
-        ? '<p class="ws-hint is-locked">A manager sets this.</p>' : ""}
-      ${state.occurrences[entry.id] > 0
-        ? `<button type="button" class="ws-find" data-lease-locate="${escapeHtml(entry.id)}">Show on the document</button>`
-        : ""}
-    </div>
-  </div>`;
-}
-
-// A value that lives on the application rather than in the template. One
-// marked `manager` follows the same rule as the tenant's other identity
-// fields: an agent reads it, a manager corrects it.
-function applicationRow(entry, state) {
-  const value = state.application ? (state.application[entry.app] ?? "") : "";
-  const locked = entry.manager && !state.isManager();
-  return `<div class="ws-row" data-ws-row="${escapeHtml(entry.app)}">
-    <label class="ws-label" for="ws-app-${escapeHtml(entry.app)}">${escapeHtml(entry.label)}</label>
-    <div class="ws-value">
-      <input id="ws-app-${escapeHtml(entry.app)}" data-ws-app="${escapeHtml(entry.app)}"
-             type="${entry.type || "text"}"${entry.type === "number" ? ' min="1" max="120"' : ""}
-             value="${escapeHtml(value)}"${
-               state.application && !locked && !state.readOnly ? "" : " disabled"}>
-      ${entry.hint ? `<p class="ws-hint">${escapeHtml(entry.hint)}</p>` : ""}
-      ${locked ? '<p class="ws-hint is-locked">A manager sets this.</p>' : ""}
-      ${state.application ? "" : '<p class="ws-hint">No application behind this lease.</p>'}
-    </div>
-  </div>`;
-}
-
-function control(field, state, editable) {
-  const value = state.values[field.id] ?? "";
-  const attrs = `id="lease-input-${escapeHtml(field.id)}" data-lease-input="${escapeHtml(field.id)}"${
-    editable ? "" : " disabled"}`;
-
-  if (field.type === "checkbox") {
-    return `<label class="ws-check"><input type="checkbox" ${attrs}${
-      state.checked.has(field.id) ? " checked" : ""}><span>Marked on the lease</span></label>`;
-  }
-  if (field.type === "choice") {
-    return `<select ${attrs}>${["", ...field.options].map((option) =>
-      `<option value="${escapeHtml(option)}"${option === value ? " selected" : ""}>${
-        escapeHtml(option || "— not answered —")}</option>`).join("")}</select>`;
-  }
-  if (field.type === "multiline") {
-    return `<textarea ${attrs} rows="2">${escapeHtml(value)}</textarea>`;
-  }
-  if (field.type === "integer") {
-    return `<input type="number" ${attrs} min="1" value="${escapeHtml(value)}">`;
-  }
-  return `<input type="text" ${attrs} value="${escapeHtml(value)}">`;
-}
-
-// ------------------------------------------------------------ landlord defaults
-
-function managerSection(state) {
-  const utilities = utilitySummary(state);
-
-  return `<section class="ws-section">
-    <details class="ws-fold">
-      <summary>
-        <span class="ws-fold-title">Landlord defaults</span>
-        <span class="ws-fold-note">${state.isManager()
-          ? "Set on Property lease settings, not here."
-          : "Set by a manager. Read-only."}</span>
-      </summary>
-      <div class="ws-fold-body">
-        ${MANAGER_GROUPS.map((group) => `
-          <h4 class="ws-subhead">${escapeHtml(group.title)}</h4>
-          ${group.ids.map((id) => readOnlyRow(id, state)).join("")}`).join("")}
-
-        <h4 class="ws-subhead">Utilities</h4>
-        <div class="ws-row"><span class="ws-label">Landlord pays</span>
-          <div class="ws-value"><b>${escapeHtml(utilities.landlord || "—")}</b></div></div>
-        <div class="ws-row"><span class="ws-label">Tenant pays</span>
-          <div class="ws-value"><b>${escapeHtml(utilities.tenant || "—")}</b></div></div>
-
-        <p class="ws-hint">${state.isManager()
-          ? 'Change any of these on <a href="#/properties">Property lease settings</a>, so every lease for the building gets them.'
-          : "Ask a manager to change one of these rather than working round it."}</p>
-      </div>
-    </details>
-  </section>`;
-}
-
-function readOnlyRow(id, state) {
-  const field = state.byId.get(id);
-  if (!field) return "";
-  const value = state.values[id];
-  const missing = state.missing.has(id);
-
-  return `<div class="ws-row${missing ? " is-missing" : ""}" data-ws-row="${escapeHtml(id)}">
-    <span class="ws-label">${escapeHtml(field.label)}</span>
-    <div class="ws-value">
-      ${value
-        ? `<b>${escapeHtml(value)}</b>`
-        : `<span class="ws-empty">${missing ? "Needed before this lease can be produced" : "Not answered"}</span>`}
-    </div>
-  </div>`;
-}
-
-// Twelve utilities as two sentences rather than twelve rows.
-function utilitySummary(state) {
-  const by = { Landlord: [], Tenant: [] };
-  for (const field of state.fields) {
-    if (!field.id.startsWith(UTILITY_PREFIX) || field.type !== "choice") continue;
-    const who = state.values[field.id];
-    if (!by[who]) continue;
-    by[who].push(field.label.replace(/ — .*$/, "").toLowerCase());
-  }
-  return { landlord: by.Landlord.join(", "), tenant: by.Tenant.join(", ") };
-}
-
-// ----------------------------------------------------------- filled in for you
-
-function systemSection(state) {
-  return `<section class="ws-section">
-    <details class="ws-fold">
-      <summary>
-        <span class="ws-fold-title">Filled in for you</span>
-        <span class="ws-fold-note">Filled when the lease is generated. A manager corrects them.</span>
-      </summary>
-      <div class="ws-fold-body">
-        ${SYSTEM_FIELDS.map((entry) => row(entry, state)).join("")}
-        <p class="ws-hint">The address is written into every place the template asks for it —
-          street, city, state, ZIP and the one-line form — from the apartment above.</p>
-      </div>
-    </details>
-  </section>`;
-}
-
-// ------------------------------------------------------------------ documents
-
-const WHY = {
-  required: "Required",
-  property: "Property default",
-  condition: "Transaction condition"
+// Review a lease by business topic; edits use the lease screen's existing controls.
+import { endDateFor, parseDate } from '../shared/lease-dates.js';
+import { DOCUMENTS } from '../shared/lease-documents.js';
+let escapeHtml = value => String(value ?? '');
+export function initWorkspace(deps) { escapeHtml = deps.escapeHtml; }
+const esc = value => escapeHtml(value);
+const LABELS = {
+  'tenant.names':'Legal Name', 'tenant.email':'Email', 'tenant.mailing_address':'Mailing Address',
+  'lease.effective_date':'Agreement Date', 'lease.commencement_date':'Lease Start', 'lease.end_date':'Lease End',
+  'rent.monthly':'Monthly Rent', 'rent.due_day':'Rent Due Day', 'deposit.amount':'Security Deposit',
+  'concession.terms':'Concessions', 'landlord.entity_name':'Landlord Entity', 'landlord.print_name':'Signer Name',
+  'landlord.address':'Notice Address', 'property.address_full':'Property Address',
+  'lease.vacancy_lease_date':'Bedbug Disclosure Date', 'dhcr.mark_vacancy':'New Lease', 'dhcr.mark_renewal':'Renewal'
 };
-
+const TENANT = ['tenant.names','tenant.email','tenant.mailing_address'];
+const DATES = ['lease.effective_date','lease.commencement_date','lease.end_date','lease.end_time','dhcr.mark_vacancy','dhcr.mark_renewal'];
+const MONEY = ['rent.monthly','rent.due_day','deposit.amount','concession.terms'];
+const OWNER = ['landlord.entity_name','landlord.print_name','landlord.address'];
+const GROUPS = [
+  ['Utilities', ['utility.']], ['Payments & Deposit Account', ['payee.','deposit.bank']],
+  ['Management & Notices', ['manager.','legal_notice.','emergency.','owner_rep.','landlord.']],
+  ['Fees & Insurance', ['fee.','fine.','insurance.','attorney_fees.']],
+  ['Property Rules & Disclosures', []]
+];
+const title = value => String(value).replace(/\b[a-z]/g, c => c.toUpperCase());
+const label = field => LABELS[field.id] || title(field.label);
+export function tenantSigners(state) {
+  if (state.caseRow?.household?.members) return state.caseRow.household.members.map(m => ({id:m.id,name:m.name,email:m.email}));
+  if (state.application) return [{id:state.application.id,name:state.values['tenant.names'] || state.application.name,email:state.values['tenant.email'] || state.application.email}];
+  return state.values['tenant.names'] ? [{name:state.values['tenant.names'],email:state.values['tenant.email'] || ''}] : [];
+}
+export function reviewIssues(state) {
+  const issues=[...state.missing].map(id=>({id,label:`Add ${label(state.byId.get(id) || {id,label:id})}`}));
+  for(const tenant of tenantSigners(state))if(!tenant.email)issues.push({tab:'recipients',label:`Add an email for ${tenant.name || 'the tenant'}`});
+  if(state.signing?.configuration?.enabled && !state.landlordEmail)issues.push({tab:'recipients',label:'Assign a landlord signer email'});
+  const emails=[...tenantSigners(state).map(t=>t.email),state.landlordEmail].filter(Boolean).map(e=>String(e).toLowerCase());
+  if(emails.some(e=>!/^\S+@[^\s@]+\.[^\s@]+$/.test(e)))issues.push({tab:'recipients',label:'Check signer email addresses'});
+  if(new Set(emails).size!==emails.length)issues.push({tab:'recipients',label:'Each signer needs a different email address'});
+  for(const id of state.dirty){
+    const field=state.byId.get(id),v=state.values[id];
+    if(field?.type==='date' && v && !parseDate(v))issues.push({id,label:`Check ${label(field)}`});
+    if(['rent.monthly','deposit.amount','rent.due_day'].includes(id) && v){const n=Number(String(v).replace(/[$,\s]/g,''));if(!Number.isFinite(n) || n<0 || (id==='rent.monthly' && n===0) || (id==='rent.due_day' && (!Number.isInteger(n) || n<1 || n>31)))issues.push({id,label:`Check ${label(field)}`});}
+  }
+  const start=parseDate(state.values['lease.commencement_date']),end=parseDate(state.values['lease.end_date']);
+  if(start && end && Date.UTC(end.year,end.month-1,end.day)<Date.UTC(start.year,start.month-1,start.day))issues.push({id:'lease.end_date',label:'Lease End must follow Lease Start'});
+  return issues;
+}
+function reviewSummary(state) {
+  const issues=reviewIssues(state), dirty=state.dirty.size;
+  return `<div class="ws-review-summary${issues.length?' has-issues':''}" data-ws-review-summary>
+    <strong>${issues.length?`${issues.length} Item${issues.length===1?'':'s'} to Resolve`:dirty?'Changes to Save':'Lease Details Complete'}</strong>
+    <p>${issues.length?'Select an item to review it.':dirty?'Save corrections before reviewing the signing package.':'Check the details below, then review the signing package.'}</p>
+    ${issues.length?`<ul>${issues.map(i=>`<li><button type="button" ${i.id?`data-ws-issue="${esc(i.id)}"`:`data-ws-tab="${i.tab}"`}>${esc(i.label)}</button></li>`).join('')}</ul>`:''}
+    ${state.frozen?'<p>Approved version. Saving corrections requires a new landlord approval.</p>':''}
+    ${state.readOnly && state.mode==='lease'?'<p>This lease is locked for signing. Review its status under E-sign Recipients.</p>':''}
+  </div>`;
+}
+export function renderWorkspace(host,state) {
+  host.innerHTML=`<div class="ws-tabs" role="tablist" aria-label="Lease Review">${[['information','Lease Information'],['documents','Documents'],['recipients','E-sign Recipients']].map(([id,name])=>`<button type="button" class="ws-tab" role="tab" data-ws-tab="${id}" aria-selected="${state.tab===id}">${name}</button>`).join('')}</div><div class="ws-body" id="ws-body">${panelFor(state)}</div>`;
+  annotateWorkspace(host,state);
+}
+export function renderTab(host,state) {
+  host.querySelector('#ws-body').innerHTML=panelFor(state);
+  for(const tab of host.querySelectorAll('[data-ws-tab][role="tab"]'))tab.setAttribute('aria-selected',String(tab.dataset.wsTab===state.tab));
+  annotateWorkspace(host,state);
+}
+function panelFor(state) {return state.tab==='documents'?documentsPanel(state):state.tab==='recipients'?recipientsPanel(state):informationPanel(state);}
+function section(name,body,note='') {return `<section class="ws-section ws-review-section"><header class="ws-section-head"><h3>${name}</h3>${note?`<p>${note}</p>`:''}</header>${body}</section>`;}
+function textRow(name,value,extra='',valueAttribute='') {return `<div class="ws-review-row"><span class="ws-label">${esc(name)}</span><div class="ws-review-value" ${valueAttribute}>${esc(value || 'Not Set')}${extra}</div></div>`;}
+function leaseTerm(state) {
+  const months=state.application?.lease_term_months;
+  return months ? (endDateFor(state.values['lease.commencement_date'],months)===state.values['lease.end_date'] ? `${months} Months` : 'Custom Term') : '';
+}
+function informationPanel(state) {
+  const members=tenantSigners(state),multiple=members.length>1;
+  const tenantRows=multiple?members.map((m,i)=>`<div class="ws-tenant-card"><b>Tenant ${i+1}</b>${textRow('Legal Name',m.name)}${textRow('Email',m.email)}<a class="ws-text-link" href="#/applications/${esc(m.id)}">Review Application</a></div>`).join(''):TENANT.map(id=>row(id,state)).join('');
+  const phone=state.application?.phone;
+  const listing=state.listings.find(l=>l.id===state.listingId);
+  return `${reviewSummary(state)}
+    ${section(multiple?'Tenants':'Tenant',tenantRows+(!multiple && state.application && !state.readOnly?`<a class="ws-text-link" href="#/applications/${esc(state.application.id)}">Edit Applicant Details</a>`:'')+(phone?`<details class="ws-contact"><summary>Contact Details</summary>${textRow('Phone',phone)}</details>`:''))}
+    ${section('Property & Lease Terms',(state.canPickUnit?`<div class="ws-review-row"><label class="ws-label" for="lease-listing">Apartment</label><select id="lease-listing"><option value="">Select Apartment</option>${state.listings.map(l=>`<option value="${esc(l.id)}"${l.id===state.listingId?' selected':''}>${esc(l.title || l.unit || l.id)}</option>`).join('')}</select></div>`:textRow('Apartment',listing?[listing.property_name,listing.unit && `Unit ${listing.unit}`].filter(Boolean).join(' · '):state.targetLabel))+row('property.address_full',state,true)+DATES.map(id=>row(id,state)).join('')+textRow('Lease Term',leaseTerm(state),'','data-ws-term'))}
+    ${section('Rent & Deposit',MONEY.map(id=>row(id,state)).join(''))}
+    ${section('Landlord & Signer',OWNER.map(id=>row(id,state)).join('')+textRow('Signer Email',state.landlordEmail,state.signing?.configuration?.enabled && !state.landlordEmail?'<a class="ws-text-link" href="#/properties">Assign in Property Settings</a>':''))}
+    ${propertyTerms(state)}`;
+}
+function valueText(field,state) {
+  const value=state.values[field.id];
+  if(field.type==='checkbox')return state.checked.has(field.id)?'Yes':'No';
+  return value===undefined || value===null || value===''?'Not Set':String(value);
+}
+function row(id,state,derived=false) {
+  const field=state.byId.get(id);if(!field)return '';
+  const editable=!derived && state.editable(field);
+  const missing=state.missing.has(id),shown=valueText(field,state);
+  const locate=state.occurrences[id]>0;
+  const summary=`<span class="ws-label">${esc(label(field))}</span><span class="ws-review-value" data-ws-value="${esc(id)}">${esc(shown)}</span>`;
+  const attrs=`data-ws-row="${esc(id)}" data-lease-row="${esc(id)}"`;
+  if(!editable)return `<div class="ws-review-row${missing?' is-missing':''}" ${attrs}>${summary}<span class="ws-row-action">${locate?`<button type="button" data-lease-locate="${esc(id)}" aria-label="Find ${esc(label(field))} in Document">Locate</button>`:''}</span></div>`;
+  return `<details class="ws-review-field${missing?' is-missing':''}" ${attrs}><summary>${summary}<span class="ws-row-action">Edit</span></summary><div class="ws-inline-editor ws-value">
+    <label class="ws-label" for="lease-input-${esc(id)}">${esc(label(field))}</label>${control(field,state)}
+    <p class="ws-status" data-lease-status="${esc(id)}"></p>
+    ${field.note?`<details class="ws-field-help"><summary>About This Field</summary><p class="ws-hint">${esc(field.note)}</p></details>`:''}
+    <div class="ws-editor-actions">${locate?`<button type="button" data-lease-locate="${esc(id)}">Locate in Document</button>`:''}<button type="button" data-ws-done="${esc(id)}">Done</button></div>
+    </div></details>`;
+}
+function control(field,state) {
+  const value=state.values[field.id]??'',attrs=`id="lease-input-${esc(field.id)}" data-lease-input="${esc(field.id)}"`;
+  if(field.type==='checkbox')return `<label class="ws-check"><input type="checkbox" ${attrs}${state.checked.has(field.id)?' checked':''}><span>Yes</span></label>`;
+  if(field.type==='choice')return `<select ${attrs}>${['',...field.options].map(v=>`<option value="${esc(v)}"${v===value?' selected':''}>${esc(v || 'Select')}</option>`).join('')}</select>`;
+  if(field.type==='multiline')return `<textarea ${attrs} rows="3">${esc(value)}</textarea>`;
+  return `<input type="${field.type==='integer'?'number':'text'}" ${attrs} value="${esc(value)}">`;
+}
+function propertyTerms(state) {
+  const used=new Set([...TENANT,...DATES,...MONEY,...OWNER,'property.address_full']);
+  const remaining=state.fields.filter(f=>!used.has(f.id) && f.template!==false && !f.id.startsWith('property.') && !f.id.startsWith('tenant.'));
+  const assigned=new Set();
+  return section('Property Terms & Disclosures',GROUPS.map(([name,prefixes])=>{
+    const fields=remaining.filter(f=>!assigned.has(f.id) && (!prefixes.length || prefixes.some(p=>f.id.startsWith(p))));
+    fields.forEach(f=>assigned.add(f.id));if(!fields.length)return '';
+    const missing=fields.filter(f=>state.missing.has(f.id)).length;
+    const short=fields.filter(f=>f.type!=='checkbox' || state.checked.has(f.id)).slice(0,2).map(f=>`${label(f)}: ${valueText(f,state)}`).join(' · ');
+    return `<details class="ws-fold ws-review-fold"${missing?' open':''}><summary><span class="ws-fold-title">${name}</span><span class="ws-fold-note">${missing?`${missing} Missing`:esc(short)}</span></summary><div class="ws-fold-body">${fields.map(f=>row(f.id,state)).join('')}</div></details>`;
+  }).join(''),`Corrections here apply to this lease only.${state.isManager()?` <a href="#/properties">Manage Property Defaults</a>`:''}`);
+}
 function documentsPanel(state) {
-  const answered = (doc) => {
-    if (!doc.conditionalOn) return null;
-    const field = state.byId.get(doc.conditionalOn);
-    if (!field) return null;
-    if (field.type === "checkbox") return state.checked.has(doc.conditionalOn);
-    return (state.values[doc.conditionalOn] ?? "") !== "";
-  };
-
-  return `
-    <section class="ws-section">
-      <header class="ws-section-head">
-        <h3>In this package</h3>
-        <p>${state.documents.length} documents, generated as one Word file.
-           Select one to read it on the left.</p>
-      </header>
-      <div class="ws-docs">
-        <button type="button" class="ws-doc${state.activeDocument ? "" : " is-on"}" data-ws-doc="">
-          <span class="ws-doc-name">The whole package</span>
-          <span class="ws-doc-why">All ${state.documents.length} documents in order</span>
-        </button>
-        ${state.documents.map((doc) => {
-          const on = state.activeDocument === doc.id;
-          const has = answered(doc);
-          const pages = doc.to - doc.from + 1;
-          return `<button type="button" class="ws-doc${on ? " is-on" : ""}" data-ws-doc="${escapeHtml(doc.id)}"
-                          aria-pressed="${on}">
-            <span class="ws-doc-name">${escapeHtml(doc.name)}</span>
-            <span class="ws-doc-why">${escapeHtml(WHY[doc.why] || doc.why)} · ${pages} section${pages === 1 ? "" : "s"}${
-              has === false ? " · nothing entered yet" : ""}</span>
-          </button>`;
-        }).join("")}
-      </div>
-      <p class="ws-hint">Every document above is in every file this generates. A rider with
-        nothing entered prints with its answer blank rather than being left out —
-        the template is one Word file and is filled in place.</p>
-    </section>`;
+  return section('Lease Documents',`<div class="ws-docs">${state.documents.map(d=>`<button type="button" class="ws-doc${state.activeDocument===d.id?' is-on':''}" data-ws-doc="${esc(d.id)}" aria-pressed="${state.activeDocument===d.id}"><span class="ws-doc-name">${esc(d.name)}</span><span class="ws-doc-why">Sections ${d.from+1}–${d.to+1}${d.conditionalOn && !(state.values[d.conditionalOn])?' · Review Required':''}</span></button>`).join('')}</div>`,`${state.documents.length} documents included. Select a document to review it.`);
 }
-
-// ----------------------------------------------------------------- recipients
-
 function recipientsPanel(state) {
-  const tenants = tenantSigners(state);
-  const signer = state.values["landlord.print_name"] || "";
-  const entity = state.values["landlord.entity_name"] || "";
-
-  return `
-    <section class="ws-section">
-      <header class="ws-section-head">
-        <h3>Who signs</h3>
-        <p>Everyone this package is for, in signing order.</p>
-      </header>
-
-      ${tenants.map((tenant, index) => `
-        <div class="ws-signer">
-          <span class="ws-signer-order">${index + 1}</span>
-          <div>
-            <b>${escapeHtml(tenant.name)}</b>
-            <p class="ws-hint">${tenant.email
-              ? escapeHtml(tenant.email)
-              : '<span class="ws-empty">No email address — the request cannot reach them</span>'}</p>
-          </div>
-          <span class="ws-signer-role">Tenant</span>
-        </div>`).join("")
-        || '<p class="ws-empty">No tenant named yet. Add one under Lease information.</p>'}
-
-      <div class="ws-signer is-fixed">
-        <span class="ws-signer-order">${tenants.length + 1}</span>
-        <div>
-          <b>${signer ? escapeHtml(signer) : '<span class="ws-empty">No signer set for this property</span>'}</b>
-          <p class="ws-hint">${entity ? `for ${escapeHtml(entity)}` : "Landlord"} ·
-            fixed for the property by a manager</p>
-        </div>
-        <span class="ws-signer-role">Landlord</span>
-      </div>
-
-      <p class="ws-hint">${state.isManager()
-        ? 'The landlord signer is set on <a href="#/properties">Property lease settings</a>.'
-        : "The landlord signer cannot be changed from a lease."}</p>
-    </section>
-
-    <section class="ws-section">
-      <header class="ws-section-head">
-        <h3>Sending</h3>
-      </header>
-      <p class="ws-hint">This console generates the signed-ready Word file and names
-        who it is for. It is not connected to an e-signature service, so the file is
-        downloaded and sent by whoever produces it — there is no delivery or signing
-        status to report yet.</p>
-    </section>`;
+  const tenants=tenantSigners(state),entity=state.values['landlord.entity_name'];
+  return section('Signing Order',`${tenants.map(t=>`<div class="ws-signer"><span class="ws-signer-order">1</span><div><b>${esc(t.name || 'Tenant Name Missing')}</b><p class="ws-hint">${esc(t.email || 'Email Missing')}</p></div><span class="ws-signer-role">Tenant</span></div>`).join('')}
+    <div class="ws-signer"><span class="ws-signer-order">2</span><div><b>${esc(state.values['landlord.print_name'] || 'Landlord Name Missing')}</b><p class="ws-hint">${esc(state.landlordEmail || 'Email Not Assigned')}</p>${entity?`<p class="ws-hint">${esc(entity)}</p>`:''}</div><span class="ws-signer-role">Landlord</span></div>`, 'All tenants sign first. The landlord receives the invitation after every tenant has signed.')+
+    `<div data-workspace-signing></div>`;
 }
-
-// One lease, one or more tenants. The application holds them as one string,
-// which is what the lease prints; splitting it is only for naming the signers.
-function tenantSigners(state) {
-  const names = String(state.values["tenant.names"] || "")
-    .split(/\s*(?:;|\band\b|&)\s*/)
-    .map((name) => name.trim())
-    .filter(Boolean);
-  const email = state.values["tenant.email"] || "";
-  if (names.length === 0) return [];
-  // Only the first signer has a known address: the application collects one.
-  return names.map((name, index) => ({ name, email: index === 0 ? email : "" }));
-}
-
-// ------------------------------------------------------- cheap re-annotation
-
-// Everything that changes as somebody types, written in place. The panel is
-// never re-rendered on a keystroke: it holds the caret.
-export function annotateWorkspace(host, state) {
-  for (const [id] of state.byId) {
-    const status = host.querySelector(`[data-lease-status="${CSS.escape(id)}"]`);
-    if (status) {
-      const missing = state.missing.has(id);
-      status.textContent = missing ? "Needed before this lease can be produced" : "";
-      status.className = `ws-status${missing ? " is-missing" : ""}`;
-    }
-    const row = host.querySelector(`[data-ws-row="${CSS.escape(id)}"]`);
-    if (row) {
-      row.classList.toggle("is-missing", state.missing.has(id));
-      row.classList.toggle("is-dirty", state.dirty.has(id));
+export function annotateWorkspace(host,state) {
+  for(const field of state.fields) {
+    const id=field.id,selector=CSS.escape(id);
+    const status=host.querySelector(`[data-lease-status="${selector}"]`);
+    if(status){status.textContent=state.missing.has(id)?'Required before sending.':'';status.classList.toggle('is-missing',state.missing.has(id));}
+    const row=host.querySelector(`[data-ws-row="${selector}"]`);
+    if(row){row.classList.toggle('is-missing',state.missing.has(id));row.classList.toggle('is-dirty',state.dirty.has(id));}
+    const value=host.querySelector(`[data-ws-value="${selector}"]`);if(value)value.textContent=valueText(field,state);
+    const input=host.querySelector(`[data-lease-input="${selector}"]`);
+    if(input && input!==document.activeElement){
+      if(field.type==='checkbox')input.checked=state.checked.has(id);
+      else input.value=state.values[id]??'';
     }
   }
-
-  // The end date is not typed, so it has to follow the two values it is
-  // computed from the moment either of them changes.
-  const derived = host.querySelector('[data-ws-derived="lease.end_date"]');
-  if (derived) derived.textContent = state.values["lease.end_date"] || "—";
+  const term=host.querySelector('[data-ws-term]');if(term)term.textContent=leaseTerm(state) || 'Not Set';
+  const summary=host.querySelector('[data-ws-review-summary]');if(summary)summary.outerHTML=reviewSummary(state);
 }
-
-// What the end date should say, given what is on screen now. lease-screen calls
-// this after a change to either half and writes the result into the values.
-export function recomputeEndDate(state) {
-  const months = state.application?.lease_term_months;
-  return endDateFor(state.values["lease.commencement_date"], months);
-}
-
+export function recomputeEndDate(state) {return endDateFor(state.values['lease.commencement_date'],state.application?.lease_term_months);}
 export { DOCUMENTS };

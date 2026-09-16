@@ -1,7 +1,7 @@
 import { screeningIssue, reportEvidenceIssue, externalReport } from './screening.ts';
 import type { RentalDependencies, RentalGroup, RentalMemberSummary, RentalPrincipal, RentalInvitation } from '../contracts/rentals.ts';
 import type { WorkspaceApplication, WorkspaceCommand, WorkspaceState, WorkspaceTerms } from '../contracts/workspace.ts';
-import { canAccessCase, projectCase, makeWorkspace, WorkspaceError } from './workspace.ts';
+import { canAccessCase, projectCase, makeWorkspace, WorkspaceError, TERM_FIELDS } from './workspace.ts';
 const address = (v: unknown) => String(v || '').trim().toLowerCase();
 const text = (v: unknown, max=2000) => String(v || '').trim().slice(0,max);
 const terminal = (g: RentalGroup) => ['lease_sent','lease_signed','declined'].includes(g.root.status);
@@ -165,6 +165,21 @@ export function makeRentals(d: RentalDependencies) {
       await d.store.save(g,{[g.root.id]:{workspace:w,status:'review',lease_snapshot:null}},p.email);
       let delivery='failed';try {delivery=await d.mail.invite(g.root,invitation);}catch{}
       return {invited:true,delivery};
+    },
+    // Called only after the HTTP lease adapter validates fields and permissions.
+    async correctLease(p:RentalPrincipal,id:string,version:number,overrides:Record<string,unknown>) {
+      const g=await load(p,id),root=g.root,w=structuredClone(root.workspace || {});
+      if(!['manager','agent'].includes(p.role) || g.root.id!==id) throw new WorkspaceError('Staff access to the shared rental is required.',403);
+      if(version!==(root.workspace_version || 0)) throw new WorkspaceError('This rental changed. Refresh before saving.',409);
+      if(terminal(g) || (w.signing && !['voided','declined'].includes(w.signing.phase)) || w.tenant_signature || Object.keys(w.signature_receipts || {}).length) throw new WorkspaceError('Void the signing request before correcting this lease.',409);
+      if(!Object.keys(overrides).length) throw new WorkspaceError('There are no corrections to save.');
+      w.lease_overrides={...w.lease_overrides,...overrides};
+      w.terms={...w.terms,...Object.fromEntries(Object.entries(overrides).filter(([key])=>(TERM_FIELDS as readonly string[]).includes(key)))};
+      reopen(w);
+      w.activity=[...(w.activity || []),{action:'terms',by:p.email,at:new Date().toISOString(),detail:`Lease-only corrections saved; previous approval and signing previews invalidated. Changed: ${Object.keys(overrides).join(', ')}. New landlord approval requested.`}];
+      await d.store.save(g,{[root.id]:{workspace:w,status:'review',lease_snapshot:null}},p.email);
+      await reconcile(id);
+      return view(p,await group(id));
     },
     async execute(p:RentalPrincipal,id:string,command:Record<string,any>) {
       const g=await load(p,id), root=g.root;
