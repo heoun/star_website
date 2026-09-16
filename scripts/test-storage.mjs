@@ -4,13 +4,15 @@ import { serveMedia, deleteObjectsByPrefix } from "../worker/media.js";
 import { serveDocumentFile, deleteDocumentsByPrefix } from "../worker/portal.js";
 const env={STORAGE_BACKEND:"supabase",SUPABASE_URL:"https://storage.example.test",SUPABASE_SERVICE_ROLE_KEY:"server-only-test-key"};
 const objects=new Map(), calls=[];
-let checks=0, fail=false, ignoreRange=false;
+let checks=0, fail=false, ignoreRange=false, legacyHead=false, denyProbe=false;
 const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
 const original=globalThis.fetch;
 globalThis.fetch=async(input,init={})=>{
   const path=new URL(input).pathname.replace("/storage/v1/", ""),headers=new Headers(init.headers);calls.push({path,method:init.method});
   eq(headers.get("apikey"),env.SUPABASE_SERVICE_ROLE_KEY);
   if(fail)return Response.json({message:"Storage unavailable"},{status:500});
+  if(legacyHead && init.method==="HEAD")return new Response(null,{status:400});
+  if(denyProbe && init.method==="GET")return Response.json({code:"AccessDenied",message:"Access denied"},{status:403});
   if(path.startsWith("object/list/")){
     const bucket=path.slice("object/list/".length),body=JSON.parse(init.body),prefix=`${bucket}/${body.prefix}/`, entries=new Map();
     for(const key of [...objects.keys()].sort())if(key.startsWith(prefix)){
@@ -27,7 +29,7 @@ globalThis.fetch=async(input,init={})=>{
     if(objects.has(key))return Response.json({message:"Duplicate"},{status:409});
     objects.set(key,{bytes:new Uint8Array(await new Response(init.body).arrayBuffer()),type:headers.get("Content-Type")});return Response.json({Key:key});
   }
-  const object=objects.get(key);if(!object)return new Response(null,{status:404});
+  const object=objects.get(key);if(!object)return legacyHead ? Response.json({code:"NoSuchKey",message:"Object not found"},{status:400}) : new Response(null,{status:404});
   const replyHeaders={"Content-Type":object.type,"Content-Length":String(object.bytes.length),ETag:'"test-etag"'};
   if(init.method==="HEAD")return new Response(null,{headers:replyHeaders});
   const range=headers.get("Range");
@@ -47,6 +49,13 @@ try{
   const range=await serveMedia(new Request("https://website.test/media/listing/photo.jpg",{headers:{Range:"bytes=1-3"}}),env,"/media/listing/photo.jpg");eq(range.status,206);eq(range.headers.get("Content-Range"),"bytes 1-3/5");eq([...new Uint8Array(await range.arrayBuffer())],[2,3,4]);
   const suffix=await serveMedia(new Request("https://website.test/media/listing/photo.jpg",{headers:{Range:"bytes=-2"}}),env,"/media/listing/photo.jpg");eq([...new Uint8Array(await suffix.arrayBuffer())],[4,5]);
   const head=await serveMedia(new Request("https://website.test/media/listing/photo.jpg",{method:"HEAD"}),env,"/media/listing/photo.jpg");eq(head.headers.get("Content-Length"),"5");eq(await head.text(),"");
+  legacyHead=true;
+  eq(await docs.head("application/not-yet-uploaded.docx"),null);
+  await docs.put("application/not-yet-uploaded.docx",new Uint8Array([1,2,3]),{httpMetadata:{contentType:"application/octet-stream"}});
+  eq((await docs.head("application/not-yet-uploaded.docx")).size,3);
+  denyProbe=true;
+  await assert.rejects(()=>docs.head("application/denied.docx"),error=>error.status===403);checks++;
+  denyProbe=false;legacyHead=false;
   const invalid=await serveMedia(new Request("https://website.test/media/listing/photo.jpg",{headers:{Range:"bytes=50-"}}),env,"/media/listing/photo.jpg");eq(invalid.status,416);
   ignoreRange=true;
   const full=await serveMedia(new Request("https://website.test/media/listing/photo.jpg",{headers:{Range:"bytes=1-3"}}),env,"/media/listing/photo.jpg");eq(full.status,200);eq(full.headers.get("Content-Length"),"5");eq([...new Uint8Array(await full.arrayBuffer())],[1,2,3,4,5]);ignoreRange=false;

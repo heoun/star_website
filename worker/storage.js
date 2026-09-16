@@ -27,7 +27,18 @@ export function storageBucket(env, name) {
   async function read(path, method, options) {
     const range = options?.range;
     const header = !range ? null : range.suffix ? `bytes=-${range.suffix}` : `bytes=${range.offset || 0}-${range.length ? (range.offset || 0) + range.length - 1 : ""}`;
-    const response = await call(`object/authenticated/${name}/${objectPath(path)}`, { method, headers: header ? { Range: header } : {} });
+    const route = `object/authenticated/${name}/${objectPath(path)}`;
+    let response;
+    try {
+      response = await call(route, { method, headers: header ? { Range: header } : {} });
+    } catch (error) {
+      if (method !== "HEAD" || error.status !== 400) throw error;
+      // Some Storage versions return a bodyless 400 for a missing HEAD.
+      // GET exposes the error code: only a confirmed missing object is null.
+      response = await call(route, { method: "GET", headers: { Range: "bytes=0-0" } });
+      // If the object appeared meanwhile, retain metadata without downloading it.
+      await response?.body?.cancel();
+    }
     if (!response) return null;
     const returned = /^bytes (\d+)-(\d+)\/(\d+)$/.exec(response.headers.get("Content-Range") || "");
     return { body: response.body, size: Number(returned?.[3] || response.headers.get("Content-Length") || 0),
