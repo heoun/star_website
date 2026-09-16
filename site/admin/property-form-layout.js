@@ -19,5 +19,6 @@ export const GOOD_CAUSE_QUESTIONS=[
 export function sectionBlocks(section){
  if(section.id==='keys')return KEY_TYPES.map(([id,label])=>({label,fields:section.fields.filter(f=>f.id.startsWith(`key.${id}_`)).map(f=>({...f,label:f.id.endsWith('_qty')?'Quantity Issued':f.id.endsWith('_charge')?'Replacement Charge per Key / FOB':f.label}))}));
  if(section.id==='good_cause')return GOOD_CAUSE_QUESTIONS.map(([label,match])=>({label,fields:section.fields.filter(match)}));
+ if(section.id==='smoking')return [{label:'Locations Where Smoking Is Not Allowed',fields:section.fields}];
  return [{label:'',fields:section.fields}];
 }

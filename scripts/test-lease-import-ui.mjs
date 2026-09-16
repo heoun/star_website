@@ -145,7 +145,7 @@ try{
  await signer.fill('');await go('good_cause');await page.locator('[data-import-confirm]').check();await page.getByRole('button',{name:'Create property',exact:true}).click();equal(fixture.state.buildings.length,3);await signer.fill('signer@example.test');
  await page.getByRole('button',{name:'Expand New Property',exact:true}).click();
  equal(await page.locator('dialog.property-import').evaluate(el=>{const r=el.getBoundingClientRect();return [Math.round(r.width),Math.round(r.height),Math.round(r.x),Math.round(r.y)];}),[1440,1000,0,0]);
- await page.getByRole('button',{name:'Restore New Property',exact:true}).click();
+ await page.getByRole('button',{name:'Collapse New Property',exact:true}).click();
  equal(await page.locator('dialog.property-import').evaluate(el=>el.getBoundingClientRect().width<innerWidth),true);
  await go('management');await value('manager.name').fill('Manual Property Manager');
  const beforeDraft=requests.filter(r=>r.method==='POST' && r.url.endsWith('/api/admin/buildings')).length;

@@ -456,7 +456,7 @@
       "type": "text",
       "required": true,
       "default": null,
-      "note": "Blank in the source lease; every rider preamble needs it.",
+      "note": "Printed in the lease and at the top of every rider.",
       "needs_setup": true,
       "scope": "building"
     },
@@ -775,7 +775,6 @@
       "type": "money",
       "required": false,
       "default": null,
-      "note": "Blank in the source lease.",
       "scope": "building"
     },
     {
@@ -868,7 +867,7 @@
       "type": "money",
       "required": false,
       "default": null,
-      "note": "Only prints meaningfully when attorney_fees.cap_enabled is checked.",
+      "note": "Prints only when the attorney fee cap is checked.",
       "scope": "building"
     },
     {
@@ -1367,7 +1366,7 @@
       "type": "date",
       "required": false,
       "default": null,
-      "note": "Required by RPL 231-a whenever sprinkler.mark_option2 is checked.",
+      "note": "Required by RPL 231-a when a maintained sprinkler system is selected.",
       "scope": "building"
     },
     {
@@ -1476,7 +1475,7 @@
     },
     {
       "id": "smoking.inside_units",
-      "label": "Smoking banned — Inside residential units",
+      "label": "Inside of residential units",
       "group": "building_disclosures",
       "source": "manager",
       "type": "checkbox",
@@ -1486,11 +1485,12 @@
       },
       "required": false,
       "default": true,
-      "scope": "building"
+      "scope": "building",
+      "note": "Rent-stabilized and rent-controlled units may be exempt unless the existing tenant consents in writing."
     },
     {
       "id": "smoking.outside_unit_areas",
-      "label": "Smoking banned — Balconies, patios and porches",
+      "label": "Outside areas that are part of residential units",
       "group": "building_disclosures",
       "source": "manager",
       "type": "checkbox",
@@ -1500,11 +1500,12 @@
       },
       "required": false,
       "default": false,
-      "scope": "building"
+      "scope": "building",
+      "note": "Including balconies, patios and porches."
     },
     {
       "id": "smoking.outdoor_common",
-      "label": "Smoking banned — Outdoor common areas",
+      "label": "Outdoor common areas",
       "group": "building_disclosures",
       "source": "manager",
       "type": "checkbox",
@@ -1514,11 +1515,12 @@
       },
       "required": false,
       "default": false,
-      "scope": "building"
+      "scope": "building",
+      "note": "Including play areas, rooftops, pool areas, parking areas, and shared balconies, courtyards, patios, porches or yards."
     },
     {
       "id": "smoking.within_15_feet",
-      "label": "Smoking banned — Within 15 feet of entrances and windows",
+      "label": "Outdoors within 15 feet of entrances, exits, windows and air intake units on property grounds",
       "group": "building_disclosures",
       "source": "manager",
       "type": "checkbox",
@@ -1532,7 +1534,7 @@
     },
     {
       "id": "smoking.other_areas",
-      "label": "Smoking banned — Other areas / exceptions",
+      "label": "Other areas / exceptions",
       "group": "building_disclosures",
       "source": "manager",
       "type": "checkbox",
@@ -1546,7 +1548,7 @@
     },
     {
       "id": "smoking.other_areas_text",
-      "label": "Other smoking restrictions, described",
+      "label": "Other areas / exceptions, described",
       "group": "building_disclosures",
       "source": "manager",
       "type": "text",

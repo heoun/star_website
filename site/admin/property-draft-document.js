@@ -41,7 +41,7 @@ function edit(id){
  for(const [delta,label] of [[-1,'Previous Field'],[1,'Next Field']]){const button=document.createElement('button');button.type='button';button.textContent=label;const target=sequence[sequence.indexOf(id)+delta];button.disabled=!target;button.onclick=()=>edit(target);navigation.append(button);}
 
  const note=document.createElement('p');note.textContent='Changes sync to the form automatically. Create Property saves the property and its defaults together.';
- form.append(label,input,note);editor.append(form,navigation);input.focus({preventScroll:true});goToField(id);
+ form.append(label,input,note);if(field.note){const hint=document.createElement('p');hint.className='field-note';hint.textContent=field.note;form.append(hint);}editor.append(form,navigation);input.focus({preventScroll:true});goToField(id);
  if(!fieldsInDocument().some(key=>canonical(key)===id)){const hint=document.createElement('p');hint.className='field-note';hint.textContent='This property setting is saved with your draft; it is not printed as a separate field in this template.';editor.append(hint);}
 
  const update=()=>{const v=field.type==='checkbox' && input.value!==''?input.value==='true':input.value;values[id]=v;send({type:'property-draft-change',id,value:v});paint();note.textContent='Synced to your New Property draft.';};

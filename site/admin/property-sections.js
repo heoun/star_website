@@ -12,7 +12,7 @@ export const PROPERTY_SECTIONS = [
   { id: "bedbug", label: "Bedbug", note: "Review the infestation history used in the disclosure.", prefixes: ["bedbug."] },
   { id: "sprinkler", label: "Sprinkler System Notice", note: "Record the system's status and the actual inspection date.", prefixes: ["sprinkler."] },
   { id: "gas", label: "NYC Gas Leak, Carbon Monoxide and Smoke Alarm Rider", note: "Provide the gas supplier and its emergency telephone number.", ids: ["gas.provider_name", "gas.provider_phone"] },
-  { id: "smoking", label: "New York Smoking Policy Rider", note: "Specify restricted areas, exceptions and the complaint contact.", prefixes: ["smoking."] },
+  { id: "smoking", label: "New York Smoking Policy Rider", note: "Check every location where smoking is not allowed. Even when none is checked, the Smoke-Free Air Act bans smoking in indoor common areas.", prefixes: ["smoking."] },
   { id: "concession", label: "Rent Concession Rider", note: "Set the default offer details; confirm the offer for each rental.", ids: ["concession.default_terms"], always: true },
   { id: "dhcr", label: "DHCR Electronic Lease Consent", title: "DHCR – Electronic Lease Offer: Tenant’s Voluntary Consent", note: "Choose the lease description and confirm the owner’s consent contact.", ids: ["dhcr.lease_type", "owner_rep.name", "owner_rep.email", "owner_rep.mailing_address"] },
   { id: "good_cause", label: "Good Cause Eviction Notice", title: "Notice to Tenant of Applicability or Inapplicability of the New York State Good Cause Eviction Law", note: "Work through applicability, exemptions, rent increases and nonrenewal reasons.", groups: ["good_cause"] }

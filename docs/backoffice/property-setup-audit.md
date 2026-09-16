@@ -30,7 +30,7 @@ Bedbug vacancy date comes from the individual listing release date at lease prep
 
 ## New Property Draft Workspace
 
-New Property supports Expand/Restore. Its document editor opens across the browser viewport and returns to the current form section. Both views share live values, including address components, signer email, nonprinted property defaults and paired choices. A per-account sessionStorage backup retains the draft, current section and creation token through closing the dialog or reloading the tab; Continue Draft restores it. Successful creation clears the backup. Closing the browser tab ends this local backup; it is not a server-saved property or a cross-device draft.
+New Property supports Expand/Collapse. Its document editor opens across the browser viewport and returns to the current form section. Both views share live values, including address components, signer email, nonprinted property defaults and paired choices. A per-account sessionStorage backup retains the draft, current section and creation token through closing the dialog or reloading the tab; Continue Draft restores it. Successful creation clears the backup. Closing the browser tab ends this local backup; it is not a server-saved property or a cross-device draft.
 
 ## Checks
 
