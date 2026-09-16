@@ -42,3 +42,9 @@ coverage/
 *.tmp
 *.orig
 *.rej
+
+# Local signing keys and credential bundles.
+*.pem
+*.key
+*.p12
+*.pfx
