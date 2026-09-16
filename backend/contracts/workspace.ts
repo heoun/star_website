@@ -45,6 +45,7 @@ export interface ScreeningResult {
   source?: 'manual' | 'provider' | 'mock'; verified_by?: string; verified_at?: string;
 }
 export interface WorkspaceState {
+  signing?: { package_id: string; phase: string };
   rental_flow?: 'automatic';
   automation_issue?: string;
   invitations?: import('./rentals.ts').RentalInvitation[];

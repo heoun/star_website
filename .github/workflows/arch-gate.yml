@@ -24,6 +24,8 @@ jobs:
         run: npm run test:case-queue
       - name: Automatic rental groups and landlord decisions
         run: npm run test:rentals && npm run test:rentals:db
+      - name: DocuSign lease signing and durable recovery
+        run: npm run test:signing && npm run test:signing:db
       - name: Workspace access and workflow
         run: npm run test:workspace
       - name: Applicant portal request visibility

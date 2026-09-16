@@ -87,3 +87,20 @@ BACKEND_V2=on
 # Signs the landlord decision/intake links the rebuilt backend emails out.
 # Any long random string; `openssl rand -hex 32` is fine.
 AUTH_LINK_SECRET=
+
+# DocuSign lease signing. Apply supabase/rental-signing.sql after rental-flow.sql.
+# These values are server-only. Production uses separate Worker secrets and the
+# production Integration Key, sender consent and account ID after Go-Live.
+DOCUSIGN_ENABLED=off
+DOCUSIGN_ENVIRONMENT=demo
+DOCUSIGN_INTEGRATION_KEY=
+DOCUSIGN_USER_ID=
+DOCUSIGN_ACCOUNT_ID=
+# PKCS#1 or PKCS#8 PEM; use a quoted string with literal \n between PEM lines.
+DOCUSIGN_PRIVATE_KEY=
+DOCUSIGN_CONNECT_HMAC_SECRET=
+# HTTPS tunnel/test deployment ending in /api/webhooks/docusign.
+DOCUSIGN_WEBHOOK_URL=
+# Required for ALL demo-account sends, including background jobs. DocuSign
+# sends actual email; the existing Resend development guard does not apply.
+DEV_DOCUSIGN_SEND=off

@@ -5,6 +5,8 @@
   "scripts": {
     "build": "node scripts/build.js",
     "dev": "node scripts/dev.js",
+    "dev:signing": "node scripts/dev.js --signing-scheduler",
+    "dev:webhook": "node scripts/dev-docusign-webhook.js",
     "dev:agent": "node scripts/dev.js --var DEV_ADMIN_ROLE:agent",
     "preview": "node server.js",
     "seed:dev": "node scripts/seed-dev.js",
@@ -33,12 +35,17 @@
     "test:storage": "node scripts/test-storage.mjs",
     "test:rentals": "node scripts/test-rental-flow.mjs && node scripts/test-rental-intake.mjs && node scripts/test-screening-gates.mjs",
     "test:rentals:db": "node scripts/test-rental-schema.mjs",
+    "test:signing": "node scripts/test-rental-signing.mjs && node scripts/test-docusign-api.mjs && node scripts/test-rental-signing-http.mjs",
+    "test:signing:db": "node scripts/test-rental-signing-schema.mjs",
+    "test:signing:ui": "node scripts/test-rental-signing-ui.mjs",
+    "test:signing:webhook": "node scripts/test-docusign-webhook-forwarder.mjs",
     "test:rentals:ui": "npm run build && node scripts/test-rental-ui.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
     "dependency-cruiser": "^16.0.0",
     "pdfjs-dist": "6.3.289",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "wrangler": "^4.132.0"
   }
 }

@@ -55,6 +55,9 @@ export function makeRentals(d: RentalDependencies) {
     base.allowed_actions=(base.allowed_actions as string[]).filter(a=>!['approve','recommend','review_and_recommend','decline','record_tenant_signature'].includes(a));
     base.allowed_actions.push('group');
     const w=g.root.workspace || {};
+    if(w.signing && !['voided','declined'].includes(w.signing.phase)) {
+      base.allowed_actions=base.allowed_actions.filter((a:string)=>['group','note','admin_note','assign'].includes(a));
+    }
     if(!terminal(g) && !['sent_to_landlord','landlord_approved'].includes(g.root.status)) {
       const staffIssue=issues.some(i=>/Lease terms|Assign a landlord/.test(i)) || g.members.some(m=>!!screeningIssue(m,d.allowMockScreening) && ['complete','not_connected'].includes(m.workspace?.screening_result?.status || ''));
       base.next_step={...base.next_step,label:issues.length ? 'Complete the Application Group' : 'Preparing the Landlord Email',bucket:staffIssue ? 'attention':'waiting',owner:staffIssue ? 'you':'applicant'};
@@ -68,6 +71,10 @@ export function makeRentals(d: RentalDependencies) {
       base.next_step={...base.next_step,label:'Resolve Incomplete Application Evidence',bucket:'attention',owner:'you'};
       base.allowed_actions=base.allowed_actions.filter((a:string)=>!['prepare_lease','record_landlord_signature','archive_lease'].includes(a));
       if(g.root.status==='landlord_approved' && !w.tenant_signature && !Object.keys(w.signature_receipts || {}).length) base.allowed_actions.push('reopen_review');
+    }
+    if(w.signing && !['voided','declined'].includes(w.signing.phase)) {
+      const phase=w.signing.phase;
+      base.next_step={...base.next_step,label:phase==='completed'?'Lease Completed':phase==='needs_attention'?'Review the DocuSign Signing Issue':phase==='archiving'?'Saving the Signed Lease':phase==='preparing'||phase==='sending'?'Sending the Lease with DocuSign':'Waiting for DocuSign Signatures',bucket:phase==='needs_attention'?'attention':'waiting',owner:phase==='needs_attention'?'you':'signers'};
     }
     return base;
   }
@@ -161,6 +168,7 @@ export function makeRentals(d: RentalDependencies) {
     },
     async execute(p:RentalPrincipal,id:string,command:Record<string,any>) {
       const g=await load(p,id), root=g.root;
+      if(root.workspace?.signing && !['voided','declined'].includes(root.workspace.signing.phase) && !['note','admin_note','assign'].includes(command.action))throw new WorkspaceError('DocuSign manages this lease. Void the envelope before changing signing information.',409);
       if(command.version!==(root.workspace_version || 0)) throw new WorkspaceError('This rental changed. Refresh before saving.',409);
       if(['prepare_lease','refresh_draft','tenant_signed','record_landlord_signature','archive_lease'].includes(command.action)) assertReady(g);
       if(command.action==='reopen_review') {

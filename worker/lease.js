@@ -312,7 +312,7 @@ async function loadTemplate(env, request) {
 // A plain string replace over the document XML is enough because every
 // placeholder sits inside a single run — build-template.py put them there and
 // check-fields.py notices if one is later split by editing in Word.
-export async function fillTemplate(env, request, values) {
+export async function fillTemplate(env, request, values, transform) {
   const entries = readEntries(await loadTemplate(env, request));
   const xml = await readEntryText(entries, "word/document.xml");
 
@@ -329,7 +329,7 @@ export async function fillTemplate(env, request, values) {
     throw new Error(`The template uses fields the registry does not define: ${[...unknown].join(", ")}.`);
   }
 
-  return replaceEntry(entries, "word/document.xml", filled);
+  return replaceEntry(entries, "word/document.xml", transform ? await transform(filled, xml) : filled);
 }
 
 // Values reach the document as XML text, so a tenant named "Smith & Jones"

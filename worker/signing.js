@@ -1,0 +1,142 @@
+import { signingFor, boundedBytes } from '../backend/app/rental-signing.ts';
+import { requireConfig, fetchStaff, fetchBuilding } from './supabase.js';
+import { rentalMode, rentalWorkflow } from './rentals.js';
+import { requireDocsBucket } from './portal.js';
+import { missingIn } from './lease.js';
+import { buildSigningLease, sha256 } from './signing-template.js';
+const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
+const error=(message,status=409)=>Object.assign(new Error(message),{status});
+const uuid=v=>typeof v==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+const email=v=>String(v || '').trim().toLowerCase();
+const enabled=env=>rentalMode(env) && env.DOCUSIGN_ENABLED==='on';
+export function signingConfiguration(env,request) {
+  const required=['DOCUSIGN_INTEGRATION_KEY','DOCUSIGN_USER_ID','DOCUSIGN_ACCOUNT_ID','DOCUSIGN_PRIVATE_KEY','DOCUSIGN_CONNECT_HMAC_SECRET','DOCUSIGN_WEBHOOK_URL'];
+  const missing=required.filter(k=>!String(env[k] || '').trim());
+  if(!['demo','production'].includes(env.DOCUSIGN_ENVIRONMENT))missing.push('DOCUSIGN_ENVIRONMENT');
+  let validUrl=false;try{const u=new URL(env.DOCUSIGN_WEBHOOK_URL);validUrl=u.protocol==='https:' && !u.username && !u.password && u.pathname==='/api/webhooks/docusign';}catch{}
+  if(!validUrl && !missing.includes('DOCUSIGN_WEBHOOK_URL'))missing.push('DOCUSIGN_WEBHOOK_URL');
+  const local=['127.0.0.1','localhost','[::1]'].includes(new URL(request.url).hostname);
+  return {enabled:enabled(env),configured:!missing.length,environment:env.DOCUSIGN_ENVIRONMENT || 'demo',
+    canSend:enabled(env) && !missing.length && (!local || env.DOCUSIGN_ENVIRONMENT==='demo') && (env.DOCUSIGN_ENVIRONMENT!=='demo' || env.DEV_DOCUSIGN_SEND==='on'),
+    message:!enabled(env)?'DocuSign signing is not enabled.':missing.length?'DocuSign is not connected. An administrator must finish the signing setup.':local && env.DOCUSIGN_ENVIRONMENT==='production'?'Local development must use the DocuSign demo environment.':env.DOCUSIGN_ENVIRONMENT==='demo' && env.DEV_DOCUSIGN_SEND!=='on'?'Sandbox sending is disabled in the development settings.':'Ready'};
+}
+export function signingFiles(env) {
+  const bucket=requireDocsBucket(env);
+  return {
+    async put(id,kind,stream) {
+      const data=await boundedBytes(stream,kind==='source_docx'?10*1024*1024:25*1024*1024);
+      const pdf=kind!=='source_docx';
+      if(data.length<5 || (pdf && new TextDecoder().decode(data.subarray(0,5))!=='%PDF-'))throw error('The signing provider returned an invalid PDF.',502);
+      const hash=await sha256(data),path=`rental-signing/${id}/${kind}-${hash}.${pdf?'pdf':'docx'}`;
+      const contentType=pdf?'application/pdf':'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      if(!await bucket.head(path))await bucket.put(path,data,{httpMetadata:{contentType}});
+      return {path,name:`${kind}.${pdf?'pdf':'docx'}`,size:data.length,sha256:hash,contentType,uploaded_at:new Date().toISOString()};
+    },
+    async read(file){const object=await bucket.get(file.path);if(!object)throw error('The saved signing document is unavailable.',503);return object.body;}
+  };
+}
+function safeRecord(record) {
+  if(!record)return null;
+  return {id:record.package.id,phase:record.phase,issue:record.issue || '',updated_at:record.updatedAt,
+    template_version:record.package.templateVersion,created_at:record.package.createdAt,
+    envelope_id:record.envelope?.envelopeId || null,void_requested:!!record.voidReason,
+    signers:record.package.signers.map(s=>({...s,...record.envelope?.recipients.find(r=>r.recipientId===s.recipientId)})),
+    completed:record.phase==='completed',source_sha256:record.package.documents[0].file.sha256};
+}
+async function recipients(env,g) {
+  const tenants=g.members.map((m,i)=>({recipientId:String(i+1),memberId:m.id,role:'tenant',routingOrder:1,name:String(m.name || '').trim(),email:email(m.email)}));
+  const w=g.root.workspace,landlordEmail=email(w?.recommendation?.landlord_email);
+  const staff=(await fetchStaff(env)).filter(s=>s.active && s.role==='landlord' && s.property_ids?.includes(g.root.listings?.building_id));
+  const building=await fetchBuilding(env,g.root.listings?.building_id);
+  if(!staff.some(s=>email(s.email)===landlordEmail) || (building?.landlord_signer_email && email(building.landlord_signer_email)!==landlordEmail))throw error('The approved landlord is no longer this property’s signer. Review the landlord assignment.');
+  const signers=[...tenants,{recipientId:String(tenants.length+1),memberId:null,role:'landlord',routingOrder:2,name:String(g.root.lease_snapshot?.['landlord.print_name'] || '').trim(),email:landlordEmail}];
+  if(signers.some(s=>!s.name || s.name.length>100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email)) || new Set(signers.map(s=>s.email)).size!==signers.length)throw error('Each signer needs a legal name (up to 100 characters) and a distinct valid email address.');
+  return signers;
+}
+function assertLease(flow,g) {
+  flow.assertReady(g);
+  const w=g.root.workspace;
+  if(g.root.status!=='landlord_approved' || w?.landlord_decision?.outcome!=='accepted' || w.landlord_decision.revision!==w.recommendation?.revision || !w.lease_preparation || !g.root.lease_snapshot || missingIn(g.root.lease_snapshot).length || Object.keys(w.signature_receipts || {}).length || w.tenant_signature)throw error('A complete, unsigned lease with the current landlord approval is required.');
+}
+export async function handleRentalSigning(request,env,identity,id,ctx) {
+  try {
+    if(!['manager','agent'].includes(identity.role) || identity.owner)throw error('Staff access is required.',403);
+    const config=signingConfiguration(env,request);
+    if(!config.enabled)return json({configuration:config,signing:null},request.method==='GET'?200:503);
+    const workflow=rentalWorkflow(env,request),g=await workflow.load(identity,id);
+    if(g.root.id!==id)throw error('Open the shared rental to send its lease.');
+    const files=signingFiles(env),flow=signingFor(requireConfig(env),env,files),url=new URL(request.url);
+    if(request.method==='GET') {
+      const packageId=url.searchParams.get('package');
+      if(packageId && !uuid(packageId))throw error('Signing package not found.',404);
+      const record=packageId?await flow.store.get(packageId):await flow.store.current(id);
+      if(record && record.package.rentalId!==id)throw error('Signing package not found.',404);
+      const kind=url.searchParams.get('file');
+      if(kind) {
+        const file=record && (kind==='source'?record.package.documents[0].file:record.phase==='completed'?kind==='certificate'?record.certificate:kind==='signed'?record.signedPdf:null:null);
+        if(!file)throw error('Signing file is unavailable.',404);
+        return new Response(await files.read(file),{headers:{'Content-Type':file.contentType,'Content-Disposition':`attachment; filename="${kind==='source'?'lease-for-review.docx':kind==='certificate'?'completion-certificate.pdf':'signed-lease.pdf'}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+      }
+      return json({configuration:config,signing:safeRecord(record)});
+    }
+    if(request.method!=='POST')return json({error:'Method not allowed.'},405);
+    const body=await request.json();
+    if(body.action==='prepare') {
+      assertLease(workflow,g);
+      if(body.version!==g.root.workspace_version)throw error('The rental changed. Refresh and review it again.');
+      const prior=await flow.store.current(id);
+      if(prior && !['voided','declined'].includes(prior.phase))return json({configuration:config,signing:safeRecord(prior),reserved:true});
+      const signers=await recipients(env,g),packageId=crypto.randomUUID();
+      let document;try{document=await buildSigningLease(env,request,g.root.lease_snapshot,signers);}catch(e){throw error(e.message,409);}
+      const file=await files.put(packageId,'source_docx',new Response(document.docx).body);
+      const pkg={id:packageId,rentalId:id,approvalRevision:g.root.workspace.recommendation.revision,templateVersion:document.templateVersion,
+        values:g.root.lease_snapshot,documents:[{documentId:'1',file}],signers,tabs:document.tabs,createdAt:new Date().toISOString(),createdBy:identity.email};
+      const record=await flow.store.preview(pkg,Object.fromEntries(g.members.map(m=>[m.id,m.workspace_version || 0])));
+      return json({configuration:config,signing:safeRecord(record),preview:true});
+    }
+    if(!uuid(body.packageId))throw error('Choose the reviewed signing package.');
+    const record=await flow.store.get(body.packageId);
+    if(!record || record.package.rentalId!==id)throw error('Signing package not found.',404);
+    if(body.action==='send') {
+      if(!config.canSend)throw error(config.message,503);
+      const prior=await flow.store.current(id);
+      if(prior?.package.id===record.package.id)return json({signing:safeRecord(prior),configuration:config});
+      assertLease(workflow,g);
+      if(body.version!==g.root.workspace_version)throw error('The rental changed. Prepare and review the lease again.');
+      const signers=await recipients(env,g);
+      if(JSON.stringify(signers)!==JSON.stringify(record.package.signers))throw error('The signers changed. Prepare a new signing package.');
+      const reserved=await flow.store.reserve({package:record.package,principal:identity,expectedMemberVersions:Object.fromEntries(g.members.map(m=>[m.id,m.workspace_version || 0]))});
+      ctx?.waitUntil(flow.run());
+      return json({signing:safeRecord(reserved),configuration:config},202);
+    }
+    if(body.action==='void') {
+      if(!config.canSend)throw error(config.message,503);
+      const reason=String(body.reason || '').trim();if(!reason || reason.length>200)throw error('Enter a cancellation reason (up to 200 characters).',422);
+      await flow.store.requestVoid(body.packageId,identity.email,reason);
+      ctx?.waitUntil(flow.run());
+      return json({signing:safeRecord(await flow.store.get(body.packageId)),configuration:config},202);
+    }
+    throw error('Unknown signing action.',422);
+  }catch(e){return json({error:e.status?e.message:'Unable to process this signing request.'},e.status || 500);}
+}
+export async function handleDocusignWebhook(request,env,ctx) {
+  if(!enabled(env))return json({error:'Not found.'},404);
+  if(request.method!=='POST')return json({error:'Method not allowed.'},405);
+  try {
+    const raw=await boundedBytes(request.body,1024*1024),flow=signingFor(requireConfig(env),env,signingFiles(env));
+    const notice=await flow.provider.verifyNotice(raw,Object.fromEntries(request.headers));
+    if(!notice)return json({error:'Invalid DocuSign signature or account.'},401);
+    await flow.store.enqueueNotice(notice,await sha256(raw));
+    if(signingConfiguration(env,request).canSend)ctx?.waitUntil(flow.run());
+    return json({received:true});
+  }catch(e){return json({error:'DocuSign notification could not be saved.'},e.status===413?413:503);}
+}
+export async function reconcileSigning(env,request) {
+  if(!signingConfiguration(env,request).canSend)return;
+  const flow=signingFor(requireConfig(env),env,signingFiles(env));
+  await flow.run();
+  for(const record of await flow.store.expiredPreviews()) {
+    for(const d of record.package.documents)await requireDocsBucket(env).delete(d.file.path);
+    await flow.store.discardPreview(record.package.id);
+  }
+}

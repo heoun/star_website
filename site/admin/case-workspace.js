@@ -399,6 +399,8 @@ export async function renderCaseDetail(host, { api, session, id }) {
     ctx.reviewing = allowed.includes("review_and_recommend");
     ctx.viewKey = JSON.stringify([session.role, session.email, id]);
     if(row.household) {
+      try{ctx.signing=await api(`/cases/${encodeURIComponent(id)}/signing`);}catch(error){ctx.signing={configuration:{enabled:false,canSend:false,message:error.message}};}
+      if(!current())return;
       host.innerHTML=rentalGroupMarkup(ctx,{panel,heading,primaryFor,documentSummary,checksForm,documentsPanel,termsPanel,teamPanel,assignForm,notesPanel,privateNotePanel,activityPanel});
       const reload=()=>renderCaseDetail(host,{api,session,id});
       bindCase(host,ctx,reload);

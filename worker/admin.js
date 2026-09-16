@@ -290,7 +290,7 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
       return await handleChangeRequests(request, env, identity, id);
     }
     if (resource === "cases" && segments.length <= 3) {
-      return await handleCaseWorkspace(request, env, identity, id, subresource);
+      return await handleCaseWorkspace(request, env, identity, id, subresource, ctx);
     }
 
     // Fail closed before dispatching any legacy staff endpoint, including media,

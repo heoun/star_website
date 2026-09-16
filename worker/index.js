@@ -9,14 +9,17 @@ import { serveMedia } from "./media.js";
 import { handlePortalRequest } from "./portal.js";
 import { handleBackendRequest } from "../backend/app/index.ts";
 import { rentalMode, rentalApplyOptions, reconcileRentals } from "./rentals.js";
+import { handleDocusignWebhook, reconcileSigning } from './signing.js';
 
 export default {
   async scheduled(_event,env,ctx) {
     ctx.waitUntil(reconcileRentals(env,new Request(env.SITE_ORIGIN || 'https://starreusa.com/')));
+    ctx.waitUntil(reconcileSigning(env,new Request(env.SITE_ORIGIN || 'https://starreusa.com/')));
   },
   async fetch(request, env, ctx) {
     const url = new URL(request.url);
     const pathname = url.pathname;
+    if(pathname==='/api/webhooks/docusign')return handleDocusignWebhook(request,env,ctx);
     if(pathname==='/api/apply/options' && request.method==='GET') {
       try {return Response.json({automatic:rentalMode(env),agents:rentalMode(env) ? await rentalApplyOptions(env,url.searchParams.get('id')) : []},{headers:{'Cache-Control':'no-store'}});}
       catch {return Response.json({error:'Application options are unavailable.'},{status:503});}

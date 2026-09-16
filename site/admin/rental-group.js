@@ -1,6 +1,7 @@
 import {propertyGroups, compareNames} from './property-groups.js';
 import { applicantColumns, correctionFields } from './rental-applicant.js';
 import {openMockReport} from './mock-screening-report.js';
+import {signingMarkup,bindSigning} from './rental-signing.js';
 const selectedApplicants = new Map();
 const rentalViews = new Map();
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
@@ -35,12 +36,13 @@ export function rentalGroupMarkup(ctx,h) {
  };
  const pending=group.invitations.filter(i=>!i.accepted);
  if(!members.some(m=>m.id===selectedApplicants.get(viewKey)))selectedApplicants.set(viewKey,members[0]?.id);
- const stageLabel=blocked && ['sent_to_landlord','landlord_approved','lease_sent','lease_signed'].includes(row.status) ? 'Blocked · application evidence incomplete' : {sent_to_landlord:'Awaiting landlord decision',landlord_approved:!w.lease_preparation || draft?.missing?.length || draft?.error?'Lease needs information':'Lease ready for review',lease_sent:'Signatures in progress',lease_signed:'Lease completed',declined:'Not proceeding'}[row.status] || 'Collecting applications';
+ const signingStage=w.signing && ({preparing:'Preparing lease invitations',sending:'Sending lease invitations',in_progress:'Signatures in progress',archiving:'Saving signed documents',completed:'Lease completed',needs_attention:'Signing needs attention'}[w.signing.phase]);
+ const stageLabel=signingStage || (blocked && ['sent_to_landlord','landlord_approved','lease_sent','lease_signed'].includes(row.status) ? 'Blocked · application evidence incomplete' : {sent_to_landlord:'Awaiting landlord decision',landlord_approved:!w.lease_preparation || draft?.missing?.length || draft?.error?'Lease needs information':'Lease ready for review',lease_sent:'Signatures in progress',lease_signed:'Lease completed',declined:'Not proceeding'}[row.status] || 'Collecting applications');
  const notice=pending.length?`Waiting for ${pending.map(i=>i.name).join(', ')} to submit.`:group.issues.length?group.issues[0]:row.status==='sent_to_landlord'?'The landlord’s response will appear here.':row.status==='landlord_approved'?'Review the lease draft and arrange tenant signatures.':row.status==='lease_sent'?'Track tenant signatures, then the landlord’s signature.':row.status==='declined'?'This rental is closed. The decision and application records are retained.':row.status==='lease_signed'?'All signatures are recorded. The lease is available in Lease & decision.':'All received application information is available below.';
  const groupTools=`${editable ? h.panel('Application group','Only join applicants who intend to share this lease.',`<details class="cw-edit"><summary>Invite a roommate</summary><form data-rental-invite class="cw-form"><label>Full name<input name="name" required maxlength="160"></label><label>Email<input name="email" type="email" required></label><button type="submit" class="primary">Send invitation</button><p role="status"></p></form></details><details class="cw-edit"><summary>Join an existing application</summary><div data-merge-options>Loading eligible applications…</div></details>${group.invitations.filter(i=>!i.accepted).map(i=>`<details class="cw-edit"><summary>Pending invitation: ${esc(i.name)}</summary>${form('cancel_invite',`<input type="hidden" name="invitation_id" value="${esc(i.id)}"><label class="cw-check"><input type="checkbox" name="confirmed" required><span>This person will not join this lease.</span></label>`,'Cancel invitation')}</details>`).join('')}`) : ''}`;
  const screens={
   applicants:`<div class="rg-applicant-toolbar"><nav class="rg-members" aria-label="Applicants">${members.map((m,i)=>`<button type="button" data-person="${esc(m.id)}" aria-pressed="${m.id===selectedApplicants.get(viewKey)}"><small>Member ${i+1}</small><b>${esc(m.name)}</b></button>`).join('')}${pending.map((i,n)=>`<div class="rg-invited"><small>Awaiting submission</small><b>${esc(i.name)}</b></div>`).join('')}</nav><div class="rg-reading-tools"><button type="button" data-expand-record>Expand all sections</button>${editable?'<button type="button" data-toggle-members>Manage applicants</button>':''}</div></div><div data-member-tools hidden>${groupTools}</div><div class="rg-household"><div class="rg-people">${members.map(person).join('')}</div></div>`,
-  lease:`<div class="rg-lease-workspace">${h.panel('Landlord decision & signing','',progression)}${h.termsPanel(ctx)}</div>`,
+  lease:`<div class="rg-lease-workspace">${h.panel('Landlord decision & signing','',ctx.signing?.configuration?.enabled || w.signing ? `${row.status==='sent_to_landlord'?progression:''}${w.lease_preparation?`<p><a class="desk-button" href="#/leases/${esc(id)}">Review lease draft</a></p>`:''}${signingMarkup(ctx)}` : progression + signingMarkup(ctx))}${h.termsPanel(ctx)}</div>`,
   activity:`<div class="rg-activity-workspace">${h.notesPanel(ctx)}${session.role==='manager'?h.privateNotePanel(ctx):''}${h.activityPanel(ctx)}</div>`
  };
  return `<a class="link" href="#/applications">← All rentals</a><div class="rg-page-header"><div><h1>${esc(row.listings?.property_name || 'Rental application')} <span>· Unit ${esc(row.listings?.unit || '—')}</span></h1><p>${members.length} submitted${pending.length?` · ${pending.length} awaiting submission`:''} <span class="rg-header-divider">|</span> ${esc(money(ctx.terms['rent.monthly']))} / month</p></div><details class="rg-team-menu"><summary>Agent: ${esc(row.responsible_email || 'Unassigned')}</summary>${ctx.allowed.includes('assign')?h.assignForm(row,ctx.people):h.teamPanel(ctx)}</details></div>
@@ -50,6 +52,7 @@ export function rentalGroupMarkup(ctx,h) {
  ${Object.entries(screens).map(([key,html])=>`<section id="rental-view-${key}" role="tabpanel" aria-labelledby="rental-tab-${key}" data-rental-panel="${key}" ${activeView!==key?'hidden':''}>${html}</section>`).join('')}`;
 }
 export async function bindRentalGroup(host,ctx,reload,current) {
+ bindSigning(host,ctx,reload);
  const priorClick=host.onclick,priorSubmit=host.onsubmit,priorKey=host.onkeydown;
  const viewKey=ctx.viewKey || ctx.id;
  const changeView=key=>{

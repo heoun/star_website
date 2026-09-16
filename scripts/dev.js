@@ -26,7 +26,12 @@ const devVars = path.join(root, ".dev.vars");
 
 const port = process.env.PORT || "8787";
 // Anything after `--` is handed to wrangler, e.g. `npm run dev -- --remote`.
-const extraArgs = process.argv.slice(2);
+const signingScheduler = process.argv.includes("--signing-scheduler");
+const extraArgs = process.argv.slice(2).filter(arg => arg !== "--signing-scheduler");
+if (signingScheduler) {
+  // Keep this opt-in mode on the DocuSign demo account, including cron runs.
+  extraArgs.push("--test-scheduled", "--var", "DOCUSIGN_ENVIRONMENT:demo");
+}
 
 // A changed file under one of these re-renders on its own. Everything else in
 // site/ (partials/, which are inlined rather than copied) forces a full build,
@@ -162,6 +167,26 @@ const wrangler = spawn(
   { cwd: root, stdio: "inherit" }
 );
 
+// Wrangler exposes this local test route but does not run cron on a timer.
+// The handler's durable jobs enforce retry timing and provider polling limits.
+let scheduledBusy = false;
+const scheduledTimer = signingScheduler ? setInterval(async () => {
+  if (scheduledBusy) return;
+  scheduledBusy = true;
+  try {
+    const response = await fetch(`http://127.0.0.1:${port}/__scheduled`, {
+      signal: AbortSignal.timeout(55000), redirect: "error"
+    });
+    await response.body?.cancel();
+    if (!response.ok) console.warn(`  Local scheduled handler returned ${response.status}.`);
+  } catch {
+    console.warn("  Local scheduled handler unavailable; retrying next minute.");
+  } finally {
+    scheduledBusy = false;
+  }
+}, 60000) : null;
+if (signingScheduler) console.log("Local rental/signing jobs run every minute; DocuSign uses demo credentials.");
+
 // Coalesce the burst of events an editor emits when it saves a file.
 const pending = new Set();
 let timer = null;
@@ -229,6 +254,7 @@ if (fs.existsSync(leaseTemplate)) {
 console.log(`Watching site/ — saved changes appear on http://127.0.0.1:${port} without a restart.`);
 
 function shutdown() {
+  clearInterval(scheduledTimer);
   for (const watcher of watchers) watcher.close();
   if (!wrangler.killed) wrangler.kill("SIGTERM");
 }

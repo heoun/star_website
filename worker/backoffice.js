@@ -7,6 +7,7 @@ import { DOCUMENT_TYPES, requireDocsBucket } from "./portal.js";
 import { documentSummary } from "../site/admin/application-view.js";
 import { sendEmail } from "./email.js";
 import { rentalMode, rentalWorkflow } from "./rentals.js";
+import { handleRentalSigning } from './signing.js';
 
 const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
 import { workspaceFor, projectCase, projectLandlordProperty } from "../backend/app/workspace.ts";
@@ -24,10 +25,11 @@ export const caseWorkspace = env => workspaceFor(requireConfig(env), {
   }
 });
 
-export async function handleCaseWorkspace(request, env, identity, id, subresource) {
+export async function handleCaseWorkspace(request, env, identity, id, subresource, ctx) {
   const workspace = caseWorkspace(env);
   if (id && !UUID.test(id)) return json({ error: "Application not found." }, 404);
   try {
+    if(id && subresource==='signing')return handleRentalSigning(request,env,identity,id,ctx);
     // The document checklist rides along for staff, so a queue row can say
     // "2 documents missing" with the same list the portal shows applicants.
     const types = identity.role === "landlord" ? [] : DOCUMENT_TYPES;
@@ -94,6 +96,7 @@ export async function handleCaseWorkspace(request, env, identity, id, subresourc
       const flow=rentalMode(env) ? rentalWorkflow(env,request) : null;
       if(flow) flow.assertReady(await flow.load(identity,id));
       const row = await workspace.load(identity, id);
+      if(row.workspace?.signing && !['voided','declined'].includes(row.workspace.signing.phase))return json({error:'DocuSign archives this lease automatically.'},409);
       if (!projectCase(identity, row).allowed_actions.includes("archive_lease")) return json({ error: "Record tenant and landlord signature receipts first." }, 403);
       const form = await request.formData();
       const file = form.get("file"), version = Number(form.get("version"));
