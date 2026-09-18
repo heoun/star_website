@@ -30,7 +30,7 @@ for(const format of ['pkcs1','pkcs8']) {
   if(init.method==='PUT'){status=JSON.parse(init.body).status;return Response.json({envelopeId:id});}
   return Response.json({envelopeId:id,status,statusChangedDateTime:'2026-09-16T00:00:00Z'});
  };
- const api=makeDocusign(config,mock),pkg={id:crypto.randomUUID(),tabs:[],signers:[{recipientId:'1',name:'Tenant',email:'tenant@example.test',routingOrder:1}]};
+ const api=makeDocusign(config,mock),pkg={id:crypto.randomUUID(),documents:[{documentId:'1',name:'New York Residential Lease Agreement'}],tabs:[],signers:[{recipientId:'1',name:'Tenant',email:'tenant@example.test',routingOrder:1}]};
  eq((await api.createDraft({package:pkg,documents:[{documentId:'1',bytes:new Uint8Array([1,2,3])}]})).envelopeId,id);
  await api.send(id);eq((await api.read(id)).status,'sent');
  eq((await api.findByTransactionId(pkg.id)).envelopeId,id);

@@ -12,7 +12,9 @@ globalThis.fetch=async(url,init={})=>{
  if(name==='rental_signing_packages') {
   if(init.method==='POST'){records.set(body.id,{...body});return Response.json([body]);}
   const id=u.searchParams.get('id')?.slice(3),rental=u.searchParams.get('rental_id')?.slice(3);
-  return Response.json([...records.values()].filter(r=>(!id || r.id===id)&&(!rental || r.rental_id===rental)&&(!u.searchParams.has('reserved') || r.reserved)));
+  // JSONB preserves values, not the insertion order of object keys.
+  const persisted=[...records.values()].filter(r=>(!id || r.id===id)&&(!rental || r.rental_id===rental)&&(!u.searchParams.has('reserved') || r.reserved));
+  return Response.json(persisted.map(r=>({...r,record:{...r.record,package:{...r.record.package,signers:r.record.package.signers.map(s=>Object.fromEntries(Object.entries(s).sort(([a],[b])=>a.localeCompare(b))))}}})));
  }
  if(name==='reserve_rental_signing') {
   const r=records.get(body.p_id);reserves++;r.reserved=true;const root=fixture.state.applications.find(a=>a.id===r.rental_id);root.workspace.signing={package_id:r.id,phase:'preparing'};root.workspace_version++;return Response.json(r.record);
@@ -35,10 +37,26 @@ try {
  eq((await post({action:'prepare',version:version-1})).status,409);
  const prepared=await post({action:'prepare',version},agent);eq(prepared.status,200);const p=await prepared.json();eq(p.preview,true);eq(p.signing.signers.length,3);eq(reserves,0);
  const file=await get(agent,`?package=${p.signing.id}&file=source`);eq(file.status,200);eq(file.headers.get('Cache-Control'),'no-store');eq(new Uint8Array(await file.arrayBuffer())[0],80);
+ const notice=p.signing.documents.find(d=>d.layout==='bedbug');assert.ok(notice);checks++;
+ const noticeUrl=`?package=${p.signing.id}&file=source&document=${notice.documentId}`;
+ eq((await get(wrong,noticeUrl)).status,404);
+ const noticeFile=await get(agent,noticeUrl);eq(noticeFile.status,200);eq(noticeFile.headers.get('Cache-Control'),'no-store');
+ const bytes=await noticeFile.arrayBuffer();
+ eq(Buffer.from(await crypto.subtle.digest('SHA-256',bytes)).toString('hex'),notice.sha256);
+ eq((await get(agent,`?package=${p.signing.id}&file=source&document=unknown`)).status,404);
  eq((await post({action:'send',packageId:p.signing.id,version:version-1},agent)).status,409);
  const savedName=row.name;row.name='Changed applicant';eq((await post({action:'send',packageId:p.signing.id,version},agent)).status,409);row.name=savedName;
- eq((await post({action:'send',packageId:p.signing.id,version},agent)).status,202);eq(reserves,1);
- eq((await post({action:'send',packageId:p.signing.id,version},agent)).status,200);eq(reserves,1);
+ const stored=records.get(p.signing.id).record.package.signers[0];
+ for(const [field,value] of Object.entries({email:'other@example.test',recipientId:'99',memberId:ids.a,role:'landlord',routingOrder:2})){
+   const before=stored[field];stored[field]=value;
+   eq((await post({action:'send',packageId:p.signing.id,version},agent)).status,409);
+   stored[field]=before;
+ }
+ eq(reserves,0);
+ const blocked=await post({action:'send',packageId:p.signing.id,version},agent);eq(blocked.status,409);eq((await blocked.json()).error,'Signature placement review is in progress. Confirm all 15 documents before sending.');eq(reserves,0);
+ // An already-reserved request is still returned idempotently, never resent.
+ records.get(p.signing.id).reserved=true;row.workspace.signing={package_id:p.signing.id,phase:'preparing'};
+ eq((await post({action:'send',packageId:p.signing.id,version},agent)).status,200);eq(reserves,0);
  await assert.rejects(()=>flow.execute(agent,ids.b,{action:'tenant_signed',version:row.workspace_version,member_id:row.id,reason:'manual'}),e=>e.status===409);checks++;
  eq((await handleDocusignWebhook(new Request('https://example.test/api/webhooks/docusign',{method:'POST',body:'{}'}),env)).status,401);
  const selected=await (await get(agent)).json();eq(selected.signing.id,p.signing.id);eq(JSON.stringify(selected).includes('source_docx-'),false);

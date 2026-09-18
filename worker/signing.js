@@ -4,11 +4,16 @@ import { rentalMode, rentalWorkflow } from './rentals.js';
 import { requireDocsBucket } from './portal.js';
 import { missingIn } from './lease.js';
 import { buildSigningLease, sha256 } from './signing-template.js';
+import { SIGNING_TEMPLATE_VERSION, SIGNING_LAYOUT_REVIEW_REQUIRED } from '../site/shared/lease-signing-layout.js';
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 const error=(message,status=409)=>Object.assign(new Error(message),{status});
 const uuid=v=>typeof v==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
 const email=v=>String(v || '').trim().toLowerCase();
 const enabled=env=>rentalMode(env) && env.DOCUSIGN_ENABLED==='on';
+// JSONB can reorder object keys. Compare signer identity and routing values,
+// retaining recipient order because the document anchors use recipient IDs.
+const sameSigners=(current,saved)=>Array.isArray(saved) && current.length===saved.length && current.every((signer,index)=>
+  ['recipientId','memberId','role','routingOrder','name','email'].every(key=>signer[key]===saved[index]?.[key]));
 export function signingConfiguration(env,request) {
   const required=['DOCUSIGN_INTEGRATION_KEY','DOCUSIGN_USER_ID','DOCUSIGN_ACCOUNT_ID','DOCUSIGN_PRIVATE_KEY','DOCUSIGN_CONNECT_HMAC_SECRET','DOCUSIGN_WEBHOOK_URL'];
   const missing=required.filter(k=>!String(env[k] || '').trim());
@@ -16,7 +21,7 @@ export function signingConfiguration(env,request) {
   let validUrl=false;try{const u=new URL(env.DOCUSIGN_WEBHOOK_URL);validUrl=u.protocol==='https:' && !u.username && !u.password && u.pathname==='/api/webhooks/docusign';}catch{}
   if(!validUrl && !missing.includes('DOCUSIGN_WEBHOOK_URL'))missing.push('DOCUSIGN_WEBHOOK_URL');
   const local=['127.0.0.1','localhost','[::1]'].includes(new URL(request.url).hostname);
-  return {enabled:enabled(env),configured:!missing.length,environment:env.DOCUSIGN_ENVIRONMENT || 'demo',
+  return {enabled:enabled(env),configured:!missing.length,placementReviewRequired:SIGNING_LAYOUT_REVIEW_REQUIRED,environment:env.DOCUSIGN_ENVIRONMENT || 'demo',
     canSend:enabled(env) && !missing.length && (!local || env.DOCUSIGN_ENVIRONMENT==='demo') && (env.DOCUSIGN_ENVIRONMENT!=='demo' || env.DEV_DOCUSIGN_SEND==='on'),
     message:!enabled(env)?'DocuSign signing is not enabled.':missing.length?'DocuSign is not connected. An administrator must finish the signing setup.':local && env.DOCUSIGN_ENVIRONMENT==='production'?'Local development must use the DocuSign demo environment.':env.DOCUSIGN_ENVIRONMENT==='demo' && env.DEV_DOCUSIGN_SEND!=='on'?'Sandbox sending is disabled in the development settings.':'Ready'};
 }
@@ -41,7 +46,8 @@ function safeRecord(record) {
     template_version:record.package.templateVersion,created_at:record.package.createdAt,
     envelope_id:record.envelope?.envelopeId || null,void_requested:!!record.voidReason,
     signers:record.package.signers.map(s=>({...s,...record.envelope?.recipients.find(r=>r.recipientId===s.recipientId)})),
-    completed:record.phase==='completed',source_sha256:record.package.documents[0].file.sha256};
+    completed:record.phase==='completed',source_sha256:(record.package.reviewFile || record.package.documents[0].file).sha256,
+    documents:record.package.documents.map(d=>({documentId:d.documentId,layout:d.layout,tenantRecipientId:d.tenantRecipientId,name:d.name,sha256:d.file.sha256})),values:{'concession.terms':record.package.values['concession.terms']}};
 }
 async function recipients(env,g) {
   const tenants=g.members.map((m,i)=>({recipientId:String(i+1),memberId:m.id,role:'tenant',routingOrder:1,name:String(m.name || '').trim(),email:email(m.email)}));
@@ -73,7 +79,7 @@ export async function handleRentalSigning(request,env,identity,id,ctx) {
       if(record && record.package.rentalId!==id)throw error('Signing package not found.',404);
       const kind=url.searchParams.get('file');
       if(kind) {
-        const file=record && (kind==='source'?record.package.documents[0].file:record.phase==='completed'?kind==='certificate'?record.certificate:kind==='signed'?record.signedPdf:null:null);
+        const file=record && (kind==='source'?(url.searchParams.has('document')?record.package.documents.find(d=>d.documentId===url.searchParams.get('document'))?.file:record.package.reviewFile || record.package.documents[0].file):record.phase==='completed'?kind==='certificate'?record.certificate:kind==='signed'?record.signedPdf:null:null);
         if(!file)throw error('Signing file is unavailable.',404);
         return new Response(await files.read(file),{headers:{'Content-Type':file.contentType,'Content-Disposition':`attachment; filename="${kind==='source'?'lease-for-review.docx':kind==='certificate'?'completion-certificate.pdf':'signed-lease.pdf'}"`,'Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
       }
@@ -87,10 +93,12 @@ export async function handleRentalSigning(request,env,identity,id,ctx) {
       const prior=await flow.store.current(id);
       if(prior && !['voided','declined'].includes(prior.phase))return json({configuration:config,signing:safeRecord(prior),reserved:true});
       const signers=await recipients(env,g),packageId=crypto.randomUUID();
-      let document;try{document=await buildSigningLease(env,request,g.root.lease_snapshot,signers);}catch(e){throw error(e.message,409);}
+      let document;try{document=await buildSigningLease(env,request,g.root.lease_snapshot,signers,Object.fromEntries(g.members.map(m=>[m.id,{'tenant.mailing_address':m.current_address || ''}])));}catch(e){throw error(e.message,409);}
       const file=await files.put(packageId,'source_docx',new Response(document.docx).body);
+      const documents=[];
+      for(const d of document.documents)documents.push({documentId:d.documentId,layout:d.layout,tenantRecipientId:d.tenantRecipientId,name:d.name,file:await files.put(packageId,'source_docx',new Response(d.bytes).body)});
       const pkg={id:packageId,rentalId:id,approvalRevision:g.root.workspace.recommendation.revision,templateVersion:document.templateVersion,
-        values:g.root.lease_snapshot,documents:[{documentId:'1',file}],signers,tabs:document.tabs,createdAt:new Date().toISOString(),createdBy:identity.email};
+        values:g.root.lease_snapshot,reviewFile:file,documents,signers,tabs:document.tabs,createdAt:new Date().toISOString(),createdBy:identity.email};
       const record=await flow.store.preview(pkg,Object.fromEntries(g.members.map(m=>[m.id,m.workspace_version || 0])));
       return json({configuration:config,signing:safeRecord(record),preview:true});
     }
@@ -104,7 +112,9 @@ export async function handleRentalSigning(request,env,identity,id,ctx) {
       assertLease(workflow,g);
       if(body.version!==g.root.workspace_version)throw error('The rental changed. Prepare and review the lease again.');
       const signers=await recipients(env,g);
-      if(JSON.stringify(signers)!==JSON.stringify(record.package.signers))throw error('The signers changed. Prepare a new signing package.');
+      if(!sameSigners(signers,record.package.signers))throw error('The signers changed. Prepare a new signing package.');
+      if(record.package.templateVersion!==SIGNING_TEMPLATE_VERSION)throw error('The signing layout changed. Prepare a new signing package.');
+      if(SIGNING_LAYOUT_REVIEW_REQUIRED)throw error('Signature placement review is in progress. Confirm all 15 documents before sending.');
       const reserved=await flow.store.reserve({package:record.package,principal:identity,expectedMemberVersions:Object.fromEntries(g.members.map(m=>[m.id,m.workspace_version || 0]))});
       ctx?.waitUntil(flow.run());
       return json({signing:safeRecord(reserved),configuration:config},202);
@@ -136,6 +146,7 @@ export async function reconcileSigning(env,request) {
   const flow=signingFor(requireConfig(env),env,signingFiles(env));
   await flow.run();
   for(const record of await flow.store.expiredPreviews()) {
+    if(record.package.reviewFile)await requireDocsBucket(env).delete(record.package.reviewFile.path);
     for(const d of record.package.documents)await requireDocsBucket(env).delete(d.file.path);
     await flow.store.discardPreview(record.package.id);
   }

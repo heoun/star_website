@@ -36,14 +36,14 @@ export async function boundedBytes(stream: ReadableStream<Uint8Array> | null, li
 export function envelopeDefinition(pkg: RentalSigningPackage, documents: {documentId:string;bytes:Uint8Array}[], webhookUrl: string) {
   return {
     status:'created',transactionId:pkg.id,emailSubject:'Please sign your lease — Star Realty',
-    documents:documents.map(d=>({documentId:d.documentId,name:'Residential lease and riders',fileExtension:'docx',documentBase64:base64(d.bytes)})),
+    documents:documents.map(d=>({documentId:d.documentId,name:pkg.documents.find(f=>f.documentId===d.documentId)?.name || 'Residential lease and riders',fileExtension:'docx',documentBase64:base64(d.bytes)})),
     recipients:{signers:pkg.signers.map(s=>{
-      const tabs:Record<string,unknown[]>={signHereTabs:[],initialHereTabs:[],dateSignedTabs:[]};
+      const tabs:Record<string,unknown[]>={signHereTabs:[],initialHereTabs:[],dateSignedTabs:[],fullNameTabs:[]};
       for(const t of pkg.tabs.filter(t=>t.recipientId===s.recipientId)) {
-        const key={signature:'signHereTabs',initial:'initialHereTabs',date_signed:'dateSignedTabs'}[t.kind];
+        const key={signature:'signHereTabs',initial:'initialHereTabs',date_signed:'dateSignedTabs',full_name:'fullNameTabs'}[t.kind];
         tabs[key].push({documentId:t.documentId,anchorString:t.anchor,anchorUnits:t.units,
           anchorXOffset:String(t.xOffset),anchorYOffset:String(t.yOffset),anchorIgnoreIfNotPresent:'false',
-          anchorCaseSensitive:'true',anchorMatchWholeWord:'true',...(t.kind==='signature'||t.kind==='initial'?{scaleValue:'0.7'}:{fontSize:'Size9'})});
+          anchorCaseSensitive:'true',anchorMatchWholeWord:'true',...(t.kind==='signature'||t.kind==='initial'?{scaleValue:String(t.scale??.7)}:{fontSize:'Size9',font:'TimesNewRoman'})});
       }
       return {recipientId:s.recipientId,name:s.name,email:s.email,routingOrder:String(s.routingOrder),tabs};
     })},

@@ -20,8 +20,10 @@ export interface RentalSigner {
 export interface RentalSigningTab {
   recipientId: string;
   documentId: string;
-  kind: 'signature' | 'initial' | 'date_signed';
-  // Unique per document, signer and position. Missing anchors block sending.
+  kind: 'signature' | 'initial' | 'date_signed' | 'full_name';
+  scale?: number;
+  // Unique visible text in the source document; offsets select each signer’s line.
+  // Missing or repeated anchors block preparation.
   anchor: string;
   xOffset: number;
   yOffset: number;
@@ -39,7 +41,8 @@ export interface RentalSigningPackage {
   approvalRevision: number;
   templateVersion: string;
   values: Record<string, unknown>;
-  documents: { documentId: string; file: RentalSigningFile }[];
+  reviewFile?: RentalSigningFile;
+  documents: { documentId: string; file: RentalSigningFile; name?: string; layout?: string; tenantRecipientId?: string | null }[];
   signers: RentalSigner[];
   tabs: RentalSigningTab[];
   createdAt: string;
