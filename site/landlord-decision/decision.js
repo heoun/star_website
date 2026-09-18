@@ -2,8 +2,13 @@ const host=document.querySelector('#decision'),params=new URLSearchParams(locati
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 async function start(){
  if(!/^[0-9a-f-]{36}$/i.test(id || '') || !Number.isInteger(revision)){host.textContent='This link is invalid.';return;}
+ // A local Admin preview is not a landlord login. Require the real account
+ // before using the staff endpoint, just as the emailed workflow does live.
+ const account=await fetch('/api/auth/me',{credentials:'same-origin'});
+ if(account.status===401){host.innerHTML=`<h1>Confirm Your Rental Decision</h1><p>Sign in with the landlord email this summary was sent to. For a new account, choose Activate Account on the sign-in page.</p><a class="button" href="/login/?return=${encodeURIComponent(location.pathname+location.hash)}">Sign In to Continue</a>`;return;}
  const response=await fetch(`/api/admin/cases/${id}`,{credentials:'same-origin'}),data=await response.json();
  if(response.status===401){host.innerHTML=`<h1>Confirm your rental decision</h1><p>Sign in with the landlord account this email was sent to.</p><a class="button" href="/login/?return=${encodeURIComponent(location.pathname+location.hash)}">Sign in to continue</a>`;return;}
+ if(response.status===403){host.innerHTML=`<h1>Landlord Account Required</h1><p>This browser is signed in with a different account. Sign out, then sign in with the landlord email shown in the invitation.</p><a class="button" href="/login/?return=${encodeURIComponent(location.pathname+location.hash)}">Open Sign In</a>`;return;}
  if(!response.ok)throw new Error(data.error || 'This rental is unavailable.');
  const row=data.case,r=row.recommendation;
  if(!r){host.innerHTML='<h1>Landlord account required</h1><p>Open this email with the landlord account it was sent to.</p>';return;}

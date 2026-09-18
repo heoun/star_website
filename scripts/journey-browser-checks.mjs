@@ -1,0 +1,58 @@
+import assert from 'node:assert/strict';
+import http from 'node:http';
+import {readFile,mkdir} from 'node:fs/promises';
+import {resolve,extname} from 'node:path';
+import worker from '../worker/index.js';
+import {ids} from '../backend/tools/workspace-fixtures.mjs';
+export async function runJourneyBrowser({env,fixture,pending,advance}) {
+  const previousCaches=globalThis.caches;
+  globalThis.caches={default:{async match(){return undefined;},async put(){},async delete(){return true;}}};
+  const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright'),root=resolve('dist');
+  env.ASSETS={async fetch(request){const path=new URL(request.url).pathname,file=resolve(root,`.${path}${path.endsWith('/')?'index.html':''}`);if(!file.startsWith(root+'/'))return new Response(null,{status:404});try{return new Response(await readFile(file),{headers:{'Content-Type':({'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml'})[extname(file)] || 'application/octet-stream'}});}catch{return new Response(null,{status:404});}}};
+  const server=http.createServer(async(req,res)=>{try{const chunks=[];for await(const c of req)chunks.push(c);const response=await worker.fetch(new Request(`http://127.0.0.1:${server.address().port}${req.url}`,{method:req.method,headers:req.headers,...(chunks.length?{body:Buffer.concat(chunks)}:{})}),env,{waitUntil:p=>pending.push(p)});res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));}catch(e){res.writeHead(500);res.end(e.message);}});
+  await new Promise(r=>server.listen(0,'127.0.0.1',r));
+  const base=`http://127.0.0.1:${server.address().port}`,browser=await chromium.launch({headless:true}),context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
+  const out='/tmp/star-journey-ui';await mkdir(out,{recursive:true});page.on('pageerror',e=>errors.push(e.message));let checks=0;
+  const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
+  const login=async(email)=>{const r=await context.request.post(base+'/api/auth/login',{data:{email,password:'testing-password'}});eq(r.status(),200);};
+  try {
+    await login(env.INTERNAL_TEST_EMAIL);
+    await page.goto(`${base}/property/?id=${ids.listing}`);
+    await page.locator(`a[href*="apply/?id=${ids.listing}"]`).first().click();
+    await page.getByRole('button',{name:'Fill With Sample Data'}).click();
+    eq(await page.locator('[name=email]').inputValue(),env.INTERNAL_TEST_EMAIL);
+    eq(await page.locator('#consent').isChecked(),false);
+    await page.screenshot({path:out+'/sample-application.png',fullPage:true});
+    for(let i=0;i<6;i++)await page.locator('#step-next').click();
+    await page.locator('#consent').check();
+    await page.getByRole('button',{name:'Submit Application',exact:true}).click();
+    await page.getByRole('link',{name:'Continue to Payment & Documents'}).click();
+    await page.getByRole('button',{name:'Pay $20 — Simulation'}).waitFor();
+    const id=await page.locator('[data-test-panel]').getAttribute('data-test-panel');
+    eq(await page.locator('[data-upload]:enabled').count(),0);
+    await page.getByRole('button',{name:'Simulate Payment Failure'}).click();
+    await page.getByText(/Payment Failed — Retry Available/).waitFor();
+    await page.getByRole('button',{name:'Pay $20 — Simulation'}).click();
+    await page.getByRole('button',{name:'Upload Sample Documents'}).click();
+    await page.getByText('Supporting Documents — Complete',{exact:true}).waitFor();
+    await page.locator('[data-screening-consent]').check();
+    await page.getByRole('button',{name:'Submit Screening Materials'}).click();
+    await page.getByText('Credit Screening — Processing',{exact:true}).waitFor();
+    advance();await page.getByRole('button',{name:'Refresh Status'}).click();
+    await page.getByText('Credit Screening — Complete',{exact:true}).waitFor();
+    await page.screenshot({path:out+'/screening-complete.png',fullPage:true});
+    const row=fixture.state.applications.find(a=>a.id===id);eq(row.status,'sent_to_landlord');
+    await page.setViewportSize({width:390,height:844});await page.screenshot({path:out+'/portal-mobile.png',fullPage:true});eq(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+    await page.setViewportSize({width:1440,height:1000});
+    await login(row.workspace.recommendation.landlord_email);
+    const link=fixture.state.emails.find(m=>m.subject.includes(id.slice(0,8))).text.match(/Agree to proceed: (\S+)/)[1];
+    await page.goto(link);await page.getByRole('button',{name:'Agree to proceed',exact:true}).click();
+    await page.getByRole('heading',{name:'Decision recorded'}).waitFor();eq(row.status,'landlord_approved');
+    await page.screenshot({path:out+'/landlord-approved.png',fullPage:true});
+    await login('admin@example.test');await page.goto(`${base}/admin/#/applications/${id}`);
+    await page.getByRole('button',{name:'Lease & Decision',exact:false}).click();
+    await page.getByRole('button',{name:'Review Signing Package',exact:true}).waitFor();checks++;
+    eq(errors,[]);console.log(`PASS ${checks} journey browser checks; screenshots: ${out}`);
+  } catch(error){await page.screenshot({path:out+'/failure.png',fullPage:true});console.error((await page.locator('body').innerText()).slice(-5000));throw error;}
+  finally {globalThis.caches=previousCaches;await context.close();await browser.close();await Promise.allSettled(pending.splice(0));server.closeAllConnections();await new Promise(r=>server.close(r));}
+}

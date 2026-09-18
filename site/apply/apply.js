@@ -286,9 +286,11 @@ import { endDateFor } from "../shared/lease-dates.js";
   const wireForm = (property) => {
     const form = document.getElementById("apply-form");
     let automaticRental=false;
+    let testApplication=null;
     const groupInvite=new URLSearchParams(location.search).get('invite') || '';
-    fetch(`/api/apply/options?id=${encodeURIComponent(id)}`).then(r=>r.json()).then(options=>{
+    fetch(`/api/apply/options?id=${encodeURIComponent(id)}`).then(r=>r.json()).then(async options=>{
       automaticRental=options.automatic===true;
+      if(options.internal_testing && !groupInvite){const {attachTestApplication}=await import('./internal-test.js');testApplication=attachTestApplication(form,id);}
       if(!automaticRental)return;
       const section=document.createElement('div');section.className='field';
       const label=document.createElement('label');label.textContent='Agent you are working with';
@@ -1149,6 +1151,7 @@ import { endDateFor } from "../shared/lease-dates.js";
 
       const payload = {
         listing_id: id,
+        ...(testApplication?{test_run_id:testApplication.id()}:{}),
         sales_person: form.elements.sales_person?.value || "",
         group_invite: groupInvite,
         first_name: value("first_name"),
@@ -1243,6 +1246,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         }
 
         state.done = true;
+        testApplication?.complete();
         state.dirty = false;
         progressFill.style.width = "100%";
         headerStep.textContent = "Rental Application · Submitted";
@@ -1250,20 +1254,18 @@ import { endDateFor } from "../shared/lease-dates.js";
           <div class="success">
             <h2>Thank You for Applying</h2>
             <p>Your application for ${escapeHtml(property.title || "this property")} has
-               been received. We appreciate your interest. The Star Real Estate team will
-               review your application and contact you within 24 to 48 hours.</p>
+               been received. ${payload.test_run_id?'Continue below to complete this test application.':'We appreciate your interest. The Star Real Estate team will review your application and contact you within 24 to 48 hours.'}</p>
             <div class="success-docs">
-              <h3>After Your Application Is Reviewed</h3>
-              <p>No documents are needed right now. Once the team has looked at your
-                 application, you will upload the following in your applicant portal.</p>
+              <h3>Complete Your Application</h3>
+              <p>${payload.test_run_id?'Continue to the portal to complete the simulated application fee, upload supporting documents, and submit your screening materials.':'Upload the following supporting documents in your applicant portal.'}</p>
               <ul class="docs-note">${docsChecklist(employmentStatus())}</ul>
             </div>
             <p class="success-links">
-              <a href="../portal/">Open the applicant portal</a>
+              <a href="../portal/?application=${encodeURIComponent(payload.application_id || '')}">${payload.test_run_id?'Continue to Payment & Documents':'Open the Applicant Portal'}</a>
               <a href="../property/?id=${encodeURIComponent(id)}">Back to the property</a>
             </p>
           </div>`;
-        announce("Application received. The team will review it and contact you within 24 to 48 hours.");
+        announce(payload.test_run_id?"Application received. Continue to payment and documents.":"Application received. The team will review it and contact you within 24 to 48 hours.");
       } catch (error) {
         showSubmitError(error.message);
         state.submitting = false;

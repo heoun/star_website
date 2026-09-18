@@ -36,6 +36,7 @@
     email: "",      // carried between the auth steps
     data: null      // the signed-in payload: email, document_types, applications
   };
+  let testTools=null,selectedId=new URLSearchParams(location.search).get('application'),pollTimer;
 
   // One reusable file input for every Upload button; which slot it feeds is
   // remembered while the picker is open.
@@ -433,7 +434,8 @@
     const data = state.data;
     const apps = data.applications || [];
 
-    const cards = apps.map((app) => {
+    if(!apps.some(a=>a.id===selectedId))selectedId=apps[0]?.id;
+    const cards = apps.filter(app=>app.id===selectedId).map((app) => {
       const submitted = new Date(app.created_at).toLocaleDateString("en-US", {
         month: "long", day: "numeric", year: "numeric"
       });
@@ -452,6 +454,7 @@
             <span class="portal-chip is-${escapeHtml(app.status)}">${escapeHtml(STATUS_LABELS[app.status] || app.status)}</span>
           </div>
           <p class="portal-facts">${escapeHtml(facts)}</p>
+          ${testTools?.testSteps(app,progress.met===progress.total) || ''}
           ${app.request ? `<div class="portal-request"><b>What We Need From You</b><p>${escapeHtml(app.request.message)}</p></div>` : ""}
           <p class="portal-progress${progress.met === progress.total ? " is-done" : ""}">
             ${progress.met === progress.total
@@ -478,8 +481,14 @@
              up to 10&nbsp;MB per file. We are notified automatically once everything
              required is in.</p>`}
       <p class="form-error" hidden></p>
+      ${apps.length>1?`<label>Application / Test Run<select class="portal-run-select" id="application-select">${apps.map(a=>`<option value="${escapeHtml(a.id)}" ${a.id===selectedId?'selected':''}>${escapeHtml(listingLabel(a))} · ${escapeHtml(a.test_run?'Test '+a.id.slice(0,8):a.name)} · ${escapeHtml(STATUS_LABELS[a.status] || a.status)} · ${escapeHtml(new Date(a.created_at).toLocaleString())}</option>`).join('')}</select></label>`:''}
       ${cards}
     `;
+    container.querySelector('#application-select')?.addEventListener('change',e=>{selectedId=e.target.value;history.replaceState(null,'',`?application=${encodeURIComponent(selectedId)}`);renderDashboard();});
+    const selected=apps.find(a=>a.id===selectedId);
+    if(selected?.test_run && selected.payment?.status!=='paid')container.querySelectorAll('[data-upload]').forEach(b=>b.disabled=true);
+    clearTimeout(pollTimer);
+    if(selected?.test_run && selected.screening?.submitted && ['pending','not_started'].includes(selected.screening.status))pollTimer=setTimeout(async()=>{try{await postJson(`/applications/${selected.id}/refresh`,{});await load();}catch(e){setError(e.message);}},7000);
 
     document.getElementById("sign-out").addEventListener("click", async () => {
       try {
@@ -494,6 +503,12 @@
 
   // Upload and remove clicks, delegated so re-renders cannot orphan handlers.
   container.addEventListener("click", async (event) => {
+    const testButton=event.target.closest('[data-test-action]');
+    if(testButton && testTools){
+      const panel=testButton.closest('[data-test-panel]'),app=state.data.applications.find(a=>a.id===panel.dataset.testPanel);
+      panel.querySelectorAll('button').forEach(b=>b.disabled=true);panel.querySelector('[role=status]').textContent='Processing…';
+      try{await testTools.testAction(testButton,app,api,applicableTypes(app));await load();}catch(error){await load();setError(error.message);}return;
+    }
     const uploadButton = event.target.closest("[data-upload]");
     if (uploadButton) {
       pendingUpload = { applicationId: uploadButton.dataset.app, typeId: uploadButton.dataset.upload };
@@ -556,6 +571,7 @@
   async function load() {
     try {
       state.data = await api("/applications");
+      if(state.data.internal_testing && !testTools)testTools=await import('./internal-test.js');
       // Someone who arrived here mid-application and is already signed in
       // goes straight back to the form.
       if (nextPath) {

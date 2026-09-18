@@ -104,3 +104,19 @@ DOCUSIGN_WEBHOOK_URL=
 # Required for ALL demo-account sends, including background jobs. DocuSign
 # sends actual email; the existing Resend development guard does not apply.
 DEV_DOCUSIGN_SEND=off
+
+# Optional local-only, repeatable applicant journey. Never enable on production.
+# Bind to the verified Supabase account ID AND email, development database host,
+# and explicit listing IDs. Existing login/password/verification remain unchanged.
+INTERNAL_TESTING=off
+INTERNAL_TEST_DATABASE_HOST=
+INTERNAL_TEST_USER_ID=
+INTERNAL_TEST_EMAIL=
+INTERNAL_TEST_LANDLORD_EMAIL=
+INTERNAL_TEST_LISTING_IDS=
+SCREENING_SIMULATOR_URL=http://127.0.0.1:8794
+SCREENING_SIMULATOR_TOKEN=
+# For this profile: RENTAL_AUTOMATION=on, RENTAL_SCREENING=simulator,
+# SITE_ORIGIN=http://127.0.0.1:8787, DEV_REAL_EMAIL=true.
+# Real test email is restricted to the two configured inboxes.
+# Start both services and the scheduler with npm run dev:journey.
