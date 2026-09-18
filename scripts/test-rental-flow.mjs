@@ -5,6 +5,7 @@ import {completeDemoState} from './demo-data.mjs';
 import {seedRentalDemo} from './rental-demo-data.mjs';
 import {rentalWorkflow} from '../worker/rentals.js';
 import {handleAdminRequest} from '../worker/admin.js';
+import {makeRentalMail} from '../backend/adapters/rental-mail/index.ts';
 const fixture=createWorkspaceFixtures();await completeDemoState(fixture.state);await seedRentalDemo(fixture.state);
 const original=globalThis.fetch;globalThis.fetch=fixture.fetch;
 const request=new Request('http://127.0.0.1:8792/api/admin/cases'),keys=new Set();
@@ -27,6 +28,16 @@ try{
  assert(fixture.state.emails[0].text.includes('728'));checks++;
  assert(fixture.state.emails[0].text.includes('Agree to proceed:'));checks++;
  assert(!fixture.state.emails[0].text.includes('ADMIN-ONLY'));checks++;
+ // Independent resends must have distinct subjects, while delivery retries stay
+ // byte-for-byte stable for Resend idempotency. Decision links must not change.
+ const notices=[],mail=makeRentalMail({LOCAL_EMAIL_SINK:{async send(m){notices.push(m);}}},request);
+ await mail.decision(raw(),raw().workspace.recommendation.members,'notification-1');
+ await mail.decision(raw(),raw().workspace.recommendation.members,'notification-1');
+ await mail.decision(raw(),raw().workspace.recommendation.members,'notification-2');
+ eq(notices[0],notices[1]);
+ assert.notEqual(notices[0].subject,notices[2].subject);checks++;
+ eq([...notices[0].html.matchAll(/href="([^"]+)"/g)].map(m=>m[1]),[...notices[2].html.matchAll(/href="([^"]+)"/g)].map(m=>m[1]));
+ assert(notices[0].html.includes(notices[0].subject.split(' · Ref ')[1]));checks++;
  await flow.reconcile(ids.b);eq(fixture.state.emails.length,1);
  const recipient=raw().workspace.recommendation.landlord_email,landlord=fixture.state.staff.find(s=>s.email===recipient);
  const owner={role:'landlord',email:recipient,property_ids:landlord.property_ids};

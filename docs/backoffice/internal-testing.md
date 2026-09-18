@@ -119,3 +119,10 @@ For development, keep public logos in a dedicated `email-brand-assets` bucket.
 Do not make the existing listing-media or applicant-docs buckets public. Verify
 the logo URL without credentials before sending. Local previews do not send mail;
 received emails will retain their original layout.
+
+Each decision notification includes a reference derived from its delivery key in
+both the subject and body. This keeps independent notifications out of the same
+Gmail conversation, where repeated actions can be collapsed as quoted content.
+Transport retries must reuse the original key; an explicitly requested resend
+must use a new key. Never randomize the subject during retries. Gmail ultimately
+controls collapsed content, so browser HTML previews cannot verify inbox folding.

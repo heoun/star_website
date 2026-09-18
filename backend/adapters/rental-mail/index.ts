@@ -10,6 +10,10 @@ export function makeRentalMail(env:Record<string,any>,request:Request):RentalMai
   return {
     async decision(root,members,key) {
       const r=root.workspace!.recommendation!,terms=r.terms;
+      // Separate intentional notifications in Gmail; retries keep the same subject
+      // and payload so the provider's idempotency key continues to deduplicate them.
+      const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(key));
+      const notice=Array.from(new Uint8Array(digest)).slice(0,6).map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
       const url=new URL('/landlord-decision/',request.url);
       const link=(choice:string)=>`${url}#${new URLSearchParams({id:root.id,revision:String(r.revision),choice})}`;
       const place=[root.listings?.property_name || r.property_title,root.listings?.unit].filter(Boolean).join(' · ');
@@ -37,13 +41,14 @@ ${members.map(m=>`<table role="presentation" width="100%" cellpadding="0" cellsp
 <tr><td colspan="2" style="padding:16px 0 12px"><span style="font-size:12px;color:#555555">Applicant</span><br><b>${esc(m.name)}</b><br><span style="font-size:13px;color:#555555">${esc(m.employment)}</span></td></tr>
 <tr><td width="50%" valign="top" style="padding:0 12px 16px 0"><span style="font-size:12px;color:#555555">Credit score</span><br><b>${esc(m.credit_score ?? 'No score returned')}${m.mock?' (mock)':''}</b><br><span style="font-size:12px;color:#555555">${esc(m.score_model)}<br>${esc(m.report_date.slice(0,10))}</span></td>
 <td width="50%" valign="top" style="padding:0 0 16px 12px"><span style="font-size:12px;color:#555555">Annual income</span><br><b>${esc(m.annual_income || 'Not stated')}</b><br><span style="font-size:12px;color:#555555">${esc(m.income_source)}</span></td></tr></table>`).join('')}
+<p style="margin:0 0 12px;font-size:12px;color:#555555">Decision request · Reference ${notice}</p>
 <p style="margin:0 0 8px">${button('View details','details')}</p>
 <p style="margin:0 0 12px">${button('Agree to proceed','accept')}${button('Do not proceed','decline')}</p>
 <p style="margin:0;padding-top:16px;border-top:1px solid #dddddd;font-size:12px;line-height:1.7;color:#555555">Confirm with your landlord account. Your decision covers this whole application group and these terms. Agreeing starts lease preparation; it does not sign the lease.</p>
 </td></tr></table>
 <!--[if mso]></td></tr></table><![endif]-->
 </td></tr></table></body></html>`;
-      return send(r.landlord_email,`${root.workspace?.test_run?'[Internal Test '+root.id.slice(0,8)+'] ':''}Application ready · ${place}`,text,html,key);
+      return send(r.landlord_email,`${root.workspace?.test_run?'[Internal Test '+root.id.slice(0,8)+'] ':''}Application ready · ${place} · Ref ${notice}`,`${text}\n\nNotification reference: ${notice}`,html,key);
     },
     async invite(root,i) {
       const link=new URL('/apply/',request.url);link.searchParams.set('id',String(root.listing_id));link.searchParams.set('invite',`${root.id}.${i.id}`);
