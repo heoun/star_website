@@ -76,6 +76,9 @@ DEV_MEDIA_ORIGIN=https://starreusa.com
 # be revoked on its own, and set the flag back to empty when you are done.
 RESEND_API_KEY=
 DEV_REAL_EMAIL=
+# Optional public HTTPS logo for landlord emails; never use a localhost URL.
+# Default: https://starreusa.com/png/email-logo-v1.png (ships with the site).
+EMAIL_LOGO_URL=
 
 # Deliberately absent: TURNSTILE_SECRET_KEY. Human verification is skipped when
 # it is unset, which is what you want locally. Cloudflare Access keys are not needed.

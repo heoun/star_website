@@ -105,3 +105,17 @@ order, completion and archiving independently. Neither suite sends real mail.
 Manual acceptance is the two mailbox owners finishing the new Sandbox envelope
 and seeing the completed lease in Admin. This remains distinct from automated
 coverage or a previous Sandbox envelope's successful send.
+
+### Email branding
+
+Landlord decision emails use a centered 600px HTML card and a public HTTPS PNG
+logo, with no image attachment. `EMAIL_LOGO_URL` can point to a publicly readable
+brand asset for local testing; it must not point to localhost or require a login.
+The default is `https://starreusa.com/png/email-logo-v1.png`, shipped from
+`site/png/email-logo-v1.png` on the next site deployment. The PNG is a raster
+export of `site/partials/brand-logo.html`, sized for email clients.
+
+For development, keep public logos in a dedicated `email-brand-assets` bucket.
+Do not make the existing listing-media or applicant-docs buckets public. Verify
+the logo URL without credentials before sending. Local previews do not send mail;
+received emails will retain their original layout.
