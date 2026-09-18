@@ -819,7 +819,7 @@
    even though it is a label, or three lines of bold would shout. */
 .application-page label.consent {
   display: grid;
-  grid-template-columns: 22px 1fr;
+  grid-template-columns: 22px minmax(0, 1fr);
   gap: 10px;
   align-items: start;
   margin-top: 18px;

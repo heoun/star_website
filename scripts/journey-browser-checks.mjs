@@ -24,6 +24,20 @@ export async function runJourneyBrowser({env,fixture,pending,advance}) {
     eq(await page.locator('#consent').isChecked(),false);
     await page.screenshot({path:out+'/sample-application.png',fullPage:true});
     for(let i=0;i<6;i++)await page.locator('#step-next').click();
+    // A required marker used to become a third grid child, placing this
+    // paragraph in the checkbox's 22px column. Check the rendered layout.
+    for(const width of [1440,390]) {
+      await page.setViewportSize({width,height:1000});
+      await page.locator('.consent-caption .required-mark').waitFor();
+      const layout=await page.locator('label.consent:has(#consent)').evaluate(label=>{
+        const input=label.querySelector('input').getBoundingClientRect(),text=label.querySelector('.consent-caption').getBoundingClientRect(),box=label.getBoundingClientRect();
+        return {width:text.width/box.width,aligned:Math.abs(input.top-text.top)<6,textToRight:text.left>input.right,overflow:document.documentElement.scrollWidth>innerWidth};
+      });
+      eq(layout.width>.75&&layout.aligned&&layout.textToRight&&!layout.overflow,true);
+      await page.locator('label.consent:has(#consent)').screenshot({path:out+`/application-consent-${width}.png`});
+    }
+    await page.setViewportSize({width:1440,height:1000});
+    eq(await page.locator('#consent').isChecked(),false);
     await page.locator('#consent').check();
     await page.getByRole('button',{name:'Submit Application',exact:true}).click();
     await page.getByRole('link',{name:'Continue to Payment & Documents'}).click();

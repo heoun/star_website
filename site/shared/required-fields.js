@@ -17,7 +17,9 @@ function sync(){
  wanted.forEach(label=>{
   if(label.querySelector('.required-mark'))return;
   const mark=document.createElement('span');mark.className='required-mark';mark.dataset.autoRequired='';mark.setAttribute('aria-hidden','true');
-  const caption=label.querySelector(':scope > .demo-field-caption, :scope > .desk-check-caption');
+  // Compound labels keep the required marker inside their text, so it cannot
+  // displace the checkbox or caption into another grid cell.
+  const caption=label.querySelector(':scope > .demo-field-caption, :scope > .desk-check-caption, :scope > .consent-caption');
   if(caption)caption.append(mark);
   else label.insertBefore(mark,[...label.children].find(el=>el.matches('input,select,textarea')) || null);
  });
