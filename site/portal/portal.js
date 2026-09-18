@@ -363,6 +363,9 @@
     return types.some((other) => other.either === type.either && enough(other));
   }
 
+  const ID_SIDES = { government_id_front: "Front", government_id_back: "Back" };
+  const governmentIdTypes = (types) => types.filter(type => ID_SIDES[type.id]);
+
   function requiredProgress(app) {
     const types = applicableTypes(app);
     // An either-group is one requirement, not two: counting the offer letter
@@ -373,11 +376,14 @@
     let met = 0;
     for (const type of types) {
       if (type.required === 0) continue;
-      const unit = type.either || type.id;
+      const unit = ID_SIDES[type.id] ? "government_id" : type.either || type.id;
       if (counted.has(unit)) continue;
       counted.add(unit);
       total += 1;
-      if (typeSatisfied(app, type, types)) met += 1;
+      const satisfied = ID_SIDES[type.id]
+        ? governmentIdTypes(types).every(side => typeSatisfied(app, side, types))
+        : typeSatisfied(app, type, types);
+      if (satisfied) met += 1;
     }
     return { met, total };
   }
@@ -386,7 +392,7 @@
   // files under — uploaded before an agent corrected the work-or-school
   // answer. The files stay visible and removable; only new uploads stop,
   // because the Worker refuses them too.
-  function docTypeRow(app, type, types, { orphan = false } = {}) {
+  function docTypeRow(app, type, types, { orphan = false, side = "" } = {}) {
     const files = app.documents.filter((doc) => doc.doc_type === type.id);
     const ownSatisfied = type.required > 0 && files.length >= type.required;
     const groupSatisfied = type.required > 0 && typeSatisfied(app, type, types);
@@ -408,17 +414,34 @@
       </li>`).join("");
 
     return `
-      <div class="doc-type">
+      <div class="${side ? "doc-side" : "doc-type"}">
         <div class="doc-type-head">
-          <span class="doc-label">${escapeHtml(type.label)} ${badge}</span>
+          <span class="doc-label">${escapeHtml(side || type.label)} ${badge}</span>
           ${orphan ? "" : `<button type="button" class="doc-add" data-upload="${escapeHtml(type.id)}"
+                  ${side ? `aria-label="${files.length ? "Add Another" : "Upload"} ${side} of Government ID"` : ""}
                   data-app="${escapeHtml(app.id)}"${files.length >= type.max ? " disabled" : ""}>
-            ${files.length > 0 ? "Add another" : "Upload"}
+            ${files.length > 0 ? "Add another" : side ? `Upload ${side}` : "Upload"}
           </button>`}
         </div>
         ${orphan || !type.hint ? "" : `<p class="doc-hint">${escapeHtml(type.hint)}</p>`}
         ${list ? `<ul class="doc-files">${list}</ul>` : ""}
       </div>`;
+  }
+
+  function documentRows(app, types) {
+    const sides = governmentIdTypes(types);
+    return types.map(type => {
+      if (!ID_SIDES[type.id] || sides.length !== 2) return docTypeRow(app, type, types);
+      if (type !== sides[0]) return "";
+      const received = sides.filter(side => typeSatisfied(app, side, types)).length;
+      return `<section class="doc-type doc-government-id" aria-label="Government ID">
+        <div class="doc-type-head"><span class="doc-label">Government ID
+          <span class="doc-req ${received === 2 ? "is-done" : "is-missing"}">${received === 2 ? "Received" : `Required · ${received}/2 Sides`}</span>
+        </span></div>
+        <p class="doc-hint">Upload the front and back of the same ID separately. For a passport, upload the photo page and signature page.</p>
+        ${sides.map(side => docTypeRow(app, side, types, { side: ID_SIDES[side.id] })).join("")}
+      </section>`;
+    }).join("");
   }
 
   // Files under types the checklist no longer asks this application for.
@@ -462,7 +485,7 @@
               : `Required documents · ${progress.met} of ${progress.total} complete`}
           </p>
           <div class="doc-list">
-            ${types.map((type) => docTypeRow(app, type, types)).join("")}${orphanRows(app, types)}
+            ${documentRows(app, types)}${orphanRows(app, types)}
           </div>
         </section>`;
     }).join("");

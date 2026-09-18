@@ -47,6 +47,19 @@ export async function runJourneyBrowser({env,fixture,pending,advance}) {
     await page.getByRole('button',{name:'Simulate Payment Failure'}).click();
     await page.getByText(/Payment Failed — Retry Available/).waitFor();
     await page.getByRole('button',{name:'Pay $20 — Simulation'}).click();
+    await page.getByRole('button',{name:'Upload Front of Government ID',exact:true}).waitFor({state:'visible'});
+    const governmentId=page.getByRole('region',{name:'Government ID',exact:true});
+    eq(await governmentId.count(),1);
+    for(const side of ['Front','Back']) {
+      const chooser=page.waitForEvent('filechooser');
+      await governmentId.getByRole('button',{name:`Upload ${side} of Government ID`,exact:true}).click();
+      await (await chooser).setFiles('scripts/demo-assets/supporting-document-mock.pdf');
+      await governmentId.locator('.doc-side').filter({has:page.getByRole('button',{name:`Add Another ${side} of Government ID`,exact:true})}).waitFor();
+      const badge=governmentId.locator(':scope > .doc-type-head .doc-req');
+      eq((await badge.textContent()).trim(),side==='Front'?'Required · 1/2 Sides':'Received');
+      eq(await page.getByRole('button',{name:'Submit Screening Materials',exact:true}).isDisabled(),true);
+    }
+    await governmentId.screenshot({path:out+'/government-id.png'});
     await page.getByRole('button',{name:'Upload Sample Documents'}).click();
     await page.getByText('Supporting Documents — Complete',{exact:true}).waitFor();
     await page.locator('[data-screening-consent]').check();
