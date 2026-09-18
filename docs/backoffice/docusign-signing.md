@@ -255,7 +255,24 @@ JWT 需要 `signature impersonation` scopes 和有效 consent。
 单元测试验证最多八位租客的字段分配、每份独立源文件的定位文本、原有样式和资源保留、
 单租客副本隔离、签署日期和条件性减免字段。浏览器验证全部位置预览、逐字段跳转、
 多人副本切换以及返回完整文档。HTTP 测试验证合并版和单份源文件的权限与 hash。
-没有真实 DocuSign 发送或 sandbox 签署结果。
+2026-09-18 已完成单租客 Sandbox 实际发送：16 份文档、63 个签写字段，
+供应商返回 `sent`，平台记录为 `in_progress`。发送前检查了 DocuSign 转换后的
+PDF 和实际字段坐标；尚未验证租客与房东完成整个签署流程。
+
+创建 DocuSign 草稿需转换多份 DOCX 并定位 anchors，客户端为该请求保留 120 秒，
+普通 API 请求仍为 30 秒。超时不等于供应商未创建信封；恢复必须先按原 transaction ID
+查询，不能新建替代请求。参考 [DocuSign 长耗时 createEnvelope 指南](https://www.docusign.com/blog/developers/the-trenches-managing-long-running-createenvelope-calls)。
+
+冻结签署包的坐标以 CSS pixels（96/in）保存，发送给 DocuSign 时换算为 inches，
+避免供应商 PDF 的 DPI 改变位置或导致 `INVALID_USER_OFFSET`。v4 模板另有经过
+供应商实际 PDF 核对的表格行偏移校正；多人第二排仍需独立的实际签署验证。
+参考 [DocuSign 字段定位指南](https://www.docusign.com/blog/developers/select-the-right-tab-placement-strategy-for-your-docusign-integration)。
+
+DocuSign 的 anchor 匹配范围可能是整个信封，因此不能仅依赖 `documentId` 隔离。
+发送前按稳定字段标签检查实际 tabs，删除匹配到其他文档的副本，并要求每个预期字段
+在目标文档中恰好出现一次。有缺失、重复或未知字段时停止发送。旧草稿的行坐标迁移
+使用版本化标签防止重复位移，保持原信封、文档内容和收件人不变。
+参考 [DocuSign anchor 匹配范围说明](https://www.docusign.com/blog/developers/envelopes-dynamic-number-signers)。
 
 ```sh
 npm run test:signing

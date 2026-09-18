@@ -33,16 +33,34 @@ export async function boundedBytes(stream: ReadableStream<Uint8Array> | null, li
   const result=new Uint8Array(total);let offset=0;for(const chunk of chunks){result.set(chunk,offset);offset+=chunk.length;}return result;
 }
 
+const tabKey={signature:'signHereTabs',initial:'initialHereTabs',date_signed:'dateSignedTabs',full_name:'fullNameTabs'};
+const tabLabel=(index:number)=>`star-lease-field-${index}-v2`;
+// Word and the browser renderer retain different heights for empty table
+// paragraphs. These deltas were checked against DocuSign's converted v4 PDF;
+// the original document bytes and underline targets remain unchanged.
+function lineAdjustment(pkg:RentalSigningPackage,tab:RentalSigningPackage['tabs'][number]) {
+  if(pkg.templateVersion!=='star-lease-2026-09-18-all-v4')return 0;
+  const layout=pkg.documents.find(d=>d.documentId===tab.documentId)?.layout;
+  const signer=pkg.signers.find(s=>s.recipientId===tab.recipientId);
+  if(layout==='window_guards')return -4;
+  if(!layout || ['keys','bedbug','allergen','dhcr'].includes(layout) || tab.kind==='initial')return 0;
+  if(signer?.role==='landlord')return layout==='sprinkler'?-24:-21;
+  const slot=pkg.signers.filter(s=>s.role==='tenant').findIndex(s=>s.recipientId===tab.recipientId);
+  return slot>=4?-10:0;
+}
 export function envelopeDefinition(pkg: RentalSigningPackage, documents: {documentId:string;bytes:Uint8Array}[], webhookUrl: string) {
   return {
     status:'created',transactionId:pkg.id,emailSubject:'Please sign your lease — Star Realty',
     documents:documents.map(d=>({documentId:d.documentId,name:pkg.documents.find(f=>f.documentId===d.documentId)?.name || 'Residential lease and riders',fileExtension:'docx',documentBase64:base64(d.bytes)})),
     recipients:{signers:pkg.signers.map(s=>{
       const tabs:Record<string,unknown[]>={signHereTabs:[],initialHereTabs:[],dateSignedTabs:[],fullNameTabs:[]};
-      for(const t of pkg.tabs.filter(t=>t.recipientId===s.recipientId)) {
-        const key={signature:'signHereTabs',initial:'initialHereTabs',date_signed:'dateSignedTabs',full_name:'fullNameTabs'}[t.kind];
-        tabs[key].push({documentId:t.documentId,anchorString:t.anchor,anchorUnits:t.units,
-          anchorXOffset:String(t.xOffset),anchorYOffset:String(t.yOffset),anchorIgnoreIfNotPresent:'false',
+      for(const [index,t] of pkg.tabs.entries()) {
+        if(t.recipientId!==s.recipientId)continue;
+        const key=tabKey[t.kind];
+        // Stored offsets are CSS pixels (96/in). Vendor pixel offsets depend on
+        // document DPI; physical units preserve the reviewed line geometry.
+        tabs[key].push({documentId:t.documentId,tabLabel:tabLabel(index),anchorString:t.anchor,anchorUnits:'inches',
+          anchorXOffset:String(t.xOffset/96),anchorYOffset:String(t.yOffset/96+lineAdjustment(pkg,t)/72),anchorIgnoreIfNotPresent:'false',
           anchorCaseSensitive:'true',anchorMatchWholeWord:'true',...(t.kind==='signature'||t.kind==='initial'?{scaleValue:String(t.scale??.7)}:{fontSize:'Size9',font:'TimesNewRoman'})});
       }
       return {recipientId:s.recipientId,name:s.name,email:s.email,routingOrder:String(s.routingOrder),tabs};
@@ -74,7 +92,16 @@ export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSi
   }
   async function api(path:string,method='GET',body?:unknown) {
     const auth=await (session ||= authenticate());
-    const r=await http(auth.base+path,{method,headers:{Authorization:`Bearer ${auth.token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(30000)});
+    // Creating the draft converts every DOCX and locates its anchor tabs.
+    // Keep ordinary API calls bounded to 30s; allow this conversion up to 2m.
+    const creating=path==='/envelopes' && method==='POST';
+    let r:Response;
+    try {
+      r=await http(auth.base+path,{method,headers:{Authorization:`Bearer ${auth.token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(creating?120000:30000)});
+    } catch(error) {
+      if(error instanceof Error && error.name==='TimeoutError')throw fail(creating?'DocuSign document preparation timed out. The existing request is retained for recovery; do not send a replacement.':'DocuSign did not respond in time. The existing request is retained for recovery.');
+      throw error;
+    }
     if(!r.ok){const detail=await json(r).catch(()=>({errorCode:''}));throw fail(detail.errorCode==='TAB_OUT_OF_BOUNDS' || detail.errorCode==='ANCHOR_TAB_STRING_NOT_FOUND'?'A lease signing position could not be located. Review the signing template.':`DocuSign request failed (${r.status}). The existing signing request is retained.`,r.status===429?429:503);}
     return r;
   }
@@ -100,7 +127,41 @@ export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSi
       const rows=found.envelopes || [];if(rows.length>1)throw fail('More than one DocuSign envelope matches this request. Contact an administrator.');
       return rows.length?read(rows[0].envelopeId):null;
     },
-    async send(id){await api(path(id),'PUT',{status:'sent'});},read,
+    async send(id,pkg){
+      // Anchor scope is account-dependent and commonly envelope-wide, even
+      // with documentId. Remove cross-document matches from the DRAFT only,
+      // then verify exactly one field in its intended document before sending.
+      for(const signer of pkg.signers){
+        const expected=pkg.tabs.map((t,i)=>({...t,label:tabLabel(i),legacyLabel:`star-lease-field-${i}`})).filter(t=>t.recipientId===signer.recipientId);
+        if(!expected.length)continue;
+        const endpoint=path(id)+`/recipients/${encodeURIComponent(signer.recipientId)}/tabs`;
+        const load=async()=>json(await api(endpoint+'?include_anchor_tab_locations=true'));
+        let actual=await load();const remove:Record<string,{tabId:string}[]>={};
+        for(const [kind,list] of Object.entries(actual)){
+          if(!Array.isArray(list))continue;
+          for(const tab of list){
+            const target=expected.find(t=>(t.label===tab.tabLabel || t.legacyLabel===tab.tabLabel) && tabKey[t.kind]===kind);
+            if(!target || !tab.tabId)throw fail('The DocuSign draft contains an unexpected signing field. Review it before sending.');
+            if(String(tab.documentId)!==target.documentId)(remove[kind] ||= []).push({tabId:tab.tabId});
+          }
+        }
+        if(Object.keys(remove).length){await api(endpoint,'DELETE',remove);actual=await load();}
+        // Recover a draft created before calibration without creating a new
+        // envelope or changing its frozen source. The label makes this repeatable.
+        const align:Record<string,unknown[]>={};
+        for(const target of expected){
+          const legacy=(actual[tabKey[target.kind]] || []).filter((t:Record<string,string>)=>t.tabLabel===target.legacyLabel);
+          if(legacy.length>1)throw fail('The DocuSign draft has duplicate signing fields. No invitation was sent.');
+          if(legacy.length===1){const t=legacy[0];(align[tabKey[target.kind]] ||= []).push({tabId:t.tabId,tabLabel:target.label,documentId:target.documentId,pageNumber:t.pageNumber,xPosition:t.xPosition,yPosition:String(Math.round(Number(t.yPosition)+lineAdjustment(pkg,target))),anchorString:''});}
+        }
+        if(Object.keys(align).length){await api(endpoint,'PUT',align);actual=await load();}
+        for(const target of expected){
+          const matches=(actual[tabKey[target.kind]] || []).filter((t:Record<string,string>)=>t.tabLabel===target.label);
+          if(matches.length!==1 || String(matches[0].documentId)!==target.documentId || !(Number(matches[0].pageNumber)>0) || !Number.isFinite(Number(matches[0].xPosition)) || !Number.isFinite(Number(matches[0].yPosition)))throw fail('The DocuSign draft does not match the reviewed signing fields. No invitation was sent.');
+        }
+      }
+      await api(path(id),'PUT',{status:'sent'});
+    },read,
     async verifyNotice(raw,headers) {
       if(!config.hmacSecret)return null;
       const key=await crypto.subtle.importKey('raw',bytes(config.hmacSecret),{name:'HMAC',hash:'SHA-256'},false,['verify']);

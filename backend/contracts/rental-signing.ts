@@ -95,7 +95,7 @@ export interface RentalSigningProvider {
     documents: { documentId: string; bytes: Uint8Array }[];
   }): Promise<RentalSigningEnvelope>;
   findByTransactionId(transactionId: string): Promise<RentalSigningEnvelope | null>;
-  send(envelopeId: string): Promise<void>;
+  send(envelopeId: string, pkg: RentalSigningPackage): Promise<void>;
   read(envelopeId: string): Promise<RentalSigningEnvelope>;
   verifyNotice(rawBody: Uint8Array, headers: Record<string, string>): Promise<RentalSigningNotice | null>;
   // Bounded streams; storage validates PDF type/size and records a hash.

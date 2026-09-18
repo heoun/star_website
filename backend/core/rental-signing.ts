@@ -47,7 +47,7 @@ export function makeRentalSigning(store:RentalSigningStore,provider:RentalSignin
         await current();await provider.void(record.envelope.envelopeId,record.voidReason);
         record.envelope={...record.envelope,status:'voided',statusChangedAt:new Date().toISOString()};
       } else if(record.envelope.status==='created' && !record.voidReason) {
-        await current();await provider.send(record.envelope.envelopeId);
+        await current();await provider.send(record.envelope.envelopeId,record.package);
         record.envelope={...record.envelope,status:'sent',statusChangedAt:new Date().toISOString()};
       }
       const e=record.envelope;
