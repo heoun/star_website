@@ -23,6 +23,7 @@ try {
  for(const patch of [{'rent.monthly':'-10'},{'rent.monthly':'bad'},{'rent.due_day':'32'},{'lease.end_date':'2026-02-30'},{'lease.end_date':'2025-01-01'},{'tenant.names':'Wrong Identity'},{'property.address_full':'Wrong Apartment'},{'dhcr.mark_renewal':'false'},{'unknown.field':'value'}])eq((await call(patch)).status,422);
  eq((await call({'rent.monthly':'3100'},oldVersion-1)).status,409);
  eq(root().workspace_version,oldVersion);eq(fixture.state.emails.length,mailCount);
+ for(const value of [true,false])eq((await call({'dhcr.mark_vacancy':value,'dhcr.mark_renewal':value})).status,422);
  const saved=await call({'rent.monthly':'3100','landlord.address':'Corrected lease-only address'});eq(saved.status,200);
  eq(root().status,'sent_to_landlord');eq(root().lease_snapshot,null);eq(root().workspace.landlord_decision,undefined);
  eq(root().workspace.lease_overrides['landlord.address'],'Corrected lease-only address');eq(root().workspace.recommendation.terms['rent.monthly'],'3100');
@@ -31,6 +32,13 @@ try {
  const values=await handleAdminRequest(new Request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'values'})}),env,{},path);
  eq(values.status,200);eq((await values.json()).values['landlord.address'],'Corrected lease-only address');
  await approve();eq(root().lease_snapshot['landlord.address'],'Corrected lease-only address');eq(root().lease_snapshot['rent.monthly'],'3100');
+ eq((await call({'dhcr.mark_renewal':true})).status,200);
+ eq(root().workspace.lease_overrides['dhcr.mark_vacancy'],false);
+ eq(root().workspace.lease_overrides['dhcr.mark_renewal'],true);
+ await approve();eq(root().lease_snapshot['dhcr.mark_vacancy'],'[ ]');eq(root().lease_snapshot['dhcr.mark_renewal'],'[X]');
+ eq((await call({'dhcr.mark_vacancy':true})).status,200);
+ eq(root().workspace.lease_overrides['dhcr.mark_renewal'],false);
+ await approve();eq(root().lease_snapshot['dhcr.mark_vacancy'],'[X]');eq(root().lease_snapshot['dhcr.mark_renewal'],'[ ]');
  eq((await call({'rent.monthly':'3200'},oldVersion)).status,409);
  root().workspace.signing={package_id:'locked',phase:'sending'};
  eq((await call({'rent.monthly':'3200'})).status,409);

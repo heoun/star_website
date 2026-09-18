@@ -173,6 +173,12 @@ export function makeRentals(d: RentalDependencies) {
       if(version!==(root.workspace_version || 0)) throw new WorkspaceError('This rental changed. Refresh before saving.',409);
       if(terminal(g) || (w.signing && !['voided','declined'].includes(w.signing.phase)) || w.tenant_signature || Object.keys(w.signature_receipts || {}).length) throw new WorkspaceError('Void the signing request before correcting this lease.',409);
       if(!Object.keys(overrides).length) throw new WorkspaceError('There are no corrections to save.');
+      const vacancy='dhcr.mark_vacancy',renewal='dhcr.mark_renewal';
+      if(vacancy in overrides || renewal in overrides){
+        if((vacancy in overrides && typeof overrides[vacancy]!=='boolean') || (renewal in overrides && typeof overrides[renewal]!=='boolean') || (vacancy in overrides && renewal in overrides && overrides[vacancy]===overrides[renewal]))throw new WorkspaceError('Choose either New Lease or Renewal.',422);
+        const isNew=vacancy in overrides?overrides[vacancy]:!overrides[renewal];
+        overrides={...overrides,[vacancy]:isNew,[renewal]:!isNew};
+      }
       w.lease_overrides={...w.lease_overrides,...overrides};
       w.terms={...w.terms,...Object.fromEntries(Object.entries(overrides).filter(([key])=>(TERM_FIELDS as readonly string[]).includes(key)))};
       reopen(w);
