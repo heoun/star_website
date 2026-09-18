@@ -60,7 +60,8 @@ export async function sendEmail(request, env, message, { idempotencyKey } = {}) 
         "Content-Type": "application/json",
         ...(idempotencyKey ? {"Idempotency-Key": idempotencyKey} : {})
       },
-      body: JSON.stringify(message)
+      body: JSON.stringify(message),
+      signal: AbortSignal.timeout(15000)
     });
 
     if (!response.ok) {

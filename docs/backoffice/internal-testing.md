@@ -20,6 +20,11 @@ simulated HTTP provider. No real payment or credit inquiry is performed.
   Stop any previous server on 8787 first. Keep the process running during testing.
   Existing DocuSign Connect configuration can accelerate updates; polling also
   reconciles the provider state when a tunnel is unavailable.
+- Set `DEV_REAL_EMAIL=true` and a valid `RESEND_API_KEY` in `.dev.vars` before
+  starting. The launcher checks both; the sender domain must also be verified
+  in Resend. A screening result does not mean an email was sent: the portal
+  separately shows pending, sending, failed, local preview, or submitted mail.
+  Submitted means accepted by the mail provider, not confirmed inbox delivery.
 
 Use separate browser profiles for Applicant, Landlord and Admin. The shared
 HttpOnly login cookie represents one identity per browser profile. The internal

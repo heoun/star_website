@@ -4,6 +4,7 @@
 import assert from "node:assert/strict";
 import { toPortalApplication } from "../../worker/portal.js";
 import { fetchApplicationsByEmail } from "../../worker/supabase.js";
+import { testSteps } from '../../site/portal/internal-test.js';
 
 let checks = 0;
 const ok = (value, label) => { assert(value, label); checks++; };
@@ -24,6 +25,13 @@ const text = JSON.stringify(shown);
 for (const secret of ["TEAM-ONLY", "ADMIN-ONLY", "REF-SECRET", "agent-a@example.test", "app-1/id.pdf"]) ok(!text.includes(secret), `${secret} stays inside`);
 ok(toPortalApplication({ ...row, status: "review" }).request === null, "a request that has moved on is no longer shown");
 ok(toPortalApplication({ ...row, workspace: {} }).request === null, "no request, nothing shown");
+for(const [status,label] of Object.entries({pending:'Landlord Email Pending',sending:'Sending Landlord Email',failed:'Email Not Sent — Delivery Failed',preview:'Email Preview Only — Not Sent',sent:'Email Submitted / Awaiting Decision'})) {
+  const application=toPortalApplication({...row,status:'sent_to_landlord',workspace:{test_run:{id:row.id},delivery:{status,key:'private-request-key'}}});
+  ok(application.landlord_email_status===status,'actual delivery state reaches the portal');
+  const rendered=testSteps(application,true);
+  ok(rendered.includes(label),'notification copy distinguishes pending, failed, preview and submitted email');
+  ok(!JSON.stringify(application).includes('private-request-key'),'delivery request key remains private');
+}
 
 // The column is asked for once. A database that lacks it is read without it
 // from then on, and the applicant still sees their applications.

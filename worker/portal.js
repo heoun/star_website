@@ -239,6 +239,7 @@ export function toPortalApplication(row) {
   return {
     id: row.id,
     listing_id:row.listing_id,
+    landlord_email_status:row.workspace?.delivery?.status || null,
     ...(row.workspace?.test_run ? {test_run:{id:row.workspace.test_run.id,created_at:row.workspace.test_run.created_at},payment:row.workspace.test_payment || null,screening:{status:row.workspace.screening_result?.status || 'not_started',submitted:!!row.workspace.test_screening,outcome:row.workspace.screening_result?.outcome},signing_phase:row.workspace.signing?.phase || null} : {}),
     name: row.name,
     status: row.status,

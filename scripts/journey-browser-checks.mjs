@@ -67,6 +67,7 @@ export async function runJourneyBrowser({env,fixture,pending,advance}) {
     await page.getByText('Credit Screening — Processing',{exact:true}).waitFor();
     advance();await page.getByRole('button',{name:'Refresh Status'}).click();
     await page.getByText('Credit Screening — Complete',{exact:true}).waitFor();
+    await page.getByText('Landlord Decision — Email Preview Only — Not Sent',{exact:true}).waitFor();checks++;
     await page.screenshot({path:out+'/screening-complete.png',fullPage:true});
     const row=fixture.state.applications.find(a=>a.id===id);eq(row.status,'sent_to_landlord');
     await page.setViewportSize({width:390,height:844});await page.screenshot({path:out+'/portal-mobile.png',fullPage:true});eq(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);

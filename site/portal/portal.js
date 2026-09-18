@@ -25,6 +25,9 @@
     lease_sent: "Lease sent for signing",
     lease_signed: "Lease signed"
   };
+  const applicationStatus = (app) => app.status === "sent_to_landlord" && app.landlord_email_status !== "sent"
+    ? app.landlord_email_status === "failed" ? "Landlord email not sent" : app.landlord_email_status === "preview" ? "Landlord email preview only" : "Preparing landlord notification"
+    : STATUS_LABELS[app.status] || app.status;
 
   // Where to go after signing in. The apply page sends people here with
   // ?next=/apply/?id=…; only a same-origin path is ever followed, so the
@@ -474,7 +477,7 @@
         <section class="section portal-app" data-app-card="${escapeHtml(app.id)}">
           <div class="portal-app-head">
             <h2>${escapeHtml(listingLabel(app))}</h2>
-            <span class="portal-chip is-${escapeHtml(app.status)}">${escapeHtml(STATUS_LABELS[app.status] || app.status)}</span>
+            <span class="portal-chip is-${escapeHtml(app.status)}">${escapeHtml(applicationStatus(app))}</span>
           </div>
           <p class="portal-facts">${escapeHtml(facts)}</p>
           ${testTools?.testSteps(app,progress.met===progress.total) || ''}
@@ -504,7 +507,7 @@
              up to 10&nbsp;MB per file. We are notified automatically once everything
              required is in.</p>`}
       <p class="form-error" hidden></p>
-      ${apps.length>1?`<label>Application / Test Run<select class="portal-run-select" id="application-select">${apps.map(a=>`<option value="${escapeHtml(a.id)}" ${a.id===selectedId?'selected':''}>${escapeHtml(listingLabel(a))} · ${escapeHtml(a.test_run?'Test '+a.id.slice(0,8):a.name)} · ${escapeHtml(STATUS_LABELS[a.status] || a.status)} · ${escapeHtml(new Date(a.created_at).toLocaleString())}</option>`).join('')}</select></label>`:''}
+      ${apps.length>1?`<label>Application / Test Run<select class="portal-run-select" id="application-select">${apps.map(a=>`<option value="${escapeHtml(a.id)}" ${a.id===selectedId?'selected':''}>${escapeHtml(listingLabel(a))} · ${escapeHtml(a.test_run?'Test '+a.id.slice(0,8):a.name)} · ${escapeHtml(applicationStatus(a))} · ${escapeHtml(new Date(a.created_at).toLocaleString())}</option>`).join('')}</select></label>`:''}
       ${cards}
     `;
     container.querySelector('#application-select')?.addEventListener('change',e=>{selectedId=e.target.value;history.replaceState(null,'',`?application=${encodeURIComponent(selectedId)}`);renderDashboard();});

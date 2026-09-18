@@ -68,7 +68,7 @@ export function createWorkspaceFixtures(saved) {
       for(const [id,patch] of Object.entries(body.p_patches)){const row=state.applications.find(a=>a.id===id);Object.assign(row,structuredClone(patch));row.workspace_version++;row.updated_at=new Date().toISOString();}
       if(!body.p_patches[root.id])root.workspace_version++;
       for(const member of group)if(member.id!==root.id && (member.responsible_email!==root.responsible_email || JSON.stringify(member.collaborator_emails)!==JSON.stringify(root.collaborator_emails))){member.responsible_email=root.responsible_email;member.collaborator_emails=[...root.collaborator_emails];member.workspace_version++;}
-      return response(null);
+      return new Response(null,{status:204});
     }
     if(table==='submit_rental_application') {
       const root=state.applications.find(a=>a.id===body.p_root),invitation=root?.workspace?.invitations?.find(i=>i.id===body.p_invite);

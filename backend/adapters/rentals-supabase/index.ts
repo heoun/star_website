@@ -4,6 +4,8 @@ export function makeRentalStore(config: {url: string; key: string}): RentalStore
   async function request(path: string, body?: unknown) {
     const r = await fetch(`${config.url.replace(/\/$/, '')}/rest/v1/${path}`, {method: body ? 'POST' : 'GET', headers: {apikey: config.key, Authorization: `Bearer ${config.key}`, 'Content-Type':'application/json'}, ...(body ? {body:JSON.stringify(body)} : {})});
     if (!r.ok) throw Object.assign(new Error(r.status === 409 ? 'This rental changed. Refresh before saving.' : 'Rental workflow is unavailable. Apply supabase/rental-flow.sql and retry.'), {status:r.status === 409 ? 409 : 503});
+    // commit_rental_group returns void; PostgREST answers with no JSON body.
+    if (r.status === 204) return null;
     return r.json();
   }
   const select = '*,listings(*),application_documents(id,doc_type,file_name,content_type,size_bytes,created_at)';
