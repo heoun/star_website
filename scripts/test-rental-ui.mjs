@@ -73,10 +73,10 @@ try{
  await page.screenshot({path:`${out}/landlord-email-confirmation.png`,fullPage:true});
  await page.getByRole('button',{name:'Agree to proceed',exact:true}).click();await page.getByRole('heading',{name:'Decision recorded'}).waitFor();eq(fixture.state.applications.find(a=>a.id===ids.b).status,'landlord_approved');
  eq(fixture.state.applications.find(a=>a.id===ids.b).workspace.lease_draft.missing.length,0);
- await login('admin@example.test');await page.goto(`${base}/admin/#/applications/${ids.b}`);await page.getByRole('tab',{name:'Lease & decision',exact:true}).click();await page.getByRole('button',{name:'Download lease draft',exact:true}).waitFor();
+ await login('admin@example.test');await page.goto(`${base}/admin/#/applications/${ids.b}`);await page.getByRole('tab',{name:'Lease & Decision',exact:true}).click();await page.getByRole('button',{name:'Download lease draft',exact:true}).waitFor();
  eq(await page.locator('[data-rental-panel]:visible').getAttribute('data-rental-panel'),'lease');
  await page.getByRole('tab',{name:'Activity',exact:true}).click();eq(await page.locator('[data-rental-panel]:visible').getAttribute('data-rental-panel'),'activity');
- await page.getByRole('tab',{name:'Activity',exact:true}).press('ArrowLeft');eq(await page.getByRole('tab',{name:'Lease & decision',exact:true}).getAttribute('aria-selected'),'true');
+ await page.getByRole('tab',{name:'Activity',exact:true}).press('ArrowLeft');eq(await page.getByRole('tab',{name:'Lease & Decision',exact:true}).getAttribute('aria-selected'),'true');
  eq(await page.getByRole('button',{name:'Record this tenant’s signature',exact:true}).count(),2);
  await page.screenshot({path:`${out}/approved-lease-draft.png`,fullPage:true});
  const editable=fixture.state.applications.find(a=>a.id!==ids.b && ['new','review'].includes(a.status) && a.rental_group_id===a.id);
@@ -101,7 +101,7 @@ try{
  await page.goto(`${base}/admin/#/applications/${ids.a}`);
  await page.getByRole('heading',{name:'Lease Details',exact:true}).waitFor();eq(await page.locator('[data-applicant-correction="tenant"]').count(),0);
  await page.getByText('Blocked · application evidence incomplete',{exact:true}).waitFor();checks++;
- await page.getByRole('tab',{name:'Lease & decision',exact:true}).click();eq(await page.getByRole('button',{name:'Download lease draft',exact:true}).count(),0);eq(await page.getByRole('button',{name:'Record this tenant’s signature',exact:true}).count(),0);
+ await page.getByRole('tab',{name:'Lease & Decision',exact:true}).click();eq(await page.getByRole('button',{name:'Download lease draft',exact:true}).count(),0);eq(await page.getByRole('button',{name:'Record this tenant’s signature',exact:true}).count(),0);
  await page.getByRole('button',{name:'Reopen for review',exact:true}).click();await page.getByText('Collecting applications',{exact:true}).waitFor();eq(casey.status,'review');
  eq(errors,[]);console.log(`PASS ${checks} rental browser checks: grouped queue, per-person panels, mobile layout, email sign-in return, read-only links, landlord confirmation and automatic lease draft`);
 }catch(e){await page.screenshot({path:`${out}/failure.png`,fullPage:true});console.error(await page.locator('main').innerText());throw e;}

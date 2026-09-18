@@ -13,7 +13,8 @@ const LABELS = {
   'lease.vacancy_lease_date':'Bedbug Disclosure Date', 'dhcr.mark_vacancy':'New Lease', 'dhcr.mark_renewal':'Renewal'
 };
 const TENANT = ['tenant.names','tenant.email','tenant.mailing_address'];
-const DATES = ['lease.effective_date','lease.commencement_date','lease.end_date','lease.end_time','dhcr.mark_vacancy','dhcr.mark_renewal'];
+const LEASE_TYPE = ['dhcr.mark_vacancy','dhcr.mark_renewal'];
+const DATES = ['lease.effective_date','lease.commencement_date','lease.end_date','lease.end_time'];
 const MONEY = ['rent.monthly','rent.due_day','deposit.amount','concession.terms'];
 const OWNER = ['landlord.entity_name','landlord.print_name','landlord.address'];
 const GROUPS = [
@@ -31,6 +32,7 @@ export function tenantSigners(state) {
 }
 export function reviewIssues(state) {
   const issues=[...state.missing].map(id=>({id,label:`Add ${label(state.byId.get(id) || {id,label:id})}`}));
+  if(LEASE_TYPE.every(id=>state.byId.has(id)) && state.checked.has(LEASE_TYPE[0])===state.checked.has(LEASE_TYPE[1]))issues.push({id:LEASE_TYPE[0],label:'Choose New Lease or Renewal'});
   for(const tenant of tenantSigners(state))if(!tenant.email)issues.push({tab:'recipients',label:`Add an email for ${tenant.name || 'the tenant'}`});
   if(state.signing?.configuration?.enabled && !state.landlordEmail)issues.push({tab:'recipients',label:'Assign a landlord signer email'});
   const emails=[...tenantSigners(state).map(t=>t.email),state.landlordEmail].filter(Boolean).map(e=>String(e).toLowerCase());
@@ -78,10 +80,19 @@ function informationPanel(state) {
   const listing=state.listings.find(l=>l.id===state.listingId);
   return `${reviewSummary(state)}
     ${section(multiple?'Tenants':'Tenant',tenantRows+(!multiple && state.application && !state.readOnly?`<a class="ws-text-link" href="#/applications/${esc(state.application.id)}">Edit Applicant Details</a>`:'')+(phone?`<details class="ws-contact"><summary>Contact Details</summary>${textRow('Phone',phone)}</details>`:''))}
-    ${section('Property & Lease Terms',(state.canPickUnit?`<div class="ws-review-row"><label class="ws-label" for="lease-listing">Apartment</label><select id="lease-listing"><option value="">Select Apartment</option>${state.listings.map(l=>`<option value="${esc(l.id)}"${l.id===state.listingId?' selected':''}>${esc(l.title || l.unit || l.id)}</option>`).join('')}</select></div>`:textRow('Apartment',listing?[listing.property_name,listing.unit && `Unit ${listing.unit}`].filter(Boolean).join(' · '):state.targetLabel))+row('property.address_full',state,true)+DATES.map(id=>row(id,state)).join('')+textRow('Lease Term',leaseTerm(state),'','data-ws-term'))}
+    ${section('Property & Lease Terms',(state.canPickUnit?`<div class="ws-review-row"><label class="ws-label" for="lease-listing">Apartment</label><select id="lease-listing"><option value="">Select Apartment</option>${state.listings.map(l=>`<option value="${esc(l.id)}"${l.id===state.listingId?' selected':''}>${esc(l.title || l.unit || l.id)}</option>`).join('')}</select></div>`:textRow('Apartment',listing?[listing.property_name,listing.unit && `Unit ${listing.unit}`].filter(Boolean).join(' · '):state.targetLabel))+row('property.address_full',state,true)+DATES.map(id=>row(id,state)).join('')+leaseTypeRow(state)+textRow('Lease Term',leaseTerm(state),'','data-ws-term'))}
     ${section('Rent & Deposit',MONEY.map(id=>row(id,state)).join(''))}
     ${section('Landlord & Signer',OWNER.map(id=>row(id,state)).join('')+textRow('Signer Email',state.landlordEmail,state.signing?.configuration?.enabled && !state.landlordEmail?'<a class="ws-text-link" href="#/properties">Assign in Property Settings</a>':''))}
     ${propertyTerms(state)}`;
+}
+function leaseTypeValue(state){return state.checked.has(LEASE_TYPE[0])===state.checked.has(LEASE_TYPE[1])?'':state.checked.has(LEASE_TYPE[0])?'new':'renewal';}
+function leaseTypeRow(state){
+  const fields=LEASE_TYPE.map(id=>state.byId.get(id));if(fields.some(f=>!f))return '';
+  const value=leaseTypeValue(state),editable=fields.every(f=>state.editable(f));
+  const summary=`<span class="ws-label">Lease Type</span><span class="ws-review-value" data-ws-lease-type-value>${value==='new'?'New Lease':value==='renewal'?'Renewal':'Choose Lease Type'}</span>`;
+  const locate=`<button type="button" data-ws-type-locate data-lease-locate="${value==='renewal'?LEASE_TYPE[1]:LEASE_TYPE[0]}">Locate</button>`;
+  if(!editable)return `<div class="ws-review-row">${summary}<span class="ws-row-action">${locate}</span></div>`;
+  return `<details class="ws-review-field" data-ws-row="${LEASE_TYPE[0]}" data-lease-row="${LEASE_TYPE[0]}"><summary>${summary}<span class="ws-row-action">Edit</span></summary><div class="ws-inline-editor ws-value"><label class="ws-label" for="lease-type">Lease Type</label><select id="lease-type" data-ws-lease-type>${!value?'<option value="" selected disabled>Choose Lease Type</option>':''}<option value="new"${value==='new'?' selected':''}>New Lease</option><option value="renewal"${value==='renewal'?' selected':''}>Renewal</option></select><div class="ws-editor-actions">${locate}<button type="button" data-ws-done="${LEASE_TYPE[0]}">Done</button></div></div></details>`;
 }
 function valueText(field,state) {
   const value=state.values[field.id];
@@ -111,7 +122,7 @@ function control(field,state) {
   return `<input type="${field.type==='integer'?'number':'text'}" ${attrs} value="${esc(value)}">`;
 }
 function propertyTerms(state) {
-  const used=new Set([...TENANT,...DATES,...MONEY,...OWNER,'property.address_full']);
+  const used=new Set([...TENANT,...DATES,...LEASE_TYPE,...MONEY,...OWNER,'property.address_full']);
   const remaining=state.fields.filter(f=>!used.has(f.id) && f.template!==false && !f.id.startsWith('property.') && !f.id.startsWith('tenant.'));
   const assigned=new Set();
   return section('Property Terms & Disclosures',GROUPS.map(([name,prefixes])=>{
@@ -126,10 +137,13 @@ function documentsPanel(state) {
   return section('Lease Documents',`<div class="ws-docs">${state.documents.map(d=>`<button type="button" class="ws-doc${state.activeDocument===d.id?' is-on':''}" data-ws-doc="${esc(d.id)}" aria-pressed="${state.activeDocument===d.id}"><span class="ws-doc-name">${esc(d.name)}</span><span class="ws-doc-why">Sections ${d.from+1}–${d.to+1}${d.conditionalOn && !(state.values[d.conditionalOn])?' · Review Required':''}</span></button>`).join('')}</div>`,`${state.documents.length} documents included. Select a document to review it.`);
 }
 function recipientsPanel(state) {
-  const tenants=tenantSigners(state),entity=state.values['landlord.entity_name'];
-  return section('Signing Order',`${tenants.map(t=>`<div class="ws-signer"><span class="ws-signer-order">1</span><div><b>${esc(t.name || 'Tenant Name Missing')}</b><p class="ws-hint">${esc(t.email || 'Email Missing')}</p></div><span class="ws-signer-role">Tenant</span></div>`).join('')}
-    <div class="ws-signer"><span class="ws-signer-order">2</span><div><b>${esc(state.values['landlord.print_name'] || 'Landlord Name Missing')}</b><p class="ws-hint">${esc(state.landlordEmail || 'Email Not Assigned')}</p>${entity?`<p class="ws-hint">${esc(entity)}</p>`:''}</div><span class="ws-signer-role">Landlord</span></div>`, 'All tenants sign first. The landlord receives the invitation after every tenant has signed.')+
+  return `<div data-workspace-recipients>${signingRecipients(state)}</div>`+
     `<div data-workspace-signing></div>`;
+}
+export function signingRecipients(state,signers) {
+  const entity=state.values['landlord.entity_name'];
+  const rows=signers || [...tenantSigners(state).map(t=>({...t,role:'tenant'})),{role:'landlord',name:state.values['landlord.print_name'],email:state.landlordEmail}];
+  return section('Signing Order',rows.map(s=>`<div class="ws-signer"><span class="ws-signer-order">${s.role==='tenant'?1:2}</span><div><b>${esc(s.name || 'Name Missing')}</b><p class="ws-hint">${esc(s.email || 'Email Missing')}</p>${s.role==='landlord' && entity?`<p class="ws-hint">${esc(entity)}</p>`:''}${s.status?`<p class="ws-hint">${esc(s.status==='completed'?'Signed':s.status==='declined'?'Declined':s.role==='landlord' && rows.some(t=>t.role==='tenant' && t.status!=='completed')?'Waiting for all tenants':({sent:'Invitation Sent',delivered:'Delivered',created:'Waiting to Send'})[s.status] || s.status)}</p>`:''}</div><span class="ws-signer-role">${s.role==='tenant'?'Tenant':'Landlord'}</span></div>`).join(''),'All tenants sign first. The landlord receives the invitation after every tenant has signed.');
 }
 export function annotateWorkspace(host,state) {
   for(const field of state.fields) {
@@ -146,6 +160,10 @@ export function annotateWorkspace(host,state) {
     }
   }
   const term=host.querySelector('[data-ws-term]');if(term)term.textContent=leaseTerm(state) || 'Not Set';
+  const type=leaseTypeValue(state),typeValue=host.querySelector('[data-ws-lease-type-value]');
+  if(typeValue)typeValue.textContent=type==='new'?'New Lease':type==='renewal'?'Renewal':'Choose Lease Type';
+  const typeInput=host.querySelector('[data-ws-lease-type]');if(typeInput)typeInput.value=type;
+  const typeLocate=host.querySelector('[data-ws-type-locate]');if(typeLocate)typeLocate.dataset.leaseLocate=type==='renewal'?LEASE_TYPE[1]:LEASE_TYPE[0];
   const summary=host.querySelector('[data-ws-review-summary]');if(summary)summary.outerHTML=reviewSummary(state);
 }
 export function recomputeEndDate(state) {return endDateFor(state.values['lease.commencement_date'],state.application?.lease_term_months);}

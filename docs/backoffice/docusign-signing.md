@@ -17,11 +17,12 @@
 
 ## 界面与权限
 
-入口：`Rentals → application group → Lease & decision`。
+入口：`Rentals → application group → Lease & Decision`。
 
-1. 审阅现有 lease 草稿和冻结条款。
-2. 显示这次合同版本、所有 tenant 姓名/邮箱、landlord 签署人姓名/邮箱、签署顺序。
-3. 点击 **Send with DocuSign**，显示发送进度，禁止重复创建信封。
+1. 点击 **Review Signing Package** 准备签署包，显示收件人及 **Review Lease Draft**。
+2. **Review Lease Draft** 打开左侧待签合同、右侧条款核对。平台读取该包保存的原始 DOCX，校验 SHA-256 后渲染，无需下载。审核状态只保存在当前页面会话中，并绑定 rental revision；修改条款会清除该状态。
+3. 审核界面可直接 **Send With DocuSign**。也可在 **Lease & Decision** 发送；未打开本次签署包审核时，必须再次确认跳过审核，弹窗列出收件人。后端仍验证版本、批准记录、签署人及幂等性。
+   审核页的 **E-sign Recipients** 只显示一份签字顺序和收件人列表；发送统一位于底部。尚未打开待签版本时，底部另提供 **Review Signing Package**，打开成功后隐藏这个入口。直接点击发送会先准备签署包，再按审核状态决定是否显示确认框。
 4. 每个人分别显示等待、已送达、已签署、拒签；landlord 明确显示等待 tenants 签完。
 5. 全部签完且文件归档成功后显示 **Completed**，提供签署 PDF 与完成证书下载。
 
@@ -37,19 +38,48 @@ staff 不能在发送请求中任意覆盖邮箱。需要更正时返回原资�
 ## 合同与签名位置
 
 现有模板包含主合同及 14 份 rider/notice；`fillTemplate` 生成一个 Word 文件，
-不按条件删除章节。原始模板没有 DocuSign anchors；签署流程在生成时插入专用定位标记。
+不按条件删除章节。签署包按原有文档边界分别保存 DOCX；保留原始 OOXML 的
+正文、表格、样式及资源，不重排签字表格、不增加日期栏、不扩展或删除下划线。
+每个文件单独绑定签署字段，避免多个 rider 使用相同文字时定位到其他文件。
 
-已增加版本化的签署位置清单，逐处映射签名、initial、日期及适用签署人。
-每个 anchor 包含文档、签署人和位置标识；required anchor 找不到时失败。
-不使用通用的 “Tenant” 或 “Signature” 文本作为定位锚点。
-每份 rider 的签署要求应以实际模板为准，不能将所有字段一律复制给每个人。
+2026-09-18 起按用户要求逐份确认。已配置主合同 **New York Residential Lease Agreement**：
 
-现有申请组可有多位 tenant，旧模板只预留有限签字行。生成时必须为实际成员扩展
-签字区域并验证排版；尚未支持的人数必须明确阻止发送，不能重叠签名或遗漏成员。
-不采用追加一个笼统签字页来替代各份原文件的签署位置。
+- 第 38、39 条：每位租客各一处 Initials，按原有八条下划线分配。
+- 第 47 条：每位租客一组 Signature / Print Name，使用原有两排、每排四个位置。
+- 第 47 条：房东签署人一组 Signature / Print Name；姓名来自个人签署人而非公司名。
+- 超过八位租客明确报错，不改变原稿排版。
+
+`site/shared/lease-signing-layout.js` 保存主合同字段清单，使用原文中唯一的条款标题和
+执行段落定位；源模板 hash 改变、定位文本缺失或重复时停止准备。
+E-sign Recipients 提供 **Preview Signing Fields**，每位收件人下的字段按钮可跳转至
+对应原有下划线，蓝色表示租客、紫色表示房东；Print Name 显示该收件人的全名。
+预览覆盖层仅用于平台核对，不写入合同。
+
+2026-09-18 主合同平台预览已获用户确认；同批新增 Utilities – Simple Form、Packages Rider、
+Key Rider、New York Renters Insurance Rider、Community Rules Rider、Fine Schedule。
+六份均按各自原有八个租客位及一个房东位配置 Signature / Print Name，不增加日期。
+Packages 的表格有额外空段落，Key 的行距和列宽不同，分别保存测量值与预览映射。
+Fine Schedule 仍属于原文档导航中的 Community Rules 范围，但签署预览可独立选择。
+E-sign Recipients 中通过 Document 下拉框切换位置预览。
+
+其余九份的配置如下，发送继续暂停，等待用户核对与供应商转换验证：
+
+- Window Guards：租客 Signature / Date Signed。
+- Bedbug：租客和房东各 Signature / Date Signed。
+- Indoor Allergen：仅房东 Signature / Print Name / Date Signed。
+- DHCR：租客和房东各 Signature / Date Signed。
+- Sprinkler、Gas/CO/Smoke Alarm、Smoking、Good Cause：沿用原有租客和房东 Signature / Print Name。
+- Rent Concession：只有填写实际减免条款时才配置 Signature / Print Name；空值、None、N/A 等不产生签署字段。
+
+Window Guards、Bedbug、DHCR 原稿只有一组租客签字线，为每位租客生成独立副本，
+分别填入该租客资料，并通过 **Tenant Copy** 切换预览，避免多人字段重叠。
+其余表单沿用原有八个租客位置。Date Signed 由 DocuSign 在对应收件人签署时填写。
+平台校验每份已保存源文件的 hash 后显示覆盖层；预览内容不写进合同正文。
+平台覆盖层和本地 Word 渲染不能证明 DocuSign 转换后的最终坐标准确；真实发送前仍须
+核对 DocuSign sandbox 转换后的 PDF 与字段。
 
 签署包冻结 `lease_snapshot`、approval revision、模板版本、逐人收件人、tabs、
-源 DOCX 路径和 SHA-256。发送前展示的合同必须对应同一个 package ID；
+各源 DOCX 及合并审阅版的路径和 SHA-256。发送前展示的合同必须对应同一个 package ID；
 合同审阅后有变化，返回 409 要求重新审阅。修改 property defaults 不改变已发合同。
 生成或修改 Word 模板时另按 documents 技能渲染检查；DocuSign 转换后的 PDF 和 tabs
 还须在 sandbox 实际核对，不能用本地 Word 预览替代。
@@ -198,13 +228,13 @@ JWT 需要 `signature impersonation` scopes 和有效 consent。
    执行现有 rental 和 signing 的到期任务；关闭开发进程即停止定时执行。
    使用开发数据库中的有效 staff 身份；若使用 `DEV_ADMIN_EMAIL`，这个邮箱也须在
    `staff` 表中有 active Admin/Agent 记录，因为发送事务会重查权限。
-6. 使用测试收件人完成申请组、房东同意、Review signing package、下载并审阅该文件、
-   勾选确认、Send with DocuSign。界面每次刷新只读取本地签署记录，不直接轮询供应商。
+6. 使用测试收件人完成申请组、房东同意、**Review Signing Package → Review Lease Draft**，
+   在平台核对合同后 **Send With DocuSign**；或从 Rental 确认跳过审核后发送。界面每次刷新只读取本地签署记录，不直接轮询供应商。
    首次发送与收到回调会立即启动持久化任务；定时任务负责补偿。
    普通 `npm run dev` 不启动这个本地定时器。
 7. 依次完成 tenants 和 landlord 签署，检查每个签署位置，下载 PDF 与 certificate。
-   测试十位租客的合同在源码层面生成了独立签字区域；复杂长姓名及实际 DocuSign 转换
-   排版仍需 sandbox 验收。此项不能由 mock 测试替代。
+   原主合同支持最多八位租客；复杂长姓名及实际 DocuSign 转换排版仍需 sandbox 验收。
+   当前应先完成全部文件的签署位置核对，再解除发送暂停。此项不能由 mock 测试替代。
 
 生产使用相同代码，但必须使用已完成 Go-Live 的生产 Integration Key、生产 sender
 + account，并在 `account.docusign.com` 重新获取 consent。
@@ -221,7 +251,9 @@ JWT 需要 `signature impersonation` scopes 和有效 consent。
 已验证：签名 anchors 与多人字段、PKCS#1/PKCS#8 JWT、provider 请求结构、HMAC、
 创建响应丢失恢复、签署顺序、取消、归档失败重试、数据库权限与并发锁、HTTP 权限和
 审阅版本、发送面板，以及原 Rental 浏览器回归。
-签署位置在本地渲染的双租客 47 页测试合同中均可提取，98 个 anchor 各出现一次。
+单元测试验证最多八位租客的字段分配、每份独立源文件的定位文本、原有样式和资源保留、
+单租客副本隔离、签署日期和条件性减免字段。浏览器验证全部位置预览、逐字段跳转、
+多人副本切换以及返回完整文档。HTTP 测试验证合并版和单份源文件的权限与 hash。
 没有真实 DocuSign 发送或 sandbox 签署结果。
 
 ```sh

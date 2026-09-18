@@ -71,7 +71,7 @@ async function loadRenderer() {
 // that Word split across two runs would simply not be found here, and a lease
 // would then be produced with a value the screen never showed. That must be
 // loud, never silent.
-export async function mountDocument(container, { onSlotClick, templatePath = TEMPLATE_PATH } = {}) {
+export async function mountDocument(container, { onSlotClick, templatePath = TEMPLATE_PATH, expectedSha256 } = {}) {
   host = container;
   host.textContent = "";
   slotsByField = new Map();
@@ -84,6 +84,10 @@ export async function mountDocument(container, { onSlotClick, templatePath = TEM
     throw new Error(`The lease template could not be loaded (${response.status}).`);
   }
   const bytes = await response.arrayBuffer();
+  if (expectedSha256) {
+    const hash = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', bytes)), n => n.toString(16).padStart(2, '0')).join('');
+    if (hash !== expectedSha256) throw new Error('The saved signing document does not match this package. Prepare it again.');
+  }
 
   const { renderAsync } = await loadRenderer();
   await renderAsync(bytes, host, null, {
@@ -467,9 +471,17 @@ export function visibleSections() {
 
 // Which section a field prints in — the first of them, when it prints in
 // several. Used to open the right document before scrolling to a value.
-export function sectionOfField(fieldId) {
-  const slot = (slotsByField.get(fieldId) || [])[0];
+export function sectionOfField(fieldId, index = 0) {
+  const slot = (slotsByField.get(fieldId) || [])[index];
   return slot ? Number(slot.dataset.leaseSection) : null;
+}
+
+// Paragraph context disambiguates equal values (for example rent and deposit).
+// The saved signing document no longer contains template placeholders.
+export function contextsForField(fieldId) {
+  return [...new Set((slotsByField.get(fieldId) || []).map(slot =>
+    slot.closest('p')?.textContent?.replace(/\s+/g, ' ').trim()
+  ).filter(Boolean))];
 }
 
 // ---------------------------------------------------------------- navigation
@@ -488,6 +500,7 @@ export function scrollToOccurrence(fieldId, index = 0, {behavior = "smooth"} = {
   // signature line, and "show on the document" is asked about all of them.
   clearHighlight();
   for (const each of slots) each.classList.add("is-located");
+  slot.classList.add('is-current-match');
   highlighted = slots.slice();
 
   return {
@@ -499,7 +512,7 @@ export function scrollToOccurrence(fieldId, index = 0, {behavior = "smooth"} = {
 }
 
 export function clearHighlight() {
-  for (const each of highlighted) each.classList.remove("is-located");
+  for (const each of highlighted) each.classList.remove("is-located",'is-current-match');
   highlighted = [];
 }
 

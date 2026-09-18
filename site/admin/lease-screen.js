@@ -18,7 +18,8 @@
 
 import * as doc from "./lease-doc.js";
 import * as workspace from "./lease-workspace.js";
-import { signingMarkup, bindSigning } from './rental-signing.js';
+import { signingMarkup, bindSigning, signingPreview, prepareSigningPackage, sendSigningPackage, invalidateSigningReview } from './rental-signing.js';
+import {signingFields,SIGNING_DOCUMENTS,signingFieldLabel} from '../shared/lease-signing-layout.js';
 import { mapDocuments, verifyDocuments } from "../shared/lease-documents.js";
 import { ADDRESS_FIELD, ADDRESS_PARTS, composeAddress } from "../shared/lease-address.js";
 import { applicationWrite } from "../shared/lease-application.js";
@@ -199,6 +200,7 @@ async function fetchValues() {
 // ------------------------------------------------------------------ opening
 
 export async function openLeaseScreen(options = {}) {
+  clearSigningDocument();
   await loadRegistry();
   ({ buildings } = await api("/buildings").catch(() => ({ buildings: [] })));
 
@@ -294,6 +296,7 @@ export async function openLeaseScreen(options = {}) {
     renderBar();
     updateActions();
     setStatus("");
+    if(state.caseRow && signingPreview(signingContext()))await reviewSigningDocument(signingPreview(signingContext()));
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -343,6 +346,7 @@ function verifyTemplate(summary) {
 export function closeLeaseScreen() {
   // Called on every route change, so it has to be free the rest of the time.
   if (screen.hidden) return;
+  clearSigningDocument();
   screen.hidden = true;
   if (mainEl) mainEl.hidden = false;
   document.body.classList.remove("lease-open");
@@ -477,8 +481,14 @@ function renderShell() {
             <button type="button" data-lease-zoom="-1" aria-label="Zoom out">−</button>
             <span id="lease-zoom-label">100%</span>
             <button type="button" data-lease-zoom="1" aria-label="Zoom in">+</button>
-            <label><input type="checkbox" id="lease-show-slots"> Show fields</label>
+            <label><input type="checkbox" id="lease-show-slots"> Show Fields</label>
           </span>
+        </div>
+        <div id="lease-match-nav" class="lease-match-nav" hidden>
+          <span id="lease-match-label"></span>
+          <span id="lease-match-count" role="status" aria-live="polite"></span>
+          <button type="button" data-lease-match="-1" aria-label="Previous Match">← Previous</button>
+          <button type="button" data-lease-match="1" aria-label="Next Match">Next →</button>
         </div>
         <div class="lease-doc-scroll" id="lease-doc-scroll"><div id="lease-doc"></div></div>
       </div>
@@ -524,15 +534,34 @@ function verifyPackage(mapped, sectionCount) {
 // Filters the preview to one document, or to the whole package when `id` is
 // empty. The sections outside it are collapsed, never unmounted — see
 // lease-doc.js, which may not render twice.
-function showDocument(id) {
+let locatedField=null;
+function resetMatches(){
+  locatedField=null;
+  const nav=screen.querySelector('#lease-match-nav');if(nav)nav.hidden=true;
+  doc.clearHighlight();
+}
+function renderMatches(fieldId,index,total){
+  locatedField={fieldId,index,total};
+  screen.querySelector('#lease-match-nav').hidden=false;
+  screen.querySelector('#lease-match-label').textContent=state.byId.get(fieldId)?.label || 'Matches';
+  screen.querySelector('#lease-match-count').textContent=`${index+1} of ${total}`;
+  for(const button of screen.querySelectorAll('[data-lease-match]'))button.disabled=total<2;
+}
+function showDocument(id, keepMatches=false, notifyFrame=true) {
+  if(!keepMatches)resetMatches();
   state.activeDocument = id || "";
   const found = state.documents.find((row) => row.id === state.activeDocument);
   if (found) doc.showSections(found.from, found.to);
   else doc.showSections(null);
+  if(notifyFrame)signingFrame?.contentWindow?.postMessage({type:'signing-document-view',packageId:signingEntry.preview.id,document:id},location.origin);
 
   const label = screen.querySelector("#lease-doc-name");
   if (label) label.textContent = found ? found.name : "All Documents";
-  screen.querySelector('#lease-all-documents')?.setAttribute('aria-pressed',String(!found));
+  const allDocuments = screen.querySelector('#lease-all-documents');
+  if (allDocuments) {
+    allDocuments.setAttribute('aria-pressed',String(!found));
+    allDocuments.disabled = !found;
+  }
 
   const scroller = screen.querySelector("#lease-doc-scroll");
   if (scroller) scroller.scrollTop = 0;
@@ -542,19 +571,38 @@ function showDocument(id) {
 // A value can print in a document the preview is not showing. Opening the one
 // it is in first is the difference between "Show on the document" working and
 // appearing to do nothing.
-function showFieldInDocument(fieldId) {
-  const section = doc.sectionOfField(fieldId);
+function showFieldInDocument(fieldId, reveal = false, index = 0) {
+  if(reveal){
+    screen.dataset.tab='doc';
+    for(const chip of screen.querySelectorAll('[data-lease-tab]'))chip.classList.toggle('is-on',chip.dataset.leaseTab==='doc');
+  }
+  if(signingFrame) {
+    if(signingLoading){setStatus('The signing document is still loading. Please try again.');return;}
+    // Reveal the mobile document pane before asking its frame to scroll.
+    // Opening an editor alone must not take the user away from their input.
+    if(!reveal && !signingFrame.getClientRects().length)return;
+    const frame=signingFrame,packageId=signingEntry.preview.id;
+    requestAnimationFrame(()=>{
+      if(signingFrame!==frame)return;
+      frame.contentWindow.postMessage({type:'signing-document-locate',packageId,fieldId,index,contexts:doc.contextsForField(fieldId)},location.origin);
+    });
+    return;
+  }
+  const section = doc.sectionOfField(fieldId,index);
   if (section !== null && state.activeDocument) {
     const current = state.documents.find((row) => row.id === state.activeDocument);
     if (current && (section < current.from || section > current.to)) {
       const owner = state.documents.find((row) => section >= row.from && section <= row.to);
-      showDocument(owner ? owner.id : "");
+      showDocument(owner ? owner.id : "",true);
     }
   }
-  doc.scrollToOccurrence(fieldId, 0);
+  const match=doc.scrollToOccurrence(fieldId,index);
+  if(match)renderMatches(fieldId,index,match.total);
+  else resetMatches();
 }
 
 function updatePosition() {
+  if(signingFrame){screen.querySelector('#lease-position').textContent='Signing Package';return;}
   const scroller = screen.querySelector("#lease-doc-scroll");
   if (!scroller) return;
   const position = doc.describePosition(scroller);
@@ -607,6 +655,7 @@ function locateRow(row, scroll = true) {
 function onInput(fieldId, rawValue, isCheckbox) {
   const field = state.byId.get(fieldId);
   if (!field || !state.editable(field)) return;
+  if(state.application){invalidateSigningReview(state.application.id);clearSigningDocument();}
 
   if (isCheckbox) {
     if (rawValue) state.checked.add(fieldId);
@@ -618,6 +667,16 @@ function onInput(fieldId, rawValue, isCheckbox) {
 
   state.dirty.add(fieldId);
   if(state.baseValues && state.values[fieldId]===state.baseValues[fieldId])state.dirty.delete(fieldId);
+  if(isCheckbox && ['dhcr.mark_vacancy','dhcr.mark_renewal'].includes(fieldId)){
+    const otherId=fieldId==='dhcr.mark_vacancy'?'dhcr.mark_renewal':'dhcr.mark_vacancy',other=state.byId.get(otherId);
+    if(other){
+      if(rawValue)state.checked.delete(otherId);else state.checked.add(otherId);
+      state.values[otherId]=rawValue?other.marks.unchecked:other.marks.checked;
+      state.dirty.add(otherId);
+      if(state.baseValues && state.values[otherId]===state.baseValues[otherId])state.dirty.delete(otherId);
+      doc.patchField(otherId,state.values[otherId]);
+    }
+  }
 
   // The end date is half move-in, half term; a new move-in moves it now, the
   // same way a new term does.
@@ -740,8 +799,12 @@ function updateActions() {
     const save=screen.querySelector('#lease-save'),review=screen.querySelector('#lease-final'),draft=screen.querySelector('#lease-draft');
     const problems=workspace.reviewIssues(state).length;
     save.hidden=state.readOnly || !state.dirty.size;save.textContent='Save & Request Approval';save.disabled=problems>0;
-    draft.hidden=true;review.hidden=false;review.textContent=state.readOnly?'View Signing Status':'Review & Send';
+    draft.hidden=state.readOnly || !!signingEntry?.reviewed;draft.textContent='Review Signing Package';
+    review.hidden=false;review.textContent=state.readOnly?'View Signing Status':'Send With DocuSign';
     review.disabled=!!state.dirty.size || !state.signing?.configuration?.enabled || !screen.querySelector('#lease-alarm').hidden || (!state.readOnly && (problems>0 || state.caseRow.status!=='landlord_approved'));
+    draft.disabled=review.disabled || signingLoading || signingBusy;
+    if(signingLoading || signingBusy || (!state.readOnly && !state.signing?.configuration?.canSend))review.disabled=true;
+    if(state.signing?.configuration?.placementReviewRequired && !state.readOnly)review.disabled=true;
     screen.querySelector('#lease-warnings').textContent=state.dirty.size?`${state.dirty.size} unsaved correction${state.dirty.size===1?'':'s'} · This lease only`:state.caseRow.status==='sent_to_landlord'?'Waiting for landlord approval':'';
     return;
   }
@@ -821,14 +884,107 @@ async function saveLeaseCorrections() {
 }
 
 async function refreshReview() {
+  clearSigningDocument();
   await fetchValues();syncChecked();recomputeMissing();doc.patchValues(state.values,state.missingLabels);renderFormPane();renderBar();updateActions();
 }
+let signingPreviewLayout='lease';
+let signingPreviewTenant='';
 function renderSigningPanel() {
   const host=formHost?.querySelector('[data-workspace-signing]');if(!host)return;
   if(!state.caseRow){host.innerHTML='<p class="ws-hint">Open a rental to review and send its lease.</p>';return;}
   if(state.dirty.size){host.innerHTML='<p role="status">Save your corrections and obtain approval before preparing a signing package.</p>';return;}
-  const ctx={id:state.application.id,row:state.caseRow,w:state.caseRow.workspace || {},signing:state.signing,api};
+  const ctx={...signingContext(),workspaceReview:true};
+  const recipients=formHost.querySelector('[data-workspace-recipients]');
+  const record=ctx.signing?.signing,active=record && !['voided','declined'].includes(record.phase);
+  if(recipients)recipients.innerHTML=workspace.signingRecipients(state,active?record.signers:signingPreview(ctx)?.preview.signers);
   host.innerHTML=signingMarkup(ctx);bindSigning(host,ctx,refreshReview);
+  if(!active){
+    const signers=signingPreview(ctx)?.preview.signers || [...workspace.tenantSigners(state).map((s,i)=>({...s,recipientId:String(i+1),role:'tenant'})),{recipientId:String(workspace.tenantSigners(state).length+1),role:'landlord',name:state.values['landlord.print_name'],email:state.landlordEmail}];
+    const preview=document.createElement('section');preview.className='ws-signing-preview';
+    try{
+      const layout=SIGNING_DOCUMENTS.find(d=>d.id===signingPreviewLayout),tenants=signers.filter(s=>s.role==='tenant');
+      if(!tenants.some(s=>s.recipientId===signingPreviewTenant))signingPreviewTenant=tenants[0]?.recipientId || '';
+      const people=layout.individual?signers.filter(s=>s.role==='landlord' || s.recipientId===signingPreviewTenant):signers;
+      const fields=signingFields(people,signingPreviewLayout,signingPreview(ctx)?.preview.values || state.values);
+      preview.innerHTML=`<h3>Signing Field Preview</h3><label class="ws-preview-document">Document<select data-signing-layout>${SIGNING_DOCUMENTS.map(d=>`<option value="${d.id}"${d.id===signingPreviewLayout?' selected':''}>${escapeHtml(d.name)}</option>`).join('')}</select></label>${layout.individual?`<label class="ws-preview-document">Tenant Copy<select data-signing-tenant>${tenants.map(s=>`<option value="${escapeHtml(s.recipientId)}"${s.recipientId===signingPreviewTenant?' selected':''}>${escapeHtml(s.name)}</option>`).join('')}</select></label><p class="ws-hint">Each tenant signs a separate copy on the original signature line.</p>`:''}<p class="ws-hint">Blue: tenants. Purple: landlord. Date Signed is filled when that person signs. Sending is paused while you confirm these positions.</p>${fields.length?`<button type="button" class="signing-action" data-preview-signing-fields="${escapeHtml(fields[0].id)}">Preview Signing Fields</button>`:'<p class="ws-hint" role="status">No rent concession is specified. This rider does not require signatures.</p>'}`;
+      const rows=recipients?.querySelectorAll('.ws-signer');
+      signers.forEach((s,i)=>{
+        const controls=document.createElement('div');controls.className='ws-signing-targets';
+        controls.innerHTML=fields.filter(f=>f.recipientId===s.recipientId).map(f=>`<button type="button" data-preview-signing-fields="${escapeHtml(f.id)}">${f.section?`§${f.section} · `:''}${signingFieldLabel(f.kind)}</button>`).join('');
+        rows?.[i]?.querySelector('div').append(controls);
+      });
+    }catch(error){preview.textContent=error.message;}
+    (recipients || host).before(preview);
+    // Rendering status again must not duplicate the field-preview controls.
+    for(const old of formHost.querySelectorAll('.ws-signing-preview'))if(old!==preview)old.remove();
+  }
+  if(!ctx.signing?.signing){
+    const status=document.createElement('p');status.className='ws-hint';
+    status.textContent=signingEntry?.reviewed?'Signing package opened for review · Not sent.':'Draft preview · Not sent. Sending without opening the signing package requires confirmation.';
+    host.querySelector('.signing-panel-heading').after(status);
+  }
+}
+
+let signingFrame=null,signingEntry=null,signingLoading=false,signingCancel=null,signingBusy=false;
+window.addEventListener('message',event=>{
+  if(event.origin!==location.origin || !signingFrame || event.source!==signingFrame.contentWindow || event.data?.packageId!==signingEntry?.preview.id)return;
+  if(event.data.type==='signing-fields-error'){setStatus(event.data.message,'error');return;}
+  if(event.data.type==='signing-fields-ready'){
+    for(const b of formHost.querySelectorAll('[data-preview-signing-fields]'))b.setAttribute('aria-pressed',String(b.dataset.previewSigningFields===event.data.selected));
+    setStatus(`${SIGNING_DOCUMENTS.find(d=>d.id===signingPreviewLayout)?.name} · Signing field preview only. Nothing has been sent.`);return;
+  }
+  if(event.data.type!=='signing-document-located')return;
+  const field=state.byId.get(event.data.fieldId);
+  if(!event.data.found){resetMatches();setStatus(`Could not locate ${field?.label || 'this field'} in the signing document. Check it under Documents.`,'error');return;}
+  renderMatches(event.data.fieldId,event.data.index,event.data.total);
+  state.activeDocument=event.data.document || '';
+  const found=state.documents.find(row=>row.id===state.activeDocument);
+  screen.querySelector('#lease-doc-name').textContent=found?.name || 'All Documents';
+  const all=screen.querySelector('#lease-all-documents');all.disabled=!found;all.setAttribute('aria-pressed',String(!found));
+  if(state.tab==='documents')workspace.renderTab(formHost,state);
+  setStatus(`${field?.label || 'Field'} located and highlighted in the signing document.`);
+});
+function signingContext(){return {id:state.application.id,row:state.caseRow,w:state.caseRow.workspace || {},signing:state.signing,api,openReview:reviewSigningDocument};}
+function clearSigningDocument(){
+  resetMatches();
+  signingCancel?.();signingCancel=null;
+  signingFrame?.remove();signingFrame=null;signingEntry=null;signingLoading=false;
+  const scroll=screen.querySelector('#lease-doc-scroll');if(scroll)scroll.hidden=false;
+  const slots=screen.querySelector('#lease-show-slots');
+  if(slots){slots.disabled=false;slots.closest('label').hidden=false;}
+}
+async function reviewSigningDocument(entry){
+  if(state.dirty.size || signingPreview(signingContext())!==entry)throw new Error('The lease changed. Prepare a new signing package.');
+  clearSigningDocument();signingEntry=entry;signingLoading=true;entry.reviewed=false;updateActions();
+  const frame=document.createElement('iframe');signingFrame=frame;
+  frame.title='Lease for Signing';frame.style.cssText='width:100%;flex:1;min-height:0;border:0;background:#f1efe8';
+  frame.src=`/admin/signing-document.html?rental=${encodeURIComponent(state.application.id)}&package=${encodeURIComponent(entry.preview.id)}&sha=${encodeURIComponent(entry.preview.source_sha256)}`;
+  screen.querySelector('#lease-doc-scroll').hidden=true;
+  screen.querySelector('.lease-pane-doc').append(frame);
+  screen.querySelector('#lease-show-slots').disabled=true;
+  screen.querySelector('#lease-show-slots').closest('label').hidden=true;
+  setStatus('Loading the saved signing package…');
+  try {
+    await new Promise((resolve,reject)=>{
+      const done=error=>{clearTimeout(timer);window.removeEventListener('message',receive);signingCancel=null;error?reject(error):resolve();};
+      const receive=event=>{
+        if(event.origin!==location.origin || event.source!==frame.contentWindow || event.data?.packageId!==entry.preview.id)return;
+        if(event.data.type==='signing-document-ready')done();
+        if(event.data.type==='signing-document-error')done(new Error(event.data.message));
+      };
+      const timer=setTimeout(()=>done(new Error('The signing document did not load. Try reviewing it again.')),45000);
+      signingCancel=()=>done(new Error('Review closed.'));window.addEventListener('message',receive);
+    });
+    if(signingEntry!==entry)return;
+    entry.reviewed=true;signingLoading=false;showDocument('');
+    frame.contentWindow.postMessage({type:'signing-document-zoom',packageId:entry.preview.id,zoom},location.origin);
+    screen.querySelector('#lease-position').textContent='Signing Package';
+    setStatus('Review the lease and signer details, then send with DocuSign.');
+    renderSigningPanel();updateActions();
+  } catch(error){
+    if(signingEntry!==entry)return;
+    clearSigningDocument();entry.reviewed=false;updateActions();throw error;
+  }
 }
 
 async function produce(mode) {
@@ -898,6 +1054,7 @@ function bindOnce() {
   bound = true;
 
   screen.addEventListener("input", (event) => {
+    if(event.target.matches('[data-ws-lease-type]'))onInput('dhcr.mark_vacancy',event.target.value==='new',true);
     const target = event.target.closest("[data-lease-input]");
     if (target) onInput(target.dataset.leaseInput, target.type === "checkbox" ? target.checked : target.value, target.type === "checkbox");
 
@@ -912,6 +1069,14 @@ function bindOnce() {
   });
 
   screen.addEventListener("change", (event) => {
+    if(event.target.matches('[data-signing-layout],[data-signing-tenant]')){
+      if(event.target.matches('[data-signing-layout]'))signingPreviewLayout=event.target.value;
+      else signingPreviewTenant=event.target.value;
+      renderSigningPanel();
+      const first=formHost.querySelector('[data-preview-signing-fields]');
+      if(first)first.click();else showDocument(SIGNING_DOCUMENTS.find(d=>d.id===signingPreviewLayout).document);
+      return;
+    }
     if (event.target.id === "lease-listing") {
       state.listingId = event.target.value;
       reloadLayer();
@@ -962,14 +1127,45 @@ function bindOnce() {
       return;
     }
     if (button.id === "lease-save") return saveSettings();
-    if (button.id === "lease-draft") return produce("draft");
-    if (button.id === "lease-final") {
+    if(button.dataset.previewSigningFields){
+      if(signingBusy || state.dirty.size)return;
+      signingBusy=true;updateActions();
+      try{
+        const entry=await prepareSigningPackage(signingContext());
+        if(!entry)throw new Error('This rental already has a signing request.');
+        if(signingEntry!==entry || !signingFrame)await reviewSigningDocument(entry);
+        const layout=SIGNING_DOCUMENTS.find(d=>d.id===signingPreviewLayout);
+        const part=entry.preview.documents?.find(d=>d.layout===layout.id && (!layout.individual || d.tenantRecipientId===signingPreviewTenant));
+        if(!part)throw new Error('Prepare a new signing package to preview this document.');
+        showDocument(layout.document,false,false);screen.querySelector('#lease-doc-name').textContent=part.name || layout.name;
+        screen.dataset.tab='doc';
+        for(const chip of screen.querySelectorAll('[data-lease-tab]'))chip.classList.toggle('is-on',chip.dataset.leaseTab==='doc');
+        const selected=button.dataset.previewSigningFields;
+        requestAnimationFrame(()=>signingFrame?.contentWindow.postMessage({type:'signing-fields-preview',packageId:entry.preview.id,signers:entry.preview.signers,selected,layout:layout.id,document:part,values:entry.preview.values},location.origin));
+      }catch(error){setStatus(error.message,'error');}finally{signingBusy=false;updateActions();}
+      return;
+    }
+    if (button.id === "lease-draft" && !(state.mode==='lease' && state.caseRow?.workspace?.rental_flow==='automatic')) return produce("draft");
+    if (button.id === "lease-final" || button.id === 'lease-draft') {
       if(state.mode==='lease' && state.caseRow?.workspace?.rental_flow==='automatic') {
-        if(state.dirty.size)return;
-        state.tab='recipients';workspace.renderTab(formHost,state);renderSigningPanel();
-        formHost.querySelector('[data-signing-prepare]')?.click();return;
+        if(state.dirty.size || signingBusy)return;
+        if(state.readOnly){state.tab='recipients';workspace.renderTab(formHost,state);renderSigningPanel();return;}
+        signingBusy=true;updateActions();
+        try {
+          const ctx=signingContext();
+          const entry=await prepareSigningPackage(ctx);
+          if(!entry)await refreshReview();
+          else if(button.id==='lease-draft')await reviewSigningDocument(entry);
+          else if(await sendSigningPackage(ctx,entry))await refreshReview();
+        } catch(error){setStatus(error.message,'error');}finally{signingBusy=false;renderSigningPanel();updateActions();}
+        return;
       }
       return produce("final");
+    }
+    if(button.dataset.leaseMatch && locatedField){
+      const {fieldId,index,total}=locatedField;
+      showFieldInDocument(fieldId,true,(index+Number(button.dataset.leaseMatch)+total)%total);
+      return;
     }
     if(button.id==='lease-all-documents'){showDocument('');if(state.tab==='documents')workspace.renderTab(formHost,state);return;}
     if(button.dataset.wsIssue){focusField(button.dataset.wsIssue);showFieldInDocument(button.dataset.wsIssue);return;}
@@ -978,13 +1174,14 @@ function bindOnce() {
     if (button.dataset.leaseLocate) {
       // The value may print inside a document that is filtered out of view.
       // Showing it means showing the document it is in.
-      showFieldInDocument(button.dataset.leaseLocate);
+      showFieldInDocument(button.dataset.leaseLocate, true);
       return;
     }
 
     if (button.dataset.leaseZoom) {
       zoom = Math.min(1.5, Math.max(0.5, zoom + Number(button.dataset.leaseZoom) * 0.1));
       docHost.style.zoom = String(zoom);
+      signingFrame?.contentWindow?.postMessage({type:'signing-document-zoom',packageId:signingEntry.preview.id,zoom},location.origin);
       screen.querySelector("#lease-zoom-label").textContent = `${Math.round(zoom * 100)}%`;
       return;
     }
