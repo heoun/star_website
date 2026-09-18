@@ -275,5 +275,32 @@ try{
  await login('agent-b@example.test');await page.goto(`${base}/admin/#/leases/${ids.b}`);await panel.getByRole('heading',{name:'Landlord & Signer',exact:true}).waitFor();
  eq(await panel.locator('[data-ws-row="landlord.address"] input').count(),0);
  eq(await panel.locator('[data-ws-row="rent.monthly"] input').count(),1);
+ // Delayed dispatch must update the open review without recreating its document.
+ const reserved=[...packages.values()].at(-1);reserved.reserved=true;
+ reserved.record.phase='preparing';reserved.record.updatedAt=new Date().toISOString();
+ row.workspace.signing={package_id:reserved.id,phase:'preparing'};row.workspace_version++;
+ await page.goto(`${base}/admin/#/applications`);await page.goto(`${base}/admin/#/leases/${ids.b}`);
+ await page.locator('#lease-final').filter({hasText:'View Signing Status'}).waitFor();
+ await page.locator('#lease-final').click();
+ await panel.getByText('Preparing your documents in DocuSign.',{exact:false}).waitFor();
+ await page.locator('#lease-review-feedback').filter({hasText:'Status checked at'}).waitFor();checks++;
+ eq(await page.locator('#lease-bar').getByText('Preparing to send',{exact:true}).count(),1);
+ await page.evaluate(()=>window.reviewDocument=document.querySelector('.lease-pane-doc'));
+ reserved.record.phase='sending';reserved.record.updatedAt=new Date().toISOString();
+ await panel.getByText('Sending invitations',{exact:true}).waitFor({timeout:15000});checks++;
+ reserved.record.phase='in_progress';reserved.record.updatedAt=new Date().toISOString();
+ reserved.record.envelope={envelopeId:'test-envelope',recipients:reserved.record.package.signers.map(s=>({recipientId:s.recipientId,status:s.role==='tenant'?'sent':'pending'}))};
+ await panel.getByText('Signatures in progress',{exact:true}).waitFor({timeout:15000});checks++;
+ eq(await page.evaluate(()=>window.reviewDocument===document.querySelector('.lease-pane-doc')),true);
+ eq(await panel.getByText('Invitation Sent',{exact:true}).count(),reserved.record.package.signers.filter(s=>s.role==='tenant').length);
+ eq(await panel.getByText('Waiting for all tenants',{exact:true}).count(),1);
+ const failedStatus='**/api/admin/cases/*/signing';
+ await page.route(failedStatus,route=>route.fulfill({status:503,contentType:'application/json',body:JSON.stringify({error:'Status temporarily unavailable'})}));
+ await page.locator('#lease-final').click();
+ await page.locator('#lease-review-feedback').filter({hasText:'Unable to refresh signing status'}).waitFor();checks++;
+ eq(await page.locator('#lease-final').isEnabled(),true);
+ await page.unroute(failedStatus);await page.locator('#lease-final').click();
+ await page.locator('#lease-review-feedback').filter({hasText:'Status checked at'}).waitFor();checks++;
+ await page.screenshot({path:`${out}/signing-status.png`,fullPage:true});
  eq(errors,[]);console.log(`PASS ${checks} lease review UI checks: compact groups, exact household recipients, document navigation, local edits, approval reset, lease-only saves, preview and mobile`);
 }finally{if(process.env.DEBUG_REVIEW)console.log((await page.locator('body').innerText()).slice(-3500));await browser.close();await new Promise(r=>server.close(r));await Promise.allSettled(pending);restore();}

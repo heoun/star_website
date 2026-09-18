@@ -18,7 +18,7 @@
 
 import * as doc from "./lease-doc.js";
 import * as workspace from "./lease-workspace.js";
-import { signingMarkup, bindSigning, signingPreview, prepareSigningPackage, sendSigningPackage, invalidateSigningReview } from './rental-signing.js';
+import { signingMarkup, bindSigning, signingPreview, prepareSigningPackage, sendSigningPackage, invalidateSigningReview, signingPhaseLabel } from './rental-signing.js';
 import {signingFields,SIGNING_DOCUMENTS,signingFieldLabel} from '../shared/lease-signing-layout.js';
 import { mapDocuments, verifyDocuments } from "../shared/lease-documents.js";
 import { ADDRESS_FIELD, ADDRESS_PARTS, composeAddress } from "../shared/lease-address.js";
@@ -200,6 +200,7 @@ async function fetchValues() {
 // ------------------------------------------------------------------ opening
 
 export async function openLeaseScreen(options = {}) {
+  stopSigningPolling();
   clearSigningDocument();
   await loadRegistry();
   ({ buildings } = await api("/buildings").catch(() => ({ buildings: [] })));
@@ -302,6 +303,7 @@ export async function openLeaseScreen(options = {}) {
   }
 
   bindOnce();
+  startSigningPolling();
 }
 
 function syncChecked() {
@@ -344,6 +346,7 @@ function verifyTemplate(summary) {
 }
 
 export function closeLeaseScreen() {
+  stopSigningPolling();
   // Called on every route change, so it has to be free the rest of the time.
   if (screen.hidden) return;
   clearSigningDocument();
@@ -438,14 +441,10 @@ function renderBar() {
   save.hidden = state.readOnly || !isManager();
 }
 
-// The lifecycle, as far as this system can honestly know it.
-//
-// There is no leases table: an application carries the only record that a lease
-// happened, through the statuses lease_sent and lease_signed. So a lease is a
-// draft until every required value is answered, ready when they are, and beyond
-// that only what the application says. "Partially signed" is deliberately
-// absent — nothing here talks to a signing service, so nothing could set it.
+// Prefer the durable signing record while a DocuSign request exists.
 function leaseStatus() {
+  const signingPhase=state.signing?.signing?.phase;
+  if(signingPhase)return {label:signingPhaseLabel(signingPhase),tone:signingPhase==='completed'?'good':['needs_attention','declined','voided'].includes(signingPhase)?'off':'busy'};
   const applicationStatus = state.caseRow?.status || state.application?.status;
   if (applicationStatus === "declined") return { label: "Cancelled", tone: "off" };
   if (applicationStatus === "lease_signed") return { label: "Fully signed", tone: "good" };
@@ -886,6 +885,48 @@ async function saveLeaseCorrections() {
 async function refreshReview() {
   clearSigningDocument();
   await fetchValues();syncChecked();recomputeMissing();doc.patchValues(state.values,state.missingLabels);renderFormPane();renderBar();updateActions();
+  if(state.signing?.signing)setStatus(signingPhaseLabel(state.signing.signing.phase));
+}
+let signingPollTimer=null,signingStatusPending=null;
+function stopSigningPolling(){clearTimeout(signingPollTimer);signingPollTimer=null;}
+function startSigningPolling(){
+  stopSigningPolling();
+  if(state?.mode!=='lease' || screen.hidden)return;
+  const opened=state;
+  signingPollTimer=setTimeout(async()=>{
+    if(state!==opened || screen.hidden)return;
+    try{
+      const editing=formHost?.contains(document.activeElement) && document.activeElement.matches('input,select,textarea');
+      if(!document.hidden && !editing && !signingBusy && !state.dirty.size && state.signing?.signing && !['completed','voided','declined'].includes(state.signing.signing.phase))await refreshSigningStatus();
+    }catch(error){if(state===opened){state.signingRefreshError=true;setStatus(`Unable to refresh signing status: ${error.message}`,'error');}}
+    if(state===opened && !screen.hidden)startSigningPolling();
+  },5000);
+}
+async function refreshSigningStatus(manual=false){
+  const opened=state,id=state.application.id;
+  if(signingStatusPending?.opened===opened){
+    await signingStatusPending.promise;
+    if(!manual || state!==opened || screen.hidden)return;
+  }
+  const pending={opened};
+  signingStatusPending=pending;
+  pending.promise=(async()=>{
+    if(manual){setStatus('Checking signing status…');screen.querySelector('#lease-final').disabled=true;}
+    const [signing,{case:row}]=await Promise.all([api(`/cases/${encodeURIComponent(id)}/signing`),api(`/cases/${encodeURIComponent(id)}`)]);
+    if(state!==opened || screen.hidden)return;
+    const changed=JSON.stringify(signing)!==JSON.stringify(state.signing) || row.workspace_version!==state.caseRow.workspace_version;
+    state.signing=signing;state.caseRow=row;
+    const active=signing.signing && !['voided','declined'].includes(signing.signing.phase);
+    state.readOnly=state.requestedReadOnly || !!active || ['lease_sent','lease_signed','declined'].includes(row.status);
+    if(manual)state.tab='recipients';
+    if(changed || manual || state.signingRefreshError){
+      state.signingRefreshError=false;
+      if(manual)workspace.renderTab(formHost,state);
+      renderSigningPanel();renderBar();updateActions();
+      setStatus(`${signingPhaseLabel(signing.signing?.phase)} · Status checked at ${new Date().toLocaleTimeString()}.`);
+    }
+  })();
+  try{await pending.promise;}finally{if(signingStatusPending===pending)signingStatusPending=null;if(state===opened && !screen.hidden)updateActions();}
 }
 let signingPreviewLayout='lease';
 let signingPreviewTenant='';
@@ -896,6 +937,7 @@ function renderSigningPanel() {
   const ctx={...signingContext(),workspaceReview:true};
   const recipients=formHost.querySelector('[data-workspace-recipients]');
   const record=ctx.signing?.signing,active=record && !['voided','declined'].includes(record.phase);
+  if(active)for(const preview of formHost.querySelectorAll('.ws-signing-preview'))preview.remove();
   if(recipients)recipients.innerHTML=workspace.signingRecipients(state,active?record.signers:signingPreview(ctx)?.preview.signers);
   host.innerHTML=signingMarkup(ctx);bindSigning(host,ctx,refreshReview);
   if(!active){
@@ -1149,7 +1191,7 @@ function bindOnce() {
     if (button.id === "lease-final" || button.id === 'lease-draft') {
       if(state.mode==='lease' && state.caseRow?.workspace?.rental_flow==='automatic') {
         if(state.dirty.size || signingBusy)return;
-        if(state.readOnly){state.tab='recipients';workspace.renderTab(formHost,state);renderSigningPanel();return;}
+        if(state.readOnly){try{await refreshSigningStatus(true);}catch(error){setStatus(`Unable to refresh signing status: ${error.message}`,'error');}return;}
         signingBusy=true;updateActions();
         try {
           const ctx=signingContext();

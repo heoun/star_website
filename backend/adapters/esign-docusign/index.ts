@@ -68,7 +68,7 @@ export function envelopeDefinition(pkg: RentalSigningPackage, documents: {docume
     allowReassign:'false',
     eventNotification:{url:webhookUrl,requireAcknowledgment:'true',includeHMAC:'true',deliveryMode:'SIM',
       eventData:{version:'restv2.1',format:'json',includeData:['recipients']},
-      events:['envelope-sent','envelope-delivered','envelope-completed','envelope-declined','envelope-voided','recipient-completed','recipient-declined']}
+      events:['envelope-sent','envelope-delivered','envelope-completed','envelope-declined','envelope-voided','recipient-completed','recipient-declined','recipient-autoresponded']}
   };
 }
 
@@ -111,9 +111,10 @@ export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSi
     if(!['created','sent','delivered','completed','declined','voided'].includes(e.status) || !Array.isArray(r.signers)) throw fail('Unrecognized DocuSign envelope state.');
     return {accountId:config.accountId,envelopeId:id,status:e.status,statusChangedAt:e.statusChangedDateTime || new Date().toISOString(),
       recipients:r.signers.map((s:Record<string,string>):RentalSigningRecipientStatus=>{
-        const status=s.status==='created'?'pending':s.status;
-        if(!['pending','sent','delivered','completed','declined'].includes(status))throw fail('Unrecognized DocuSign recipient state.');
-        return {recipientId:s.recipientId,status:status as RentalSigningRecipientStatus['status'],signedAt:s.signedDateTime};
+        const status=s.status==='created'?'pending':s.status==='autoresponded'?'delivery_failed':s.status;
+        if(!['pending','sent','delivered','completed','declined','delivery_failed'].includes(status))throw fail('Unrecognized DocuSign recipient state.');
+        return {recipientId:s.recipientId,status:status as RentalSigningRecipientStatus['status'],signedAt:s.signedDateTime,
+          ...(status==='delivery_failed'?{deliveryIssue:String(s.autoRespondedReason || 'The receiving mail server rejected the invitation.').replace(/[\u0000-\u001f]/g,' ').slice(0,300)}:{})};
       })};
   }
   return {

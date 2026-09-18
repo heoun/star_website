@@ -43,10 +43,18 @@ export function signingFiles(env) {
 }
 function safeRecord(record) {
   if(!record)return null;
+  const firstOrder=Math.min(...record.package.signers.map(s=>s.routingOrder));
   return {id:record.package.id,phase:record.phase,issue:record.issue || '',updated_at:record.updatedAt,
     template_version:record.package.templateVersion,created_at:record.package.createdAt,
     envelope_id:record.envelope?.envelopeId || null,void_requested:!!record.voidReason,
-    signers:record.package.signers.map(s=>({...s,...record.envelope?.recipients.find(r=>r.recipientId===s.recipientId)})),
+    signers:record.package.signers.map(s=>{
+      const recipient=record.envelope?.recipients.find(r=>r.recipientId===s.recipientId);
+      // Older records retained the draft's pending recipients after a successful
+      // send. Only the first routing group was invited; never mark the landlord
+      // sent until DocuSign reports that their turn has started.
+      const status=recipient?.status==='pending' && s.routingOrder===firstOrder && ['sent','delivered'].includes(record.envelope?.status)?'sent':recipient?.status;
+      return {...s,...recipient,...(status?{status}:{})};
+    }),
     completed:record.phase==='completed',source_sha256:(record.package.reviewFile || record.package.documents[0].file).sha256,
     documents:record.package.documents.map(d=>({documentId:d.documentId,layout:d.layout,tenantRecipientId:d.tenantRecipientId,name:d.name,sha256:d.file.sha256})),values:{'concession.terms':record.package.values['concession.terms']}};
 }

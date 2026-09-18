@@ -46,6 +46,9 @@ try{
  await page.locator('li').filter({hasText:'Waiting for all tenants'}).waitFor();checks++;
  await page.setViewportSize({width:390,height:844});eq(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await page.getByText('Cancel this signing request',{exact:true}).click();await page.getByLabel('Reason',{exact:true}).fill('Wrong lease dates');await page.getByRole('button',{name:'Void envelope',exact:true}).click();await page.getByText('Cancellation requested. Waiting for DocuSign confirmation.').waitFor();checks++;
+ await page.evaluate(()=>{ctx.signing.signing.phase='needs_attention';ctx.signing.signing.issue='DocuSign reported an invitation delivery failure.';ctx.signing.signing.signers[0].status='delivery_failed';ctx.signing.signing.signers[0].deliveryIssue='<Mailbox unavailable>';render();});
+ await page.getByText('Email Delivery Failed',{exact:false}).waitFor();checks++;
+ eq(await page.getByText('<Mailbox unavailable>',{exact:false}).count(),1);
  await page.evaluate(()=>{ctx.signing.signing.phase='completed';ctx.signing.signing.completed=true;ctx.signing.signing.signers=ctx.signing.signing.signers.map(s=>({...s,status:'completed'}));render();});
  eq(await page.getByRole('link',{name:'Download signed lease'}).count(),1);eq(await page.getByRole('link',{name:'Completion certificate'}).count(),1);
  await page.reload();

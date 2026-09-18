@@ -51,7 +51,8 @@ export interface RentalSigningPackage {
 
 export interface RentalSigningRecipientStatus {
   recipientId: string;
-  status: 'pending' | 'sent' | 'delivered' | 'completed' | 'declined';
+  status: 'pending' | 'sent' | 'delivered' | 'completed' | 'declined' | 'delivery_failed';
+  deliveryIssue?: string;
   signedAt?: string;
 }
 

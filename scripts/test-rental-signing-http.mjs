@@ -64,5 +64,12 @@ try {
  await assert.rejects(()=>flow.execute(agent,ids.b,{action:'tenant_signed',version:row.workspace_version,member_id:row.id,reason:'manual'}),e=>e.status===409);checks++;
  eq((await handleDocusignWebhook(new Request('https://example.test/api/webhooks/docusign',{method:'POST',body:'{}'}),env)).status,401);
  const selected=await (await get(agent)).json();eq(selected.signing.id,p.signing.id);eq(JSON.stringify(selected).includes('source_docx-'),false);
+ const record=records.get(p.signing.id).record;
+ record.phase='in_progress';record.envelope={status:'sent',envelopeId:'existing-envelope',recipients:record.package.signers.map(s=>({recipientId:s.recipientId,status:'pending'}))};
+ const progress=await (await get(agent)).json();
+ eq(progress.signing.signers.map(s=>s.status),['sent','sent','pending']);
+ eq(reserves,1); // Reading legacy state must not resend or reserve another package.
+ record.envelope.status='created';
+ eq((await(await get(agent)).json()).signing.signers.map(s=>s.status),['pending','pending','pending']);
  console.log(`PASS ${checks} signing HTTP checks: scoped access, readiness, exact source download, stale reviews, signer changes, idempotent send and forged webhook`);
 }finally{globalThis.fetch=original;}

@@ -286,3 +286,33 @@ npm run typecheck
 npm run gate
 npm run build
 ```
+
+
+### 2026-09-18：签发后的状态反馈与邮件投递排查
+
+租约审核页之前只在发送的 202 响应后读取一次记录；文件仍在准备时便停留在
+`preparing`。`View Signing Status` 只重新渲染已有数据，既不请求后台，
+也不清除旧的签字位置预览提示。现在审核页每五秒读取平台保存的签署状态，
+按钮明确刷新并显示查询时间；离开页面停止轮询，后台标签页和编辑时暂停。
+刷新不重新渲染合同，也不会调用发送接口。页头和收件人列表使用同一状态源。
+
+供应商接受发送后，第一签署顺序的租客状态记录为 `sent`，房东继续等待。
+旧记录遗留的第一顺序 `pending` 仅在已保存的信封状态为 sent/delivered 时
+作兼容显示。`sent` 不能证明邮件进入收件箱；`delivered` 表示收件人打开签署链接。
+`autoresponded` 映射为 `delivery_failed`，保留有限长度的退信原因，
+同步流程标记 needs_attention；新信封也订阅 recipient-autoresponded 回调。
+
+本次测试申请 `b446fac4-5573-4541-b072-ff0d1eac5cbc` 的同一信封
+`890224c1-e3d4-80ae-816a-55fac2991231` 于 20:03:22 UTC 进入 sent，
+DocuSign audit_events 包含 Sent Invitations。收件人为已配置测试邮箱，
+租客 routingOrder=1、房东=2，deliveryMethod=email，未设置 clientUserId。
+排查时未返回 autoresponded 或退信原因，但用户确认收件箱及垃圾邮件未收到。
+20:13:58 UTC 对原信封执行一次 resend_envelope，供应商返回 HTTP 200；
+未创建替代信封、未修改任何合同内容或收件地址。用户在补发后再次确认仍未收到。
+发送人邮箱未发现本次异常通知；租客不属于配置的发送账号，无法读取其独立账号的通知偏好。
+供应商接受请求不等于邮箱交付成功，尚需 DocuSign 出站队列/SMTP 日志定位。
+
+排查依据：
+- https://www.docusign.com/blog/developers/from-the-trenches-enhancing-email-delivery-with-docusign
+- https://www.docusign.com/blog/developers/from-the-trenches-how-to-fix-missing-docusign-email-notifications
+- https://www.docusign.com/blog/developers/common-api-tasks-resend-your-envelope-programmatically

@@ -63,7 +63,7 @@ const store={get:async()=>structuredClone(state),claimDue:async()=>[{packageId:p
 const fake={findByTransactionId:async()=>structuredClone(remote),createDraft:async()=>{creates++;remote={accountId:'account',envelopeId:'envelope',status:'created',recipients:signers.map(s=>({recipientId:s.recipientId,status:'pending'}))};if(failCreate){failCreate=false;throw new Error('Response lost');}return structuredClone(remote);},read:async()=>structuredClone(remote),send:async()=>{sends++;remote.status='sent';},void:async()=>{remote.status='voided';},download:async()=>{downloads++;if(failArchive){failArchive=false;throw new Error('Archive retry');}return new Response('%PDF-test').body;}};
 const files={read:async file=>new Response(document.documents[pkg.documents.findIndex(d=>d.file.sha256===file.sha256)]?.bytes || document.docx).body,put:async(_id,kind)=>({path:kind})};
 const flow=makeRentalSigning(store,fake,files);
-reset();await flow.run();eq([creates,sends,state.phase],[1,1,'in_progress']);await flow.run();eq([creates,sends],[1,1]);
+reset();await flow.run();eq([creates,sends,state.phase],[1,1,'in_progress']);eq(state.envelope.recipients.map(r=>r.status),['sent','sent','pending']);await flow.run();eq([creates,sends],[1,1]);
 remote.status='completed';remote.recipients=remote.recipients.map(r=>({...r,status:'completed',signedAt:'2026-09-16T00:00:00Z'}));failArchive=true;
 state.nextReadAt=undefined;await flow.run();eq(state.phase,'archiving');eq(!!retry,true);state.nextReadAt=undefined;await flow.run();eq(state.phase,'completed');eq(state.certificate.path,'certificate');eq(retry,null);
 reset();failCreate=true;await flow.run();eq(state.phase,'needs_attention');await flow.run();eq([creates,sends,state.phase],[1,1,'in_progress']);
@@ -72,6 +72,7 @@ reset();state.voidReason='Cancelled before dispatch';await flow.run();eq(state.p
 reset();await flow.run();state.voidReason='Wrong dates';await flow.run();eq(state.phase,'voided');eq(sends,1);
 reset();await flow.run();remote.status='declined';await flow.run();eq(state.phase,'declined');eq(retry,null);
 reset();await flow.run();remote.status='completed';await flow.run();eq(state.phase,'needs_attention');eq(downloads,0);
+reset();await flow.run();remote.recipients[0].status='delivery_failed';remote.recipients[0].deliveryIssue='Mailbox unavailable';await flow.run();eq(state.phase,'needs_attention');eq(state.envelope.recipients[0].deliveryIssue,'Mailbox unavailable');eq(sends,1);
 reset();state.package.documents[0].file.sha256='tampered';await flow.run();eq(creates,0);eq(state.phase,'needs_attention');
 const env={RENTAL_AUTOMATION:'on',DOCUSIGN_ENABLED:'on',DOCUSIGN_ENVIRONMENT:'demo',DOCUSIGN_INTEGRATION_KEY:'key',DOCUSIGN_USER_ID:'user',DOCUSIGN_ACCOUNT_ID:'account',DOCUSIGN_PRIVATE_KEY:'key',DOCUSIGN_CONNECT_HMAC_SECRET:'secret',DOCUSIGN_WEBHOOK_URL:'https://example.test/api/webhooks/docusign'};
 eq(signingConfiguration(env,new Request('http://localhost/')).canSend,false);

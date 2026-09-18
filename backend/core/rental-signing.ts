@@ -48,7 +48,9 @@ export function makeRentalSigning(store:RentalSigningStore,provider:RentalSignin
         record.envelope={...record.envelope,status:'voided',statusChangedAt:new Date().toISOString()};
       } else if(record.envelope.status==='created' && !record.voidReason) {
         await current();await provider.send(record.envelope.envelopeId,record.package);
-        record.envelope={...record.envelope,status:'sent',statusChangedAt:new Date().toISOString()};
+        const firstOrder=Math.min(...record.package.signers.map(s=>s.routingOrder));
+        record.envelope={...record.envelope,status:'sent',statusChangedAt:new Date().toISOString(),recipients:record.envelope.recipients.map(r=>
+          r.status==='pending' && record.package.signers.some(s=>s.recipientId===r.recipientId && s.routingOrder===firstOrder)?{...r,status:'sent'}:r)};
       }
       const e=record.envelope;
       if(e.status==='completed') {
@@ -60,7 +62,11 @@ export function makeRentalSigning(store:RentalSigningStore,provider:RentalSignin
         record.phase='completed';delete record.issue;await save();return null;
       }
       record.phase=e.status==='declined'?'declined':e.status==='voided'?'voided':e.status==='created'?'sending':'in_progress';
-      delete record.issue;await save();
+      delete record.issue;
+      if(record.phase==='in_progress' && e.recipients.some(r=>r.status==='delivery_failed')){
+        record.phase='needs_attention';record.issue='DocuSign reported an invitation delivery failure. Check the affected recipient’s email and delivery details.';
+      }
+      await save();
       return ['declined','voided'].includes(record.phase)?null:nextPoll();
     } catch(error) {
       // Never expose provider payloads, private keys or tokens.

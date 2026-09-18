@@ -4,7 +4,7 @@ import {makeDocusign,boundedBytes,envelopeDefinition} from '../backend/adapters/
 let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
 const pair=generateKeyPairSync('rsa',{modulusLength:2048}),id=crypto.randomUUID();
 for(const format of ['pkcs1','pkcs8']) {
- const calls=[];let status='created',creationTimeout=false;
+ const calls=[];let status='created',creationTimeout=false,bounced=false;
  const config={environment:'demo',integrationKey:'integration',userId:'sender',accountId:'account',privateKey:pair.privateKey.export({type:format,format:'pem'}).replaceAll('\n','\\n'),hmacSecret:'secret',webhookUrl:'https://app.example.test/api/webhooks/docusign'};
  const mock=async(url,init={})=>{
   calls.push({url,method:init.method || 'GET',body:init.body});
@@ -22,11 +22,11 @@ for(const format of ['pkcs1','pkcs8']) {
    eq(definition.eventNotification.deliveryMode,'SIM');
    eq(definition.eventNotification.includeHMAC,'true');
    eq(definition.eventNotification.eventData,{version:'restv2.1',format:'json',includeData:['recipients']});
-   eq(definition.eventNotification.events.includes('envelope-completed'),true);
+   eq(definition.eventNotification.events.includes('envelope-completed'),true);eq(definition.eventNotification.events.includes('recipient-autoresponded'),true);
    return Response.json({envelopeId:id});
   }
   if(url.includes('/envelopes/status?'))return Response.json({envelopes:[{envelopeId:id}]});
-  if(url.endsWith('/recipients'))return Response.json({signers:[{recipientId:'1',status:'completed',signedDateTime:'2026-09-16T00:00:00Z'}]});
+  if(url.endsWith('/recipients'))return Response.json({signers:[bounced?{recipientId:'1',status:'autoresponded',autoRespondedReason:'Mailbox unavailable\nTry again'}:{recipientId:'1',status:'completed',signedDateTime:'2026-09-16T00:00:00Z'}]});
   if(url.endsWith('/documents/combined') || url.endsWith('/documents/certificate'))return new Response('%PDF-test');
   if(init.method==='PUT'){status=JSON.parse(init.body).status;return Response.json({envelopeId:id});}
   return Response.json({envelopeId:id,status,statusChangedDateTime:'2026-09-16T00:00:00Z'});
@@ -40,6 +40,7 @@ for(const format of ['pkcs1','pkcs8']) {
   await api.send(id,pkg);eq(deadlines.at(-1),30000);
  } finally {AbortSignal.timeout=timeout;}
  eq((await api.read(id)).status,'sent');
+ bounced=true;const failed=(await api.read(id)).recipients[0];eq(failed.status,'delivery_failed');eq(failed.deliveryIssue,'Mailbox unavailable Try again');bounced=false;
  eq((await api.findByTransactionId(pkg.id)).envelopeId,id);
  eq(new TextDecoder().decode(await boundedBytes(await api.download(id,'signed_pdf'),100)),'%PDF-test');
  await api.void(id,'Cancelled');eq((await api.read(id)).status,'voided');
