@@ -91,11 +91,12 @@ export function makeRealAuth(env: AuthEnv, baseUrl = ""): AuthPort {
         return { kind: "landlord_link", landlordId: claims.landlordId, contactId: claims.contactId, purpose: claims.purpose };
       }
 
-      // All users share Supabase identity. Directory members cannot fall back
-      // to applicant privileges when their workspace access is suspended.
-      const session = await readSession(request, env);
+      // Match the route's audience; never let an applicant cookie supply the
+      // workspace identity (or prefer it when both cookies are present).
+      const applicantRoute = ['/api/v2/me','/api/v2/applications'].includes(url.pathname);
+      const session = await readSession(request, env, applicantRoute ? 'applicant' : 'workspace');
       refreshedCookie = session?.setCookie;
-      const identity = session || devIdentity(request, env);
+      const identity = session || (applicantRoute ? null : devIdentity(request, env));
       if (!identity) return null;
       const member = "development" in identity && identity.development ? true : await fetchStaffMember(env, identity.email);
       if (member || identity.email === String(env.OWNER_EMAIL || "").trim().toLowerCase()) {

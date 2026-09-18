@@ -39,7 +39,7 @@ function render(row){
 }
 async function start(){
  if(!/^[0-9a-f-]{36}$/i.test(id || '') || !Number.isInteger(revision) || revision<1){host.textContent='This link is invalid.';return;}
- if(!token){const account=await fetch('/api/auth/me',{credentials:'same-origin'});if(account.status===401){signIn();return;}}
+ if(!token){const account=await fetch('/api/auth/workspace/me',{credentials:'same-origin'});if(account.status===401){signIn();return;}}
  const response=await fetch(api,options()),data=await response.json();
  if(!token && [401,403].includes(response.status)){signIn(response.status===403);return;}
  if(!response.ok)throw new Error(data.error || 'This rental is unavailable.');

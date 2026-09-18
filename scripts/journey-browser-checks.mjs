@@ -14,7 +14,7 @@ export async function runJourneyBrowser({env,fixture,pending,advance}) {
   const base=`http://127.0.0.1:${server.address().port}`,browser=await chromium.launch({headless:true}),context=await browser.newContext({viewport:{width:1440,height:1000},reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
   const out='/tmp/star-journey-ui';await mkdir(out,{recursive:true});page.on('pageerror',e=>errors.push(e.message));let checks=0;
   const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
-  const login=async(email)=>{const r=await context.request.post(base+'/api/auth/login',{data:{email,password:'testing-password'}});eq(r.status(),200);};
+  const login=async(email)=>{const r=await context.request.post(base+(email===env.INTERNAL_TEST_EMAIL?'/api/auth/login':'/api/auth/workspace/login'),{data:{email,password:'testing-password'}});eq(r.status(),200);};
   try {
     await login(env.INTERNAL_TEST_EMAIL);
     await page.goto(`${base}/property/?id=${ids.listing}`);

@@ -58,6 +58,6 @@ export async function handleWorkspaceAuth(request, env, resource) {
     if (!resolved.identity) return json({ error: resolved.error }, resolved.status || 403);
     const updated = await authRequest(env, "user", { method: "PUT", token: session.access_token, body: { password: body.password } });
     if (!updated.ok) return json({ error: "The password could not be saved. Request a new code and try again." }, 400);
-    return signedIn(request, session);
+    return signedIn(request, session, env);
   } catch { return json({ error: "Account activation is temporarily unavailable." }, 503); }
 }

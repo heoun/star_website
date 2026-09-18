@@ -63,7 +63,7 @@ export default {
     }
 
     if (pathname.startsWith("/api/auth/")) {
-      const resource = pathname.slice("/api/auth/".length);
+      const resource = pathname.slice(pathname.startsWith('/api/auth/workspace/') ? '/api/auth/workspace/'.length : '/api/auth/'.length);
       if (["workspace-code", "workspace-activate"].includes(resource)) return handleWorkspaceAuth(request, env, resource);
       return handleAuthRequest(request, env, ctx, resource);
     }

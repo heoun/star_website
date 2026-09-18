@@ -2,7 +2,7 @@ const host = document.querySelector("#login-content");
 let email = "";
 const esc = value => String(value).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 async function post(resource, body) {
-  const response = await fetch(`/api/auth/${resource}`, { method:"POST", credentials:"same-origin", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
+  const response = await fetch(`/api/auth/workspace/${resource}`, { method:"POST", credentials:"same-origin", headers:{"Content-Type":"application/json"}, body:JSON.stringify(body) });
   const result = await response.json().catch(() => ({}));
   if (!response.ok) throw new Error(result.error || "The request could not be completed. Please try again.");
   return result;
@@ -43,4 +43,4 @@ function render(mode = "login", notice = "") {
     } catch (error) { status.textContent = error.message; button.disabled = false; }
   };
 }
-render();
+render('login', new URLSearchParams(location.search).get('error') === 'workspace-access' ? 'This account does not have workspace access. Sign in with an invited staff or landlord account. Your applicant portal session is unchanged.' : '');

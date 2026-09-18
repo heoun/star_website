@@ -14,8 +14,8 @@ async function call(path, {cookie,body,method = body ? "POST" : "GET",origin = "
   const result = {status:response.status,cookie:response.headers.get("Set-Cookie"),headers:response.headers,body:await response.json().catch(()=>null)};
   return result;
 }
-async function login(email) {
-  const result = await call("/api/auth/login",{body:{email,password:users.get(email).password}});
+async function login(email, scope = "workspace") {
+  const result = await call(`/api/auth/${scope === "workspace" ? "workspace/" : ""}login`,{body:{email,password:users.get(email).password}});
   eq(result.status,200); assert(result.cookie.includes("HttpOnly") && result.cookie.includes("Secure")); checks++;
   eq(Object.keys(result.body).sort(),["email","ok"]); return result.cookie.split(";")[0];
 }
@@ -26,11 +26,24 @@ try {
   eq((await call("/api/auth/login",{body:{email:owner,password:"wrong"}})).status,401);
   eq((await call("/api/auth/login",{body:{email:owner,password:"testing-password"},origin:"https://attacker.test"})).status,403);
   eq((await call("/api/auth/login",{body:{email:owner,password:"a".repeat(17000)}})).status,413);
-  const applicant = await login("applicant@example.test");
-  eq((await call("/api/admin/me",{cookie:applicant})).status,403,"User metadata cannot grant workspace access");
+  const applicant = await login("applicant@example.test", "applicant");
+  eq((await call("/api/admin/me",{cookie:applicant})).status,401,"Applicant sessions cannot supply workspace identity");
   eq((await call("/api/portal/me",{cookie:applicant})).status,200);
   eq((await call(`/api/portal/documents/${ids.doc}`,{cookie:applicant})).status,404,"Applicant cannot read someone else's document");
   const ownerCookie = await login(owner), admin = await login("admin@example.test"), agent = await login("agent-a@example.test"), landlord = await login("owner@example.test");
+  assert(applicant.startsWith('star_portal='));checks++;
+  assert(admin.startsWith('star_workspace='));checks++;
+  const both=applicant+'; '+admin;
+  eq((await call('/api/admin/me',{cookie:both})).body.email,'admin@example.test');
+  eq((await call('/api/auth/me',{cookie:both})).body.email,'applicant@example.test');
+  eq((await call('/api/auth/workspace/me',{cookie:both})).body.email,'admin@example.test');
+  eq((await call('/api/portal/me',{cookie:admin})).status,401);
+  eq((await call('/admin/',{cookie:applicant})).status,302);
+  const rejected=await call('/api/auth/workspace/login',{cookie:both,body:{email:'applicant@example.test',password:'testing-password'}});
+  eq(rejected.status,403);eq(rejected.cookie,null);
+  eq((await call('/api/admin/me',{cookie:both})).body.email,'admin@example.test');
+  eq((await call('/api/auth/workspace/register',{body:{email:'attacker@example.test',password:'testing-password'}})).status,404);
+
   for (const [cookie,role] of [[ownerCookie,"manager"],[admin,"manager"],[agent,"agent"],[landlord,"landlord"]]) eq((await call("/api/admin/me",{cookie})).body.role,role);
   eq((await call("/api/admin/me",{cookie:ownerCookie})).body.owner,true);
   eq((await call("/api/admin/cases",{cookie:ownerCookie})).status,403);
@@ -70,15 +83,33 @@ try {
   const partnerActivation=await call("/api/auth/workspace-activate",{body:{email:partner,code:"123456",password:"partner-password"}});
   eq(partnerActivation.status,200);
   const partnerMe=await call("/api/admin/me",{cookie:partnerActivation.cookie.split(";")[0]});eq(partnerMe.body.role,"landlord");eq(partnerMe.body.property_ids,approved.body.invitation.building_ids);
-  const expiredCookie = `star_portal=${Buffer.from(JSON.stringify({at:"expired",rt:"refresh:admin@example.test"})).toString("base64url")}`;
-  const refreshed = await call("/api/admin/me",{cookie:expiredCookie});eq(refreshed.status,200);assert(refreshed.cookie);checks++;
-  const refreshedDenied = await call("/api/admin/me",{cookie:`star_portal=${Buffer.from(JSON.stringify({at:"expired",rt:"refresh:applicant@example.test"})).toString("base64url")}`});eq(refreshedDenied.status,403);assert(refreshedDenied.cookie);checks++;
+  const expire = (cookie, name='star_workspace') => `${name}=${Buffer.from(JSON.stringify({...JSON.parse(Buffer.from(cookie.split('=')[1],'base64url').toString()),at:'expired'})).toString('base64url')}`;
+  const refreshed = await call('/api/admin/me',{cookie:expire(admin)});eq(refreshed.status,200);assert(refreshed.cookie.startsWith('star_workspace='));checks++;
+  const extraApplicant=await login('applicant@example.test','applicant');
+  const refreshedDenied = await call('/api/admin/me',{cookie:expire(extraApplicant)});eq(refreshedDenied.status,403);assert(refreshedDenied.cookie.startsWith('star_workspace='));checks++;
+  const expiredPortal=await login('applicant@example.test','applicant');
+  const portalRefresh=await call('/api/portal/me',{cookie:expire(expiredPortal,'star_portal')});eq(portalRefresh.status,200);assert(portalRefresh.cookie.startsWith('star_portal='));checks++;
   const real = makeRealAuth(env); eq((await real.resolve(new Request("https://workspace.example.test/api/v2/admin/cases",{headers:{Cookie:admin}}))).kind,"staff");
   eq((await real.resolve(new Request("https://workspace.example.test/api/v2/me",{headers:{Cookie:applicant}}))).kind,"applicant");
   const reset = await call("/api/auth/request-reset",{body:{email:fresh}});eq(reset.status,200);
   eq((await call("/api/auth/verify-reset",{body:{email:fresh,code:"123456",password:"reset-password"}})).status,200);
-  const logout = await call("/api/auth/sign-out",{cookie:admin,body:{}});eq(logout.status,200); assert(logout.cookie.includes("Max-Age=0"));checks++;
+  const logout = await call("/api/auth/workspace/sign-out",{cookie:admin,body:{}});eq(logout.status,200); assert(logout.cookie.includes("Max-Age=0"));checks++;
   await Promise.all(pending);eq((await call("/api/admin/me")).status,401);
+  assert(logout.cookie.startsWith('star_workspace='));checks++;
+  eq((await call('/api/portal/me',{cookie:applicant})).status,200);
+  const secondAdmin=await login('admin@example.test');
+  const portalLogout=await call('/api/auth/sign-out',{cookie:applicant+'; '+secondAdmin,body:{}});
+  assert(portalLogout.cookie.startsWith('star_portal='));checks++;
+  await Promise.all(pending);
+  eq((await call('/api/admin/me',{cookie:secondAdmin})).status,200);
+  eq((await call('/api/portal/me',{cookie:applicant})).status,401);
+
   eq((await call("/api/admin/me",{cookie:admin})).status,401,"Revoked session cannot be refreshed after logout");
-  console.log(`PASS ${checks} unified identity checks: five roles, invitation, recovery, refresh, isolation, revocation and forged identities`);
+  const staffAsApplicant=await login('admin@example.test','applicant');
+  const sameUserBoth=staffAsApplicant+'; '+secondAdmin;
+  eq((await call('/api/portal/me',{cookie:sameUserBoth})).status,200);
+  eq((await call('/api/auth/workspace/sign-out',{cookie:sameUserBoth,body:{}})).status,200);
+  await Promise.all(pending);
+  eq((await call('/api/portal/me',{cookie:staffAsApplicant})).status,200,'Same user in two portals has independent provider sessions');
+  console.log(`PASS ${checks} isolated identity checks: five roles, invitation, recovery, refresh, isolation, revocation and forged identities`);
 } finally { restore(); }

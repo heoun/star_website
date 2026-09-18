@@ -90,10 +90,21 @@ operator recovery through Supabase Auth; it cannot be repaired by another Admin.
 
 ## Identity and data boundaries
 
-- Both portals share the HttpOnly `star_portal` cookie. Tokens are verified with
-  Supabase on the server; refreshed cookies are returned on allowed and denied
-  workspace requests. Signing out clears the shared browser session and requests
-  revocation of that Supabase session.
+- Applicant Portal uses the HttpOnly `star_portal` cookie; Admin and staff/
+  landlord workspace login use `star_workspace`. Each has its own Supabase
+  session. Both can coexist in one browser, even with different accounts.
+  `/api/auth/*` and `/api/portal/*` authenticate applicants; workspace sign-in,
+  recovery and sign-out use `/api/auth/workspace/*`. Staff activation's old
+  `/api/auth/workspace-code` and `workspace-activate` aliases remain supported
+  but issue only the workspace cookie. Workspace login checks directory access
+  before setting a cookie. Admin never falls back to an applicant cookie.
+- Tokens are verified with Supabase on the server. Refresh and sign-out operate
+  only on the selected cookie and provider session (`scope=local`). Existing
+  applicant sessions stay valid after this change; previous staff sessions in
+  the old shared cookie require a new workspace login. Missing or unauthorized
+  workspace identities reach the login page instead of a plain-text denial.
+  Local `DEV_ADMIN_EMAIL` previews remain available independently of Applicant
+  Portal; production still requires a verified staff login.
 - Staff role, active status and assignments are checked against the database on
   each request. Suspension blocks workspace access during an existing session.
 - The first successful verified workspace login atomically pins `staff.auth_user_id`.

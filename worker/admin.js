@@ -245,7 +245,7 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
   if (!sameOriginMutation(request)) return json({ error: "Use this website to submit the form." }, 403);
   let authenticated;
   try {
-    authenticated = (await readSession(request, env)) || devIdentity(request, env);
+    authenticated = (await readSession(request, env, "workspace")) || devIdentity(request, env);
     if (!authenticated) return json({ error: "Please sign in." }, 401);
     const resolved = await resolveStaff(env, authenticated);
     const response = resolved.identity
@@ -677,11 +677,13 @@ async function handleMediaItem(request, env, ctx, mediaId) {
 // Verify the session and directory membership before serving workspace assets.
 export async function guardAdminPage(request, env) {
   try {
-    const authenticated = (await readSession(request, env)) || devIdentity(request, env);
+    const authenticated = (await readSession(request, env, "workspace")) || devIdentity(request, env);
     if (!authenticated) return new Response(null, { status: 302, headers: { Location: "/login/?next=admin", "Cache-Control": "no-store" } });
     const resolved = await resolveStaff(env, authenticated);
     if (!resolved.identity) {
-      const response = deniedPage(resolved.error, resolved.status || 403);
+      const response = resolved.status === 403
+        ? new Response(null, {status:302,headers:{Location:'/login/?next=admin&error=workspace-access','Cache-Control':'no-store'}})
+        : deniedPage(resolved.error, resolved.status || 503);
       if (authenticated.setCookie) response.headers.append("Set-Cookie", authenticated.setCookie);
       return response;
     }

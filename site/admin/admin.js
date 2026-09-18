@@ -1615,7 +1615,7 @@ document.querySelectorAll("[data-sign-out]").forEach(link => link.addEventListen
   event.preventDefault();
   if (session.demo) { location.assign("/__demo"); return; }
   try {
-    const response = await fetch("/api/auth/sign-out", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}" });
+    const response = await fetch("/api/auth/workspace/sign-out", { method: "POST", credentials: "same-origin", headers: { "Content-Type": "application/json" }, body: "{}" });
     if (!response.ok) throw new Error("Sign out failed. Please try again.");
     location.replace("/login/");
   } catch (error) { setStatus(error.message, "error"); }

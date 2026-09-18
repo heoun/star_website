@@ -1,8 +1,13 @@
-// Shared Supabase identity adapter. Business roles are resolved separately.
+// Shared Supabase provider, separate applicant and workspace browser sessions.
 import { isLocalRequest } from "./env.js";
+import { resolveStaff } from "./staff.js";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const SESSION_COOKIE = "star_portal"; // One HttpOnly session shared by both portals.
+const SESSION_COOKIES = { applicant: "star_portal", workspace: "star_workspace" };
+function authScope(request) {
+  const path = new URL(request.url).pathname;
+  return path.startsWith('/api/auth/workspace/') || ['/api/auth/workspace-code','/api/auth/workspace-activate'].includes(path) ? 'workspace' : 'applicant';
+}
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
 
 // Mirrors the minimum set in the Supabase dashboard, so the form's error and
@@ -97,14 +102,18 @@ function cookieValue(request, name) {
 
 // `Secure` would make the browser drop the cookie on a plain-HTTP loopback,
 // which is exactly where development runs.
-function sessionCookie(request, value, maxAge) {
-  const attributes = [`${SESSION_COOKIE}=${value}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`];
+function sessionCookie(request, value, maxAge, scope = authScope(request)) {
+  const attributes = [`${SESSION_COOKIES[scope]}=${value}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`];
   if (!isLocalRequest(request)) attributes.push("Secure");
   return attributes.join("; ");
 }
 
-export function signedIn(request, session) {
+export async function signedIn(request, session, env) {
   if (!verifiedUser(session.user)) return json({ error: "Confirm your email before signing in." }, 403);
+  if (authScope(request) === 'workspace') {
+    const resolved = await resolveStaff(env, {email: session.user.email, subject: session.user.id});
+    if (!resolved.identity) return json({error: resolved.error}, resolved.status || 403);
+  }
   return json({ ok: true, email: String(session.user?.email || "").toLowerCase() }, 200, {
     "Set-Cookie": sessionCookie(request, encodeSessionCookie(session), SESSION_SECONDS)
   });
@@ -115,10 +124,10 @@ export function signedIn(request, session) {
 // refresh token buys its successor, and `setCookie` carries the rolled
 // cookie the response must set — Supabase rotates refresh tokens, so
 // dropping it would sign the applicant out a request later.
-export async function readSession(request, env) {
+export async function readSession(request, env, scope = authScope(request)) {
   if (!authConfig(env)) return null;
 
-  const stored = decodeSessionCookie(cookieValue(request, SESSION_COOKIE));
+  const stored = decodeSessionCookie(cookieValue(request, SESSION_COOKIES[scope]));
   if (!stored) return null;
 
   const user = await authRequest(env, "user", { method: "GET", token: stored.at });
@@ -137,7 +146,7 @@ export async function readSession(request, env) {
     email: String(session.user.email).trim().toLowerCase(),
     subject: session.user.id,
     token: session.access_token,
-    setCookie: sessionCookie(request, encodeSessionCookie(session), SESSION_SECONDS)
+    setCookie: sessionCookie(request, encodeSessionCookie(session), SESSION_SECONDS, scope)
   };
 }
 
@@ -188,7 +197,7 @@ async function handleRegister(request, env) {
   // A project with email confirmation turned off (a development convenience)
   // answers with the session itself, and there is no code step.
   if (result.payload?.access_token) {
-    return signedIn(request, result.payload);
+    return signedIn(request, result.payload, env);
   }
 
   return json({ ok: true, confirm: true });
@@ -223,7 +232,7 @@ async function handleVerifyRegister(request, env) {
     }, 401);
   }
 
-  return signedIn(request, result.payload);
+  return signedIn(request, result.payload, env);
 }
 
 async function handleLogin(request, env) {
@@ -241,7 +250,7 @@ async function handleLogin(request, env) {
     }, result.status === 429 ? 429 : 401);
   }
 
-  return signedIn(request, result.payload);
+  return signedIn(request, result.payload, env);
 }
 
 // Password reset: prove the inbox again, then choose the new password. The
@@ -289,7 +298,7 @@ async function handleVerifyReset(request, env) {
     }, 400);
   }
 
-  return signedIn(request, verified.payload);
+  return signedIn(request, verified.payload, env);
 }
 
 
@@ -307,6 +316,7 @@ export function sameOriginMutation(request) {
 export async function handleAuthRequest(request, env, ctx, resource) {
   if (!authConfig(env)) return json({ error: "Sign-in is temporarily unavailable." }, 503);
   if (!sameOriginMutation(request)) return json({ error: "Use this website to submit the form." }, 403);
+  if (authScope(request) === 'workspace' && !['login','me','request-reset','verify-reset','sign-out'].includes(resource)) return json({error:'Unknown workspace account endpoint.'},404);
   try {
     if (request.method === "GET" && resource === "me") {
       const session = await readSession(request, env);
@@ -327,7 +337,7 @@ export async function handleAuthRequest(request, env, ctx, resource) {
     const handlers = { register: handleRegister, resend: handleResend, "verify-register": handleVerifyRegister, login: handleLogin, "request-reset": handleRequestReset, "verify-reset": handleVerifyReset };
     if (handlers[resource]) return await handlers[resource](safeRequest, env);
     if (resource === "sign-out") {
-      const stored = decodeSessionCookie(cookieValue(request, SESSION_COOKIE));
+      const stored = decodeSessionCookie(cookieValue(request, SESSION_COOKIES[authScope(request)]));
       if (stored?.at) {
         // Clear this browser even if upstream revocation is temporarily unavailable.
         ctx.waitUntil(authRequest(env, "logout?scope=local", { token: stored.at }).catch(() => {}));

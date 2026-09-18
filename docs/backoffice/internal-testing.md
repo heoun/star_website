@@ -28,7 +28,7 @@ simulated HTTP provider. No real payment or credit inquiry is performed.
 
 Use separate browser profiles for Applicant, Landlord and Admin. The shared
 HttpOnly login cookie represents one identity per browser profile. The internal
-Admin preview is available only locally without an applicant/landlord session;
+Admin preview is available only locally without a workspace session;
 it is never accepted as the landlord's emailed decision.
 
 ## One full run
