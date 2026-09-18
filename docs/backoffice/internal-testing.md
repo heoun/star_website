@@ -52,7 +52,7 @@ it is never accepted as the landlord's emailed decision.
    automatic sharing. The applicant can refresh or leave the page; the scheduler
    continues reconciliation. A missing provider service produces an error, never
    a fabricated successful result.
-7. Open the landlord email, sign in as the designated landlord and explicitly
+7. Open the landlord email using its private decision link and explicitly
    confirm whether to proceed. Link previews and GET requests do not approve it.
    The current packet revision and application version are checked on POST.
 8. In Admin, open the corresponding rental, review the lease and signing
@@ -126,3 +126,34 @@ Gmail conversation, where repeated actions can be collapsed as quoted content.
 Transport retries must reuse the original key; an explicitly requested resend
 must use a new key. Never randomize the subject during retries. Gmail ultimately
 controls collapsed content, so browser HTML previews cannot verify inbox folding.
+
+
+### Landlord email decisions without sign-in
+
+Set `LANDLORD_DECISION_SECRET` to 32 random bytes encoded as base64 (for example,
+`openssl rand -base64 32`). Set it as a Worker secret for deployment, never as a
+public build variable. With this secret configured, new notifications contain a
+signed, private capability for only that application, recommendation revision,
+recipient, website origin and database. Links expire 14 days after the
+recommendation was prepared. To renew an expired request, prepare a fresh
+recommendation; transport retries deliberately do not extend its lifetime.
+
+Opening any of the three email links only reads the approved landlord summary.
+Agree / Do Not Proceed preselect the choice and require an explicit confirmation;
+declining requires a reason. Confirmation writes through the existing versioned
+rental workflow, records the recipient email and timestamp, and starts normal
+lease preparation on approval. It never signs or sends a lease. Refreshes and
+repeated confirmations cannot overwrite a recorded decision.
+
+The link is a credential: do not forward it. It is kept in a URL fragment and
+sent to `/api/landlord-decision` in an Authorization header, never query strings.
+The endpoint checks current active landlord/property access, signer assignment,
+revision and application readiness. It returns the landlord projection only and
+does not grant admin access or a logged-in session. Rotation of the signing secret
+revokes all outstanding links. New revisions revoke previous requests.
+
+If the secret is absent, emails retain the account-based approval flow. Emails
+already sent without a token also still require login; send a new notification
+to use the no-login flow. For tests, `npm run test:rentals` covers token security
+and decisions, and `npm run test:rentals:ui` covers both an unrelated signed-in
+browser and a signed-out mobile browser using isolated fixtures.

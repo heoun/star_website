@@ -12,6 +12,7 @@ import { rentalMode, rentalApplyOptions, reconcileRentals } from "./rentals.js";
 import { handleDocusignWebhook, reconcileSigning } from './signing.js';
 import { readSession } from './auth.js';
 import { internalTesting,internalTestAccount,internalTestListing } from '../backend/app/internal-testing.ts';
+import { handleLandlordDecision } from './landlord-decision.js';
 
 export default {
   async scheduled(_event,env,ctx) {
@@ -22,6 +23,7 @@ export default {
     const url = new URL(request.url);
     const pathname = url.pathname;
     if(pathname==='/api/webhooks/docusign')return handleDocusignWebhook(request,env,ctx);
+    if(pathname==='/api/landlord-decision')return handleLandlordDecision(request,env);
     if(pathname==='/api/apply/options' && request.method==='GET') {
       try {
         const session=internalTesting(env,request)?await readSession(request,env):null;

@@ -1,6 +1,7 @@
 import type { RentalMail } from '../../contracts/rentals.ts';
 import { sendEmail } from '../../../worker/email.js';
 import { isLocalRequest } from '../../../worker/env.js';
+import { createLandlordDecisionToken } from '../../../worker/landlord-decision-token.js';
 const esc=(v:unknown)=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
 export function makeRentalMail(env:Record<string,any>,request:Request):RentalMail {
   async function send(to:string,subject:string,text:string,html:string,key:string) {
@@ -14,12 +15,14 @@ export function makeRentalMail(env:Record<string,any>,request:Request):RentalMai
       // and payload so the provider's idempotency key continues to deduplicate them.
       const digest=await crypto.subtle.digest('SHA-256',new TextEncoder().encode(key));
       const notice=Array.from(new Uint8Array(digest)).slice(0,6).map(b=>b.toString(16).padStart(2,'0')).join('').toUpperCase();
-      const url=new URL('/landlord-decision/',request.url);
-      const link=(choice:string)=>`${url}#${new URLSearchParams({id:root.id,revision:String(r.revision),choice})}`;
+      const url=new URL('/landlord-decision/',env.SITE_ORIGIN || request.url);
+      const token=await createLandlordDecisionToken(env,url.origin,root.id,r);
+      const link=(choice:string)=>`${url}#${new URLSearchParams({id:root.id,revision:String(r.revision),choice,...(token?{token}:{})})}`;
+      const confirmation=token?'Open your secure email link and confirm once. No sign-in is required. Keep this link private.':'Sign in with your landlord account to confirm.';
       const place=[root.listings?.property_name || r.property_title,root.listings?.unit].filter(Boolean).join(' · ');
       const facts=`Monthly rent: $${terms['rent.monthly']} · Deposit: $${terms['deposit.amount']}\nLease: ${terms['lease.commencement_date']} to ${terms['lease.end_date']}`;
       const lines=members.map(m=>`${m.name}: credit score ${m.credit_score ?? 'No score returned'} (${m.score_model}; ${m.report_date.slice(0,10)})${m.mock ? ' (mock)' : ''}; annual income ${m.annual_income || 'Not stated'} (${m.income_source}); ${m.employment}`);
-      const text=`${root.workspace?.test_run?'INTERNAL TEST — Synthetic screening. Run '+root.id+'\n\n':''}Application ready for your decision\n${place}\n\n${facts}\n\n${lines.join('\n')}\n\nView details: ${link('details')}\nAgree to proceed: ${link('accept')}\nDo not proceed: ${link('decline')}\n\nSign in with your landlord account to confirm. Agreeing approves this application group and the displayed terms for lease preparation; it does not sign the lease.`;
+      const text=`${root.workspace?.test_run?'INTERNAL TEST — Synthetic screening. Run '+root.id+'\n\n':''}Application ready for your decision\n${place}\n\n${facts}\n\n${lines.join('\n')}\n\nView details: ${link('details')}\nAgree to proceed: ${link('accept')}\nDo not proceed: ${link('decline')}\n\n${confirmation} Agreeing approves this application group and the displayed terms for lease preparation; it does not sign the lease.`;
       // Use a public HTTPS asset so mail clients can load the logo without attachments.
       const logoUrl=new URL(env.EMAIL_LOGO_URL || 'https://starreusa.com/png/email-logo-v1.png');
       if(logoUrl.protocol!=='https:') throw new Error('EMAIL_LOGO_URL must use HTTPS.');
@@ -44,7 +47,7 @@ ${members.map(m=>`<table role="presentation" width="100%" cellpadding="0" cellsp
 <p style="margin:0 0 12px;font-size:12px;color:#555555">Decision request · Reference ${notice}</p>
 <p style="margin:0 0 8px">${button('View details','details')}</p>
 <p style="margin:0 0 12px">${button('Agree to proceed','accept')}${button('Do not proceed','decline')}</p>
-<p style="margin:0;padding-top:16px;border-top:1px solid #dddddd;font-size:12px;line-height:1.7;color:#555555">Confirm with your landlord account. Your decision covers this whole application group and these terms. Agreeing starts lease preparation; it does not sign the lease.</p>
+<p style="margin:0;padding-top:16px;border-top:1px solid #dddddd;font-size:12px;line-height:1.7;color:#555555">${confirmation} Your decision covers this whole application group and these terms. Agreeing starts lease preparation; it does not sign the lease.</p>
 </td></tr></table>
 <!--[if mso]></td></tr></table><![endif]-->
 </td></tr></table></body></html>`;

@@ -1,0 +1,53 @@
+import assert from 'node:assert/strict';
+import worker from '../worker/index.js';
+import {rentalWorkflow} from '../worker/rentals.js';
+import {createWorkspaceFixtures,ids} from '../backend/tools/workspace-fixtures.mjs';
+import {completeDemoState} from './demo-data.mjs';
+import {seedRentalDemo} from './rental-demo-data.mjs';
+import {createLandlordDecisionToken,verifyLandlordDecisionToken} from '../worker/landlord-decision-token.js';
+const fixture=createWorkspaceFixtures();await completeDemoState(fixture.state);await seedRentalDemo(fixture.state);
+const originalFetch=globalThis.fetch;globalThis.fetch=fixture.fetch;
+const origin='http://127.0.0.1:8792',env={...fixture.env,RENTAL_AUTOMATION:'on',RENTAL_SCREENING:'mock',LANDLORD_DECISION_SECRET:btoa('a'.repeat(32)),LOCAL_EMAIL_SINK:{async send(m){fixture.state.emails.push(m);}}};
+let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
+const call=(token,body,extra={},method=body?'POST':'GET')=>worker.fetch(new Request(origin+'/api/landlord-decision',{method,headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json',Origin:origin,Cookie:'unrelated-applicant-session',...extra},...(body?{body:JSON.stringify(body)}:{})}),env,{waitUntil(){throw new Error('Unexpected background work');}});
+try {
+ const flow=rentalWorkflow(env,new Request(origin));await flow.reconcile(ids.b);
+ const row=()=>fixture.state.applications.find(a=>a.id===ids.b);
+ eq(row().status,'sent_to_landlord');eq(fixture.state.emails.length,1);
+ const mail=fixture.state.emails[0],link=new URL(/Agree to proceed: (\S+)/.exec(mail.text)[1]),params=new URLSearchParams(link.hash.slice(1)),token=params.get('token');assert(token);checks++;
+ eq(mail.text.includes('No sign-in is required'),true);eq(link.search,'');
+ eq(await createLandlordDecisionToken(env,origin,ids.b,row().workspace.recommendation),token);
+ const before=fixture.writes.length;
+ let res=await call(token);eq(res.status,200);let view=(await res.json()).case;eq(fixture.writes.length,before);eq(row().status,'sent_to_landlord');
+ for(const value of ['ssn_encrypted','ssn_last4','ADMIN-ONLY','TEAM-ONLY','application_documents','government_id']){assert(!JSON.stringify(view).includes(value));checks++;}
+ eq(view.recommendation.members.length,2);
+ eq((await call('')).status,401);eq((await call('x'+token)).status,401);
+ eq((await call(token,null,{},'HEAD')).status,405);
+ const approve={outcome:'accept',confirmed:true,version:view.workspace_version};
+ eq((await call(token,{...approve,confirmed:false})).status,422);
+ eq((await call(token,{...approve,version:-1})).status,409);
+ eq((await call(token,approve,{Origin:'https://other.example'})).status,403);
+ eq((await call(token,{...approve,outcome:'decline',reason:''})).status,422);
+ eq((await call(token,approve,{'Content-Type':'text/plain'})).status,415);
+ await assert.rejects(()=>verifyLandlordDecisionToken(env,'https://other.example',token),e=>e.status===401);checks++;
+ await assert.rejects(()=>verifyLandlordDecisionToken({...env,SUPABASE_URL:'https://other-database.test'},origin,token),e=>e.status===401);checks++;
+ const now=Date.now;try{Date.now=()=>now()+15*86400000;eq((await call(token)).status,410);}finally{Date.now=now;}
+ const snapshot=structuredClone(fixture.state.applications);
+ const reset=()=>fixture.state.applications.splice(0,fixture.state.applications.length,...structuredClone(snapshot));
+ row().workspace.recommendation.revision++;eq((await call(token)).status,409);reset();
+ row().workspace.recommendation.landlord_email='wrong@example.test';eq((await call(token)).status,409);reset();
+ const staff=fixture.state.staff.find(s=>s.email===row().workspace.recommendation.landlord_email);staff.active=false;eq((await call(token)).status,403);staff.active=true;
+ const properties=staff.property_ids;staff.property_ids=[];eq((await call(token)).status,403);staff.property_ids=properties;
+ const building=fixture.state.buildings.find(b=>b.id===row().listings.building_id),signer=building.landlord_signer_email;building.landlord_signer_email='wrong@example.test';eq((await call(token)).status,403);building.landlord_signer_email=signer;
+ row().workspace.checks.fee='pending';row().workspace.screening_result=undefined;eq((await call(token,approve)).status,409);reset();
+ res=await call(token,approve);eq(res.status,200);eq(row().status,'landlord_approved');eq(row().workspace.lease_draft.missing,[]);eq(row().workspace.landlord_decision.by,staff.email);
+ eq(row().workspace.activity.filter(a=>a.action==='landlord_accept').length,1);
+ const saved=fixture.writes.length;eq((await call(token,approve)).status,200);eq(fixture.writes.length,saved);eq((await call(token,{...approve,outcome:'decline',reason:'Changed my mind'})).status,409);
+ eq((await(await call(token)).json()).case.landlord_decision.outcome,'accepted');
+ const admin=await flow.get({role:'manager',email:'admin@example.test'},ids.b);eq(admin.status,'landlord_approved');eq(admin.workspace.landlord_decision.outcome,'accepted');
+ reset();res=await call(token,{...approve,outcome:'decline',reason:'The proposed lease dates do not work.'});eq(res.status,200);eq(row().status,'declined');eq(row().workspace.landlord_decision.comment,'The proposed lease dates do not work.');
+ eq((await(await call(token)).json()).case.landlord_decision.outcome,'declined');
+ eq((await call(token,{...approve,outcome:'decline',reason:'The proposed lease dates do not work.'})).status,200);
+ reset();delete env.LANDLORD_DECISION_SECRET;eq((await call(token)).status,503);eq(await createLandlordDecisionToken(env,origin,ids.b,row().workspace.recommendation),null);
+ console.log(`PASS ${checks} landlord email decision checks: scoped capability, no-login preview, no writes on open, expiry, tampering, current landlord, revision, readiness, consent, replay, decline and admin synchronization`);
+} finally {globalThis.fetch=originalFetch;}

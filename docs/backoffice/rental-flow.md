@@ -11,7 +11,7 @@ The agreed flow is now implemented behind `RENTAL_AUTOMATION=on`. The isolated r
 - Every group member must have the required uploads, fee payment or waiver, and a completed report before a decision package is created. This is completeness, not a favorable credit decision. Pending invitations block sharing. Scores, model/date and applicant-reported income appear separately for each person.
 - Payment precedes screening. Unpaid applications cannot trigger screening or record a completed report/score. A completed report cannot be edited back to payment pending. Contradictory imported payment/report records require evidence review and do not expose a usable credit score or allow sharing. Only the isolated demo repairs identified synthetic report/payment fixtures; real payments are never inferred from a score.
 - An active landlord associated with the property’s signer email is preferred. If there is exactly one eligible landlord, that account is used. Ambiguous or missing recipients require an Admin correction and are never guessed.
-- The email contains facts, a detail link, and Agree to proceed / Do not proceed links. Links perform no mutation. The confirmation page requires the current landlord account and current packet revision. SSNs, identity files, internal notes and raw application objects are excluded from this projection.
+- The email contains facts, a detail link, and Agree to proceed / Do not proceed links. Links perform no mutation. With `LANDLORD_DECISION_SECRET` configured, the confirmation page uses a scoped, expiring email link and the current packet revision; otherwise it requires the current landlord account. SSNs, identity files, internal notes and raw application objects are excluded from this projection.
 - Approval records the landlord decision and prepares the group’s lease draft in one versioned save. A complete draft freezes all resolved values, including all tenant names. Missing property fields or resolution errors remain visible; they do not turn approval into a failed decision. Draft refresh uses the approved terms.
 - Each tenant’s signature receipt is recorded separately. The landlord step opens only after every tenant receipt is present. Existing private executed-PDF upload/archive remains in use. Membership and applicant evidence changes are blocked during signing.
 
@@ -23,7 +23,7 @@ Rentals uses Property, Unit, Applications and Needs attention columns. Expand a 
 
 The top status strip identifies the current stage and outstanding work. Pending invitations are distinct from submitted applications. Existing application correction permissions remain enforced: Admin may correct supported applicant fields, while Agent corrections are limited to tenancy fields. Identity numbers stay masked in the dossier. Switching workspaces retains unsaved inputs on the mounted page. Pet names absent from the current intake schema are explicitly marked as not collected.
 
-The landlord confirmation page is `/landlord-decision/`. A signed-out recipient returns to the same decision after login. Reloading or scanning a link does not approve anything. Old revisions are rejected.
+The landlord confirmation page is `/landlord-decision/`. New signed email links require no login and preselect the requested decision; the recipient confirms before it is saved. Legacy account-based links return to the same decision after login. Reloading or scanning a link does not approve anything. Old revisions are rejected.
 
 ## Integration boundaries
 

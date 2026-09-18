@@ -79,6 +79,9 @@ DEV_REAL_EMAIL=
 # Optional public HTTPS logo for landlord emails; never use a localhost URL.
 # Default: https://starreusa.com/png/email-logo-v1.png (ships with the site).
 EMAIL_LOGO_URL=
+# Optional: 32 random bytes, base64, enables scoped no-login landlord decisions.
+# Keep stable; rotating invalidates outstanding links. Generate: openssl rand -base64 32
+LANDLORD_DECISION_SECRET=
 
 # Deliberately absent: TURNSTILE_SECRET_KEY. Human verification is skipped when
 # it is unset, which is what you want locally. Cloudflare Access keys are not needed.

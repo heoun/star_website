@@ -12,7 +12,7 @@ const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const identity=createIdentityFixture(),{fixture,env,restore,user}=identity;
 await completeDemoState(fixture.state);await seedRentalDemo(fixture.state);
 for(const s of fixture.state.staff)if(!identity.users.has(s.email))user(s.email);
-env.RENTAL_AUTOMATION='on';env.RENTAL_SCREENING='mock';
+env.RENTAL_AUTOMATION='on';env.RENTAL_SCREENING='mock';env.LANDLORD_DECISION_SECRET=btoa('a'.repeat(32));
 const keys=new Set();env.LOCAL_EMAIL_SINK={async send(m,key){if(!keys.has(key)){keys.add(key);fixture.state.emails.push(m);}}};
 const root=resolve('dist'),pending=[];
 env.ASSETS={async fetch(request){const path=new URL(request.url).pathname,file=resolve(root,`.${path}${path.endsWith('/')?'index.html':''}`);if(!file.startsWith(root+'/'))return new Response(null,{status:404});try{return new Response(await readFile(file),{headers:{'Content-Type':({'.html':'text/html','.js':'text/javascript','.css':'text/css','.svg':'image/svg+xml'})[extname(file)] || 'application/octet-stream'}});}catch{return new Response(null,{status:404});}}};
@@ -67,11 +67,18 @@ try{
  await page.setViewportSize({width:390,height:844});eq(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:`${out}/application-mobile.png`,fullPage:true});await page.setViewportSize({width:1600,height:1080});
  await flow.reconcile(ids.b);eq(fixture.state.emails.length,1);
  const email=fixture.state.emails[0],link=/Agree to proceed: (\S+)/.exec(email.text)[1],landlord=fixture.state.applications.find(a=>a.id===ids.b).workspace.recommendation.landlord_email;
- await page.locator('[data-sign-out]').first().click();await page.waitForURL('**/login/');await page.getByLabel('Email address').waitFor();await page.goto(link);await page.getByRole('link',{name:'Sign in to continue'}).click();await page.getByLabel('Email address').fill(landlord);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/landlord-decision/**');await page.getByRole('button',{name:'Agree to proceed',exact:true}).waitFor();
+ // Stay signed in as an admin: the email capability must ignore this session.
+ await page.goto(link);await page.getByRole('button',{name:'Confirm Agree to Proceed',exact:true}).waitFor();
  eq(fixture.state.applications.find(a=>a.id===ids.b).status,'sent_to_landlord');
- await page.reload();await page.getByRole('button',{name:'Agree to proceed',exact:true}).waitFor();eq(fixture.state.applications.find(a=>a.id===ids.b).status,'sent_to_landlord');
+ await page.reload();await page.getByRole('button',{name:'Confirm Agree to Proceed',exact:true}).waitFor();eq(fixture.state.applications.find(a=>a.id===ids.b).status,'sent_to_landlord');
+ const anon=await browser.newContext({viewport:{width:390,height:844}}),anonPage=await anon.newPage();
+ await anonPage.goto(link.replace('choice=accept','choice=decline'));await anonPage.getByRole('button',{name:'Confirm Do Not Proceed',exact:true}).waitFor();
+ eq(await anonPage.getByRole('link',{name:/Sign In/}).count(),0);eq(await anonPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ await anonPage.getByRole('button',{name:'Confirm Do Not Proceed',exact:true}).click();eq(fixture.state.applications.find(a=>a.id===ids.b).status,'sent_to_landlord');
+ await anonPage.screenshot({path:`${out}/landlord-decline-mobile.png`,fullPage:true});await anon.close();
  await page.screenshot({path:`${out}/landlord-email-confirmation.png`,fullPage:true});
- await page.getByRole('button',{name:'Agree to proceed',exact:true}).click();await page.getByRole('heading',{name:'Decision recorded'}).waitFor();eq(fixture.state.applications.find(a=>a.id===ids.b).status,'landlord_approved');
+ await page.getByRole('button',{name:'Confirm Agree to Proceed',exact:true}).click();await page.getByRole('heading',{name:'Decision recorded'}).waitFor();eq(fixture.state.applications.find(a=>a.id===ids.b).status,'landlord_approved');
+ await page.reload();await page.getByRole('heading',{name:'Decision recorded'}).waitFor();
  eq(fixture.state.applications.find(a=>a.id===ids.b).workspace.lease_draft.missing.length,0);
  await login('admin@example.test');await page.goto(`${base}/admin/#/applications/${ids.b}`);await page.getByRole('tab',{name:'Lease & Decision',exact:true}).click();await page.getByRole('button',{name:'Download lease draft',exact:true}).waitFor();
  eq(await page.locator('[data-rental-panel]:visible').getAttribute('data-rental-panel'),'lease');
@@ -103,6 +110,6 @@ try{
  await page.getByText('Blocked · application evidence incomplete',{exact:true}).waitFor();checks++;
  await page.getByRole('tab',{name:'Lease & Decision',exact:true}).click();eq(await page.getByRole('button',{name:'Download lease draft',exact:true}).count(),0);eq(await page.getByRole('button',{name:'Record this tenant’s signature',exact:true}).count(),0);
  await page.getByRole('button',{name:'Reopen for review',exact:true}).click();await page.getByText('Collecting applications',{exact:true}).waitFor();eq(casey.status,'review');
- eq(errors,[]);console.log(`PASS ${checks} rental browser checks: grouped queue, per-person panels, mobile layout, email sign-in return, read-only links, landlord confirmation and automatic lease draft`);
+ eq(errors,[]);console.log(`PASS ${checks} rental browser checks: grouped queue, per-person panels, mobile layout, no-login email links, unrelated sessions, read-only previews, landlord confirmation and automatic lease draft`);
 }catch(e){await page.screenshot({path:`${out}/failure.png`,fullPage:true});console.error(await page.locator('main').innerText());throw e;}
 finally{await context.close();await browser.close();await Promise.allSettled(pending);await new Promise(r=>server.close(r));restore();}
