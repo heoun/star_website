@@ -222,11 +222,25 @@ function flush() {
   }
 }
 
+// macOS can report a file read (atime only) as a change. The build requires
+// this renderer, so rebuilding on every notification creates a restart loop.
+const rendererPath = path.join(__dirname, "render-html.js");
+function rendererVersion() {
+  const stats = fs.statSync(rendererPath);
+  return `${stats.mtimeMs}:${stats.ctimeMs}:${stats.size}`;
+}
+let lastRendererVersion = rendererVersion();
 const watchers = [
   fs.watch(site, { recursive: true }, (_event, name) => {
     if (name) schedule(path.join(site, name));
   }),
-  fs.watch(path.join(__dirname, "render-html.js"), () => schedule(path.join(__dirname, "render-html.js")))
+  fs.watch(rendererPath, () => {
+    let version;
+    try { version = rendererVersion(); } catch { return; } // An editor may replace the file.
+    if (version === lastRendererVersion) return;
+    lastRendererVersion = version;
+    schedule(rendererPath);
+  })
 ];
 
 // Wrangler reloads the Worker when .dev.vars changes, so the advice printed at
