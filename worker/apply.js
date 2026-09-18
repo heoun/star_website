@@ -4,6 +4,7 @@ import { sendEmail } from "./email.js";
 import { readSession } from "./portal.js";
 import { renderPage } from "./contact.js";
 import { rentalMode, rentalApplyOptions, submitRental, rentalWorkflow, runRentalAutomation } from "./rentals.js";
+import { submitTestApplication } from './internal-testing.js';
 
 const CONTACT_EMAIL = "info@starreusa.com";
 const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
@@ -598,7 +599,7 @@ export async function handleApplication(request, env, ctx) {
     return json({ error: "Please sign in to your applicant account to apply." }, 401);
   }
 
-  const response = await processApplication(request, env, ctx, body, session.email);
+  const response = await processApplication(request, env, ctx, body, session.email, session);
 
   // Supabase rotates refresh tokens: a session that was refreshed while this
   // submit was validated has to reach the browser, or the applicant is
@@ -609,7 +610,7 @@ export async function handleApplication(request, env, ctx) {
   return response;
 }
 
-async function processApplication(request, env, ctx, body, email) {
+async function processApplication(request, env, ctx, body, email, session) {
   const listingId = String(body.listing_id ?? "").trim();
   if (!UUID_PATTERN.test(listingId)) {
     return json({ error: "Unknown property." }, 400);
@@ -793,7 +794,11 @@ async function processApplication(request, env, ctx, body, email) {
       message: cleanMultiline(body.message, 2000) || null,
       ...(automatic ? {responsible_email:agent || null,workspace:{rental_flow:'automatic',invitations,terms:{'lease.commencement_date':start,'lease.end_date':end.toISOString().slice(0,10),'rent.monthly':String(listing.price_amount || ''),'deposit.amount':String(listing.price_amount || '')}}} : {})
     };
-    saved=automatic ? await submitRental(env,values,body.group_invite) : await insertApplication(env,values);
+    if(body.test_run_id) {
+      if(!automatic || body.group_invite)return json({error:'Test runs require an independent application.'},422);
+      const result=await submitTestApplication(request,env,session,values,body.test_run_id);saved=result.application;
+      if(result.replayed)return json({ok:true,application_id:saved.id,test_run_id:saved.id},200);
+    } else saved=automatic ? await submitRental(env,values,body.group_invite) : await insertApplication(env,values);
   } catch (error) {
     console.error("Application insert failed:", withoutRowValues(error?.message));
     return json({ error: error.status ? error.message : "The application could not be saved. Please try again." }, error.status || 500);
@@ -805,7 +810,7 @@ async function processApplication(request, env, ctx, body, email) {
       await runRentalAutomation(env,request,saved.rental_group_id || saved.id);
     })());
   }
-  ctx.waitUntil(sendNotification(request, env, listing, fullName));
+  if(!saved.workspace?.test_run)ctx.waitUntil(sendNotification(request, env, listing, fullName));
   ctx.waitUntil(sendReceipt(request, env, listing, email, employmentStatus));
-  return json({ ok: true }, 201);
+  return json({ ok: true, application_id:saved.id, ...(saved.workspace?.test_run?{test_run_id:saved.id}:{}) }, 201);
 }

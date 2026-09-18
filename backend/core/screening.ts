@@ -18,6 +18,7 @@ export function reportEvidenceIssue(s: ScreeningResult | undefined, applicationI
   return '';
 }
 export function screeningIssue(row: WorkspaceApplication, allowMock=false): string {
+  if(row.workspace?.screening_result?.status==='failed')return 'Credit-check provider failed to complete this report. Retry with the provider or start another internal test run.';
   const s=row.workspace?.screening_result;
   if (s?.status==='complete' && !['paid','waived'].includes(row.workspace?.checks?.fee || '')) return 'Credit report and payment records are inconsistent. Review payment evidence.';
   return reportEvidenceIssue(s,row.id,allowMock) || (s?.outcome==='no_score' ? 'Report returned no credit score; needs review. Automatic sharing is blocked.' : '');

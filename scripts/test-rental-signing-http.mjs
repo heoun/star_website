@@ -34,6 +34,10 @@ try {
  eq((await post({action:'prepare',version:row.workspace_version})).status,409);
  await flow.execute(landlord,ids.b,{action:'landlord_accept',version:row.workspace_version,revision:row.workspace.recommendation.revision});
  const version=row.workspace_version;
+ // Internal runs cannot send through an unconfigured environment or to other inboxes.
+ row.workspace.test_run={id:row.id,account_id:'test-account',created_at:new Date().toISOString()};
+ eq((await post({action:'prepare',version},agent)).status,403);
+ delete row.workspace.test_run;
  eq((await post({action:'prepare',version:version-1})).status,409);
  const prepared=await post({action:'prepare',version},agent);eq(prepared.status,200);const p=await prepared.json();eq(p.preview,true);eq(p.signing.signers.length,3);eq(reserves,0);
  const file=await get(agent,`?package=${p.signing.id}&file=source`);eq(file.status,200);eq(file.headers.get('Cache-Control'),'no-store');eq(new Uint8Array(await file.arrayBuffer())[0],80);

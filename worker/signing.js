@@ -5,6 +5,7 @@ import { requireDocsBucket } from './portal.js';
 import { missingIn } from './lease.js';
 import { buildSigningLease, sha256 } from './signing-template.js';
 import { SIGNING_TEMPLATE_VERSION, SIGNING_LAYOUT_REVIEW_REQUIRED } from '../site/shared/lease-signing-layout.js';
+import { internalTesting,internalTestListing } from '../backend/app/internal-testing.ts';
 const json=(data,status=200)=>Response.json(data,{status,headers:{'Cache-Control':'no-store'}});
 const error=(message,status=409)=>Object.assign(new Error(message),{status});
 const uuid=v=>typeof v==='string' && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
@@ -49,13 +50,14 @@ function safeRecord(record) {
     completed:record.phase==='completed',source_sha256:(record.package.reviewFile || record.package.documents[0].file).sha256,
     documents:record.package.documents.map(d=>({documentId:d.documentId,layout:d.layout,tenantRecipientId:d.tenantRecipientId,name:d.name,sha256:d.file.sha256})),values:{'concession.terms':record.package.values['concession.terms']}};
 }
-async function recipients(env,g) {
+async function recipients(env,g,request) {
   const tenants=g.members.map((m,i)=>({recipientId:String(i+1),memberId:m.id,role:'tenant',routingOrder:1,name:String(m.name || '').trim(),email:email(m.email)}));
   const w=g.root.workspace,landlordEmail=email(w?.recommendation?.landlord_email);
   const staff=(await fetchStaff(env)).filter(s=>s.active && s.role==='landlord' && s.property_ids?.includes(g.root.listings?.building_id));
   const building=await fetchBuilding(env,g.root.listings?.building_id);
   if(!staff.some(s=>email(s.email)===landlordEmail) || (building?.landlord_signer_email && email(building.landlord_signer_email)!==landlordEmail))throw error('The approved landlord is no longer this property’s signer. Review the landlord assignment.');
   const signers=[...tenants,{recipientId:String(tenants.length+1),memberId:null,role:'landlord',routingOrder:2,name:String(g.root.lease_snapshot?.['landlord.print_name'] || '').trim(),email:landlordEmail}];
+  if(w?.test_run && (!internalTesting(env,request) || !internalTestListing(env,g.root.listings?.id) || tenants.length!==1 || tenants[0].email!==email(env.INTERNAL_TEST_EMAIL) || landlordEmail!==email(env.INTERNAL_TEST_LANDLORD_EMAIL)))throw error('Internal test signing is limited to the configured test listing and recipient inboxes.',403);
   if(signers.some(s=>!s.name || s.name.length>100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email)) || new Set(signers.map(s=>s.email)).size!==signers.length)throw error('Each signer needs a legal name (up to 100 characters) and a distinct valid email address.');
   return signers;
 }
@@ -92,7 +94,7 @@ export async function handleRentalSigning(request,env,identity,id,ctx) {
       if(body.version!==g.root.workspace_version)throw error('The rental changed. Refresh and review it again.');
       const prior=await flow.store.current(id);
       if(prior && !['voided','declined'].includes(prior.phase))return json({configuration:config,signing:safeRecord(prior),reserved:true});
-      const signers=await recipients(env,g),packageId=crypto.randomUUID();
+      const signers=await recipients(env,g,request),packageId=crypto.randomUUID();
       let document;try{document=await buildSigningLease(env,request,g.root.lease_snapshot,signers,Object.fromEntries(g.members.map(m=>[m.id,{'tenant.mailing_address':m.current_address || ''}])));}catch(e){throw error(e.message,409);}
       const file=await files.put(packageId,'source_docx',new Response(document.docx).body);
       const documents=[];
@@ -111,7 +113,7 @@ export async function handleRentalSigning(request,env,identity,id,ctx) {
       if(prior?.package.id===record.package.id)return json({signing:safeRecord(prior),configuration:config});
       assertLease(workflow,g);
       if(body.version!==g.root.workspace_version)throw error('The rental changed. Prepare and review the lease again.');
-      const signers=await recipients(env,g);
+      const signers=await recipients(env,g,request);
       if(!sameSigners(signers,record.package.signers))throw error('The signers changed. Prepare a new signing package.');
       if(record.package.templateVersion!==SIGNING_TEMPLATE_VERSION)throw error('The signing layout changed. Prepare a new signing package.');
       if(SIGNING_LAYOUT_REVIEW_REQUIRED)throw error('Signature placement review is in progress. Confirm all 15 documents before sending.');

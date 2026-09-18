@@ -385,7 +385,7 @@ export async function fetchApplicationSsn(env, id) {
 // because "_" in an address would otherwise be a single-character wildcard
 // to the database.
 const PORTAL_APPLICATION_COLUMNS =
-  "id,name,email,status,created_at,move_in,lease_term_months," +
+  "id,listing_id,name,email,status,created_at,move_in,lease_term_months," +
   "listings(title,property_name,unit,location)," +
   "application_documents(id,doc_type,file_name,content_type,size_bytes,created_at)";
 
@@ -427,7 +427,7 @@ export async function fetchApplicationsByEmail(env, email) {
 // completion notice.
 export async function fetchPortalApplication(env, id) {
   const columns = workOrSchoolColumns
-    ? "id,name,email,status,employment_status,listings(title,property_name,unit)"
+    ? "id,listing_id,name,email,status,employment_status,workspace,listings(title,property_name,unit)"
     : "id,name,email,status,listings(title,property_name,unit)";
   let response;
   try {

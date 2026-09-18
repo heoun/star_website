@@ -59,7 +59,7 @@ export function makeRentals(d: RentalDependencies) {
       base.allowed_actions=base.allowed_actions.filter((a:string)=>['group','note','admin_note','assign'].includes(a));
     }
     if(!terminal(g) && !['sent_to_landlord','landlord_approved'].includes(g.root.status)) {
-      const staffIssue=issues.some(i=>/Lease terms|Assign a landlord/.test(i)) || g.members.some(m=>!!screeningIssue(m,d.allowMockScreening) && ['complete','not_connected'].includes(m.workspace?.screening_result?.status || ''));
+      const staffIssue=issues.some(i=>/Lease terms|Assign a landlord/.test(i)) || g.members.some(m=>!!screeningIssue(m,d.allowMockScreening) && ['complete','not_connected','failed'].includes(m.workspace?.screening_result?.status || ''));
       base.next_step={...base.next_step,label:issues.length ? 'Complete the Application Group' : 'Preparing the Landlord Email',bucket:staffIssue ? 'attention':'waiting',owner:staffIssue ? 'you':'applicant'};
     }
     if(p.role==='manager' && !g.root.responsible_email && !terminal(g)) base.next_step={...base.next_step,label:'Assign a Responsible Agent',bucket:'attention',owner:'you'};

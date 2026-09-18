@@ -1,5 +1,7 @@
 import { storageBucket } from "./storage.js";
 import { runRentalAutomation } from "./rentals.js";
+import { applicantChecksFor } from '../backend/app/applicant-checks.ts';
+import { internalTestAccount,internalTestListing } from './internal-testing.js';
 // The applicant portal: /portal/ in the browser, /api/portal/* here.
 //
 // Applying for a home starts with an account, and the accounts are Supabase
@@ -37,6 +39,7 @@ import {
   fetchPortalApplication,
   insertApplicationDocument
 } from "./supabase.js";
+import { requireConfig } from './supabase.js';
 
 const CONTACT_EMAIL = "info@starreusa.com";
 const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
@@ -235,6 +238,8 @@ export function toPortalApplication(row) {
   const asked = row.workspace?.info_request;
   return {
     id: row.id,
+    listing_id:row.listing_id,
+    ...(row.workspace?.test_run ? {test_run:{id:row.workspace.test_run.id,created_at:row.workspace.test_run.created_at},payment:row.workspace.test_payment || null,screening:{status:row.workspace.screening_result?.status || 'not_started',submitted:!!row.workspace.test_screening,outcome:row.workspace.screening_result?.outcome},signing_phase:row.workspace.signing?.phase || null} : {}),
     name: row.name,
     status: row.status,
     created_at: row.created_at,
@@ -256,10 +261,10 @@ export function toPortalApplication(row) {
   };
 }
 
-async function handleList(env, session) {
+async function handleList(env, session,request) {
   const rows = await fetchApplicationsByEmail(env, session.email);
   const applications = rows.map(toPortalApplication);
-  return json({ email: session.email, document_types: DOCUMENT_TYPES, applications });
+  return json({ email: session.email, internal_testing:internalTestAccount(env,request,session),document_types: DOCUMENT_TYPES, applications });
 }
 
 async function handleUpload(request, env, ctx, session, applicationId) {
@@ -271,6 +276,8 @@ async function handleUpload(request, env, ctx, session, applicationId) {
   if (!application || String(application.email || "").trim().toLowerCase() !== session.email) {
     return json({ error: "Application not found." }, 404);
   }
+
+  if(application.workspace?.test_run && (!internalTestAccount(env,request,session) || application.workspace.test_payment?.status!=='paid'))return json({error:'Complete the internal test payment before uploading materials.'},409);
 
   const form = await request.formData().catch(() => null);
   const file = form?.get("file");
@@ -324,7 +331,7 @@ async function handleUpload(request, env, ctx, session, applicationId) {
   // Tell the office once, when the checklist crosses from incomplete to
   // complete — not on every one of the eight uploads.
   if (!checklistComplete(existing, application) && checklistComplete(existing.concat(row), application)) {
-    ctx.waitUntil(sendCompletionNotice(request, env, application));
+    if(!application.workspace?.test_run)ctx.waitUntil(sendCompletionNotice(request, env, application));
   }
 
   ctx.waitUntil(runRentalAutomation(env,request,applicationId));
@@ -396,7 +403,18 @@ export async function handlePortalRequest(request, env, ctx, pathname) {
     if (resource === "me" && !id && request.method === "GET") {
       response = json({ email: session.email });
     } else if (resource === "applications" && !id && request.method === "GET") {
-      response = await handleList(env, session);
+      response = await handleList(env, session,request);
+    } else if(resource==='applications' && UUID_PATTERN.test(id || '') && ['payment','screening','refresh'].includes(subresource) && request.method==='POST') {
+      if(!internalTestAccount(env,request,session))return json({error:'Test actions are unavailable.'},403);
+      const application=await fetchPortalApplication(env,id);
+      if(application?.email!==session.email || application.workspace?.test_run?.account_id!==session.subject || !internalTestListing(env,application.listing_id))return json({error:'Test application not found.'},404);
+      if(subresource==='refresh'){await runRentalAutomation(env,request,id);response=json({ok:true});}
+      else {
+        const body=await request.json().catch(()=>null);if(!body)return json({error:'Send this form as JSON.'},422);
+        const checks=applicantChecksFor(requireConfig(env),env,row=>checklistComplete(row.application_documents || [],row)?[]:['Required documents missing']);
+        response=json(await checks.execute(id,session,subresource,body));
+        ctx.waitUntil(runRentalAutomation(env,request,id));
+      }
     } else if (resource === "applications" && id && subresource === "documents" && request.method === "POST") {
       response = await handleUpload(request, env, ctx, session, id);
     } else if (resource === "documents" && id && !subresource && request.method === "GET") {
@@ -413,6 +431,6 @@ export async function handlePortalRequest(request, env, ctx, pathname) {
     return response;
   } catch (error) {
     console.error("Portal request failed", error);
-    return json({ error: "The request could not be completed." }, 500);
+    return json({ error: error.status ? error.message : "The request could not be completed." }, error.status || 500);
   }
 }

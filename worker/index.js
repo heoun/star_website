@@ -10,6 +10,8 @@ import { handlePortalRequest } from "./portal.js";
 import { handleBackendRequest } from "../backend/app/index.ts";
 import { rentalMode, rentalApplyOptions, reconcileRentals } from "./rentals.js";
 import { handleDocusignWebhook, reconcileSigning } from './signing.js';
+import { readSession } from './auth.js';
+import { internalTesting,internalTestAccount,internalTestListing } from '../backend/app/internal-testing.ts';
 
 export default {
   async scheduled(_event,env,ctx) {
@@ -21,7 +23,11 @@ export default {
     const pathname = url.pathname;
     if(pathname==='/api/webhooks/docusign')return handleDocusignWebhook(request,env,ctx);
     if(pathname==='/api/apply/options' && request.method==='GET') {
-      try {return Response.json({automatic:rentalMode(env),agents:rentalMode(env) ? await rentalApplyOptions(env,url.searchParams.get('id')) : []},{headers:{'Cache-Control':'no-store'}});}
+      try {
+        const session=internalTesting(env,request)?await readSession(request,env):null;
+        const response=Response.json({automatic:rentalMode(env),internal_testing:internalTestAccount(env,request,session) && internalTestListing(env,url.searchParams.get('id')),agents:rentalMode(env) ? await rentalApplyOptions(env,url.searchParams.get('id')) : []},{headers:{'Cache-Control':'no-store'}});
+        if(session?.setCookie)response.headers.append('Set-Cookie',session.setCookie);return response;
+      }
       catch {return Response.json({error:'Application options are unavailable.'},{status:503});}
     }
 

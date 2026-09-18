@@ -45,6 +45,9 @@ export interface ScreeningResult {
   source?: 'manual' | 'provider' | 'mock'; verified_by?: string; verified_at?: string;
 }
 export interface WorkspaceState {
+  test_run?: import('./applicant-checks.ts').TestRun;
+  test_payment?: import('./applicant-checks.ts').PaymentReceipt;
+  test_screening?: {order_id:string;consent_at:string;scenario:import('./applicant-checks.ts').ScreeningScenario};
   signing?: { package_id: string; phase: string };
   rental_flow?: 'automatic';
   automation_issue?: string;

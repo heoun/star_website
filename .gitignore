@@ -39,6 +39,7 @@ coverage/
 # Generated artifacts and patch scratch files; keep source assets under site/.
 /tmp/
 /output/
+/.local/
 *.tmp
 *.orig
 *.rej

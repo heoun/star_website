@@ -125,7 +125,8 @@ export function createWorkspaceFixtures(saved) {
       return response(rows);
     }
     if (table === "application_documents") {
-      const rows = state.documents.filter(row => match(row, q, "id"));
+      if(method==='POST'){const row={id:crypto.randomUUID(),created_at:new Date().toISOString(),...body};state.documents.push(row);return response([row]);}
+      const rows = state.documents.filter(row => match(row, q, "id") && match(row,q,'application_id'));
       if (method === "DELETE") state.documents = state.documents.filter(row => !rows.includes(row));
       return response(rows);
     }
