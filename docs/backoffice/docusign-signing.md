@@ -62,7 +62,8 @@ Packages 的表格有额外空段落，Key 的行距和列宽不同，分别保�
 Fine Schedule 仍属于原文档导航中的 Community Rules 范围，但签署预览可独立选择。
 E-sign Recipients 中通过 Document 下拉框切换位置预览。
 
-其余九份的配置如下，发送继续暂停，等待用户核对与供应商转换验证：
+其余九份的配置如下。用户已于 2026-09-18 确认全部平台签字预览，已解除临时发送暂停，
+下一步通过 sandbox 签署核对供应商转换结果：
 
 - Window Guards：租客 Signature / Date Signed。
 - Bedbug：租客和房东各 Signature / Date Signed。
@@ -75,7 +76,7 @@ Window Guards、Bedbug、DHCR 原稿只有一组租客签字线，为每位租�
 分别填入该租客资料，并通过 **Tenant Copy** 切换预览，避免多人字段重叠。
 其余表单沿用原有八个租客位置。Date Signed 由 DocuSign 在对应收件人签署时填写。
 平台校验每份已保存源文件的 hash 后显示覆盖层；预览内容不写进合同正文。
-平台覆盖层和本地 Word 渲染不能证明 DocuSign 转换后的最终坐标准确；真实发送前仍须
+平台覆盖层和本地 Word 渲染不能证明 DocuSign 转换后的最终坐标准确；生产使用前仍须
 核对 DocuSign sandbox 转换后的 PDF 与字段。
 
 签署包冻结 `lease_snapshot`、approval revision、模板版本、逐人收件人、tabs、
@@ -234,7 +235,7 @@ JWT 需要 `signature impersonation` scopes 和有效 consent。
    普通 `npm run dev` 不启动这个本地定时器。
 7. 依次完成 tenants 和 landlord 签署，检查每个签署位置，下载 PDF 与 certificate。
    原主合同支持最多八位租客；复杂长姓名及实际 DocuSign 转换排版仍需 sandbox 验收。
-   当前应先完成全部文件的签署位置核对，再解除发送暂停。此项不能由 mock 测试替代。
+   平台位置审核已完成；接下来验证 sandbox 转换和实际签署。此项不能由 mock 测试替代。
 
 生产使用相同代码，但必须使用已完成 Go-Live 的生产 Integration Key、生产 sender
 + account，并在 `account.docusign.com` 重新获取 consent。

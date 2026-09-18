@@ -1,7 +1,9 @@
 // Individually reviewed document layouts. Preserve the source DOCX; tabs use existing unique text.
 // Geometry (points) is measured against the retained template's original lines.
 export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-18-all-v4';
-export const SIGNING_LAYOUT_REVIEW_REQUIRED=true;
+// Platform previews for all configured documents were approved on 2026-09-18.
+// Provider-converted placement still needs verification in the sandbox.
+export const SIGNING_LAYOUT_REVIEW_REQUIRED=false;
 export const MAIN_SIGNING_ANCHORS={
  jury:'JURY TRIAL WAIVER.',class:'CLASS ACTION WAIVER.',
  execution:'This Lease is entered into between Landlord and Tenant as of the Effective Date set forth above.'

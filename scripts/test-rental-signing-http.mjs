@@ -53,10 +53,10 @@ try {
    stored[field]=before;
  }
  eq(reserves,0);
- const blocked=await post({action:'send',packageId:p.signing.id,version},agent);eq(blocked.status,409);eq((await blocked.json()).error,'Signature placement review is in progress. Confirm all 15 documents before sending.');eq(reserves,0);
+ eq(p.configuration.placementReviewRequired,false);eq(p.configuration.canSend,true);
+ const sent=await post({action:'send',packageId:p.signing.id,version},agent);eq(sent.status,202);eq((await sent.json()).signing.id,p.signing.id);eq(reserves,1);
  // An already-reserved request is still returned idempotently, never resent.
- records.get(p.signing.id).reserved=true;row.workspace.signing={package_id:p.signing.id,phase:'preparing'};
- eq((await post({action:'send',packageId:p.signing.id,version},agent)).status,200);eq(reserves,0);
+ eq((await post({action:'send',packageId:p.signing.id,version},agent)).status,200);eq(reserves,1);
  await assert.rejects(()=>flow.execute(agent,ids.b,{action:'tenant_signed',version:row.workspace_version,member_id:row.id,reason:'manual'}),e=>e.status===409);checks++;
  eq((await handleDocusignWebhook(new Request('https://example.test/api/webhooks/docusign',{method:'POST',body:'{}'}),env)).status,401);
  const selected=await (await get(agent)).json();eq(selected.signing.id,p.signing.id);eq(JSON.stringify(selected).includes('source_docx-'),false);

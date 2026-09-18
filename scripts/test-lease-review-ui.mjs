@@ -104,7 +104,7 @@ try{
  eq(await panel.locator('.signing-recipients').count(),0);
  eq(await panel.getByRole('button',{name:'Review Lease Draft',exact:true}).count(),0);
  eq(await panel.getByRole('button',{name:'Send With DocuSign',exact:true}).count(),0);
- eq(await page.getByRole('button',{name:'Send With DocuSign',exact:true}).isDisabled(),true);
+ eq(await page.getByRole('button',{name:'Send With DocuSign',exact:true}).isEnabled(),true);
  eq(packages.size,0);
  await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  await page.getByRole('button',{name:'Review Signing Package',exact:true}).click();
@@ -116,7 +116,7 @@ try{
  await writeFile(`${out}/main-signing-review.docx`,await qaSource.body());
  await savedFrame.locator('section.docx').first().waitFor();
  eq(await savedFrame.locator('#status').isHidden(),true);
- eq(await page.getByRole('button',{name:'Send With DocuSign',exact:true}).isDisabled(),true);
+ eq(await page.getByRole('button',{name:'Send With DocuSign',exact:true}).isEnabled(),true);
  await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();
  eq(await panel.locator('.ws-signer').count(),3);
  eq(await page.getByRole('button',{name:'Send With DocuSign',exact:true}).count(),1);
