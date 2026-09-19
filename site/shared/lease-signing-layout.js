@@ -1,64 +1,105 @@
-// Individually reviewed document layouts. Preserve the source DOCX; tabs use existing unique text.
-// Geometry (points) is measured against the retained template's original lines.
-export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-18-all-v4';
-// Platform previews for all configured documents were approved on 2026-09-18.
-// Provider-converted placement still needs verification in the sandbox.
+// Where each signer's fields go, and how big they are.
+//
+// Every field is placed by an anchor token: a tiny white string written into
+// the exact paragraph or table cell where the signature belongs (see
+// worker/signing-anchors.js). DocuSign finds the token in its own converted
+// PDF and puts the tab on top of it, so the position comes from Word's layout
+// of the signed document itself, never from coordinates measured elsewhere.
+// A longer name, an extra tenant or a rider pushed onto the next page moves
+// the token and the tab together.
+//
+// What remains here is structure: which table, row and cell a slot occupies,
+// or which paragraph carries the line. Geometry is the small TAB_GEOMETRY
+// table below, shared by every document and signer.
+export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-19-anchor-v8';
 export const SIGNING_LAYOUT_REVIEW_REQUIRED=false;
-export const MAIN_SIGNING_ANCHORS={
- jury:'JURY TRIAL WAIVER.',class:'CLASS ACTION WAIVER.',
- execution:'This Lease is entered into between Landlord and Tenant as of the Effective Date set forth above.'
+
+// PDF points. The tab control includes transparent padding; `ink` describes
+// the visible signature stamp. Use the latter for preview/collision checks.
+// Anchor resolution uses fixed 33pt / 38.4pt reference heights even when
+// scaleValue changes the rendered stamp. Compensate that difference before
+// applying the desired distance from the line. Verified against Sandbox tabs.
+// Signature lines retain their original font metrics when anchors are added.
+export const TAB_GEOMETRY={
+ signature:{scale:.75,width:112.5,height:41.25,anchorHeight:33,below:12.5,ink:{height:24.25,lift:11.25}},
+ initial:{scale:.8,width:48,height:51.2,anchorHeight:38.4,below:20.5,ink:{height:15.33,lift:20}},
+ full_name:{fontSize:'Size11',width:106,height:13,below:1,ink:{height:13,lift:0}},
+ date_signed:{fontSize:'Size11',width:78,height:13,below:1,ink:{height:13,lift:0}}
 };
-export function mainAgreementFields(signers){
- const tenants=signers.filter(s=>s.role==='tenant'),landlords=signers.filter(s=>s.role==='landlord');
- if(!tenants.length || tenants.length>8 || landlords.length!==1)throw new Error('The original agreement has space for one to eight tenants and one landlord.');
- const fields=[];
- const add=(s,section,kind,slot,x,y,anchorX,anchorY,width)=>fields.push({
-   id:`main-${section}-${s.recipientId}-${kind}`,recipientId:s.recipientId,documentId:'1',document:'lease',layout:'lease',section,kind,slot,
-   anchor:MAIN_SIGNING_ANCHORS[section==='38'?'jury':section==='39'?'class':'execution'],
-   xOffset:+((x-anchorX)*4/3).toFixed(2),yOffset:+((y-anchorY)*4/3-(kind==='full_name'?12:18)).toFixed(2),
-   units:'pixels',scale:.5,width:+(width*4/3).toFixed(2),height:kind==='full_name'?12:18,
-   role:s.role,name:s.name,email:s.email
- });
- tenants.forEach((s,i)=>{
-   const x=[179.1,228.6,278.1,327.6,377.1,426.6,476.1,526.3][i];
-   add(s,'38','initial',i,x,449.7,68.5,376.526,35.7);
-   add(s,'39','initial',i,x,551.4,68.5,465.576,35.7);
-   const sx=[119.7,235.5,347.2,462.4][i%4],second=i>=4;
-   add(s,'47','signature',i,sx,second?176.9:135.2,86.5,83.676,92.45);
-   add(s,'47','full_name',i,sx,second?190:148.7,86.5,83.676,92.45);
- });
- add(landlords[0],'47','signature',0,114.3,233.8,86.5,83.676,226.55);
- add(landlords[0],'47','full_name',0,114.3,247.2,86.5,83.676,226.55);
- return fields;
-}
+const PX=96/72;
 
-// Each rider is measured separately against its own retained signature lines.
-// Fine Schedule is a separately selectable attachment inside the rules document.
+// The eight-slot signature tables every rider shares: row 0 says "Tenant:",
+// rows 1–4 alternate Signature / Print Name with four slots each, and the
+// landlord table has Signature and Print Name rows with one cell. `tables`
+// are indices within the standalone document.
+const standardCell=(role,slot,kind)=>role==='landlord'
+ ?{table:'landlord',row:kind==='full_name'?1:0,cell:1,...(kind==='signature'?{xInset:130}:{})}
+ :{table:'tenant',row:1+(slot>=4?2:0)+(kind==='full_name'?1:0),cell:1+slot%4};
+// The sprinkler notice merges "Tenant:" into the first Signature row.
+const sprinklerCell=(role,slot,kind)=>role==='landlord'?standardCell(role,slot,kind):{table:'tenant',row:(slot>=4?2:0)+(kind==='full_name'?1:0),cell:1+slot%4};
+
 export const SIGNING_DOCUMENTS=[
- {id:'lease',document:'lease',name:'New York Residential Lease Agreement',tenantTable:2,landlordTable:3},
- {id:'utilities',document:'utilities',name:'Utilities – Simple Form',tenantTable:5,landlordTable:6,anchor:'This Form is entered into between',origin:[86.5,223.226],lines:[274.7,288.2,316.4,329.5,373.4,386.8]},
- {id:'packages',document:'packages',name:'Packages Rider',tenantTable:7,landlordTable:8,tenantParagraphOffset:3,anchor:'this Addendum have',origin:[446.759,325.226],lines:[415.1,428.6,456.8,469.9,513.8,527.2]},
- {id:'keys',document:'keys',name:'Key Rider',tenantTable:10,landlordTable:11,anchor:'Tenant shall immediately report',origin:[137.5835,426.268],columns:[119.7,236.3,347.9,462.8],tenantWidth:92.25,landlordWidth:226.45,lines:[548.6,561.7,585.8,597.9,635.5,648.2]},
- {id:'insurance',document:'insurance',name:'New York Renters Insurance Rider',tenantTable:12,landlordTable:13,anchor:'The cost of LPTLI coverage',origin:[86.5,121.626],lines:[249.5,263,291.2,304.3,348.1,361.5]},
- {id:'rules',document:'rules',name:'Community Rules Rider',tenantTable:14,landlordTable:15,anchor:'A violation of the above rules',origin:[79.9,159.576],lines:[236.8,250.3,278.5,291.6,335.5,348.9]},
- {id:'fines',document:'rules',name:'Fine Schedule',tenantTable:17,landlordTable:18,anchor:'I hereby acknowledge the fine schedule',origin:[50.45,313.526],columns:[119.7,235.5,347.2,462.5],lines:[432.3,445.8,474,487.1,530.9,544.2]},
- {id:'window_guards',document:'window_guards',name:'Window Guards Required Lease Notice to Tenant',individual:true,special:true},
- {id:'bedbug',document:'bedbug',name:'Bedbug Infestation History Disclosure',individual:true,special:true},
- {id:'sprinkler',document:'sprinkler',name:'Sprinkler System Notice',tenantTable:21,landlordTable:22,tenantParagraphOffset:-1,anchor:'Sprinkler System Notice provided',origin:[50.5,235.84],columns:[119.7,233.6,346.1,461.4],tenantWidth:92.7,landlordWidth:226.75,lines:[277.3,308.3,338.7,354.8,404.1,418.6]},
- {id:'allergen',document:'allergen',name:'Indoor Allergen Hazards Notice',special:true},
- {id:'alarms',document:'alarms',name:'Gas Leak, Carbon Monoxide and Smoke Alarm Rider',tenantTable:25,landlordTable:26,anchor:'This Rider is entered into between',origin:[86.5,45.726],lines:[97.7,111.2,139.4,152.5,196.3,209.7]},
- {id:'smoking',document:'smoking',name:'Smoking Policy Rider',tenantTable:29,landlordTable:30,anchor:'This Rider is entered into between',origin:[86.5,45.726],lines:[97.2,110.7,138.9,152,195.9,209.3]},
- {id:'concession',document:'concession',name:'Rent Concession Rider',conditional:true,tenantTable:31,landlordTable:32,anchor:'Tenant:',origin:[55.9,132.08],lines:[157.8,171.3,199.5,212.6,256.4,269.7]},
- {id:'dhcr',document:'dhcr',name:'DHCR Electronic Lease Consent',individual:true,special:true},
- {id:'good_cause',document:'good_cause',name:'Good Cause Eviction Notice',tenantTable:37,landlordTable:38,anchor:'Tenant:',origin:[55.9,451.48],lines:[477.2,490.7,518.9,532,575.9,589.3]}
-
+ {id:'lease',document:'lease',name:'New York Residential Lease Agreement',tables:{tenant:2,landlord:3},place:standardCell,
+  initials:[{section:'38',paragraph:{starts:'Tenant(s)’ initials',nth:0}},{section:'39',paragraph:{starts:'Tenant(s)’ initials',nth:1}}]},
+ {id:'utilities',document:'utilities',name:'Utilities – Simple Form',tables:{tenant:1,landlord:2},place:standardCell},
+ {id:'packages',document:'packages',name:'Packages Rider',tables:{tenant:0,landlord:1},place:standardCell},
+ {id:'keys',document:'keys',name:'Key Rider',tables:{tenant:1,landlord:2},place:standardCell},
+ {id:'insurance',document:'insurance',name:'New York Renters Insurance Rider',tables:{tenant:0,landlord:1},place:standardCell},
+ {id:'rules',document:'rules',name:'Community Rules Rider',tables:{tenant:0,landlord:1},place:standardCell},
+ {id:'fines',document:'rules',name:'Fine Schedule',tables:{tenant:1,landlord:2},place:standardCell},
+ {id:'window_guards',document:'window_guards',name:'Window Guards Required Lease Notice to Tenant',individual:true,tenantOnly:true,
+  kinds:['signature','date_signed'],place:(role,slot,kind)=>kind==='signature'?{paragraph:{is:'Tenant’s Signature:'},nextLine:true,xInset:100}:{paragraph:{is:'Date:'},nextLine:true}},
+ {id:'bedbug',document:'bedbug',name:'Bedbug Infestation History Disclosure',individual:true,kinds:['signature','date_signed'],
+  place:(role,slot,kind)=>({paragraph:{contains:role==='tenant'?'Signature of Tenant(s):':'Signature of Owner/Agent:'},beforeUnderlined:kind==='signature'?0:1})},
+ {id:'sprinkler',document:'sprinkler',name:'Sprinkler System Notice',tables:{tenant:1,landlord:2},place:sprinklerCell},
+ {id:'allergen',document:'allergen',name:'Indoor Allergen Hazards Notice',landlordOnly:true,kinds:['signature','full_name','date_signed'],
+  tables:{landlord:0},place:(role,slot,kind)=>({table:'landlord',row:{signature:0,full_name:1,date_signed:2}[kind],cell:1})},
+ {id:'alarms',document:'alarms',name:'Gas Leak, Carbon Monoxide and Smoke Alarm Rider',tables:{tenant:1,landlord:2},place:standardCell},
+ {id:'smoking',document:'smoking',name:'Smoking Policy Rider',tables:{tenant:2,landlord:3},place:standardCell},
+ {id:'concession',document:'concession',name:'Rent Concession Rider',conditional:true,tables:{tenant:0,landlord:1},place:standardCell},
+ {id:'dhcr',document:'dhcr',name:'DHCR Electronic Lease Consent',individual:true,kinds:['signature','date_signed'],tables:{tenant:3,landlord:1},
+  place:(role,slot,kind)=>({table:role,row:0,cell:kind==='signature'?1:0})},
+ {id:'good_cause',document:'good_cause',name:'Good Cause Eviction Notice',tables:{tenant:0,landlord:1},place:standardCell}
 ];
-export const LOCAL_TABLE_BASE={lease:0,utilities:4,packages:7,keys:9,insurance:12,rules:14,fines:16,window_guards:19,bedbug:19,sprinkler:20,allergen:23,alarms:24,smoking:27,concession:31,dhcr:33,good_cause:37};
 export const signingFieldLabel=kind=>({signature:'Signature',initial:'Initials',full_name:'Print Name',date_signed:'Date Signed'})[kind];
 export function hasConcession(values={}){
  const text=String(values['concession.terms'] || '').trim();
  return !!text && !/^(?:none|n\/a|not applicable|no(?: rent)? concession(?:s)?(?:\b.*)?|mock test only.*)[.!]?$/i.test(text);
 }
+const CODES={lease:'LEASE',utilities:'UTIL',packages:'PKG',keys:'KEYS',insurance:'INS',rules:'RULES',fines:'FINES',window_guards:'WG',bedbug:'BEDBUG',sprinkler:'SPRK',allergen:'ALRG',alarms:'ALARM',smoking:'SMOKE',concession:'CONC',dhcr:'DHCR',good_cause:'GCE'};
+const KIND_CODES={signature:'SIG',full_name:'NAME',date_signed:'DATE',initial:'INIT'};
+// Unique across the envelope: one recipient signs each layout once, so the
+// pair identifies the field even where a layout appears in several copies.
+export const anchorToken=(layoutId,recipientId,kind,section='')=>`\\${CODES[layoutId]}-R${recipientId}-${KIND_CODES[kind]}${section}\\`;
+
+function field(layout,signer,slot,kind,placement,section='') {
+ // The second tenant row has only 19pt above its underline. Keep the
+ // complete DocuSign frame inside that gap. Landlord headings occupy the
+ // left of their longer line, so place the stamp in the clear right half.
+ let g=TAB_GEOMETRY[kind];
+ if(kind==='signature' && (placement.xInset===130 || (placement.table==='tenant' && slot>=4))) {
+  const scale=placement.xInset===130?.65:.55,ratio=scale/g.scale;
+  g={...g,scale,width:g.width*ratio,height:g.height*ratio,below:g.ink.lift*ratio+1.25,
+   ink:{height:g.ink.height*ratio,lift:g.ink.lift*ratio}};
+ }
+ return {id:`${layout.id}-${section?section+'-':''}${signer.recipientId}-${kind}`,recipientId:signer.recipientId,documentId:'1',document:layout.document,layout:layout.id,
+  ...(section?{section}:{}),kind,slot,role:signer.role,name:signer.name,email:signer.email,
+  anchor:anchorToken(layout.id,signer.recipientId,kind,section),placement:{...placement,table:placement.table?layout.tables[placement.table]:undefined},
+  units:'pixels',xOffset:+((placement.xInset || 0)*PX).toFixed(2),yOffset:+((g.below-g.height+(g.anchorHeight??g.height))*PX).toFixed(2),anchorHeight:+((g.anchorHeight??g.height)*PX).toFixed(2),width:+(g.width*PX).toFixed(2),height:+(g.height*PX).toFixed(2),inkHeight:+(g.ink.height*PX).toFixed(2),inkLift:+(g.ink.lift*PX).toFixed(2),...(g.scale?{scale:g.scale}:{fontSize:g.fontSize})};
+}
+
+export function mainAgreementFields(signers){
+ const tenants=signers.filter(s=>s.role==='tenant'),landlords=signers.filter(s=>s.role==='landlord');
+ if(!tenants.length || tenants.length>8 || landlords.length!==1)throw new Error('The original agreement has space for one to eight tenants and one landlord.');
+ const layout=SIGNING_DOCUMENTS[0],fields=[];
+ tenants.forEach((s,i)=>{
+  for(const initials of layout.initials)fields.push(field(layout,s,i,'initial',{paragraph:initials.paragraph,beforeUnderlined:i},initials.section));
+  for(const kind of ['signature','full_name'])fields.push(field(layout,s,i,kind,layout.place('tenant',i,kind)));
+ });
+ for(const kind of ['signature','full_name'])fields.push(field(layout,landlords[0],0,kind,layout.place('landlord',0,kind)));
+ return fields;
+}
+
 export function signingFields(signers,layoutId,values={}){
  const main=mainAgreementFields(signers);
  if(layoutId==='lease')return main;
@@ -67,50 +108,14 @@ export function signingFields(signers,layoutId,values={}){
  const fields=layoutId?[]:main;
  for(const layout of layouts){
   if(layout.conditional && !hasConcession(values))continue;
-  if(layout.special){fields.push(...noticeFields(signers,layout));continue;}
   let tenantSlot=0;
   for(const signer of signers){
-   const tenant=signer.role==='tenant',slot=tenant?tenantSlot++:0;
-   for(const kind of ['signature','full_name']){
-    const line=tenant?(slot>=4?2:0)+(kind==='full_name'?1:0):4+(kind==='full_name'?1:0);
-    const x=tenant?(layout.columns || [119.7,235.5,347.2,462.4])[slot%4]:114.3;
-    const height=kind==='full_name'?12:18;
-    fields.push({id:`${layout.id}-${signer.recipientId}-${kind}`,recipientId:signer.recipientId,documentId:'1',document:layout.document,layout:layout.id,kind,slot,
-     anchor:layout.anchor,xOffset:+((x-layout.origin[0])*4/3).toFixed(2),yOffset:+((layout.lines[line]-layout.origin[1])*4/3-height).toFixed(2),
-     units:'pixels',scale:.5,width:+((tenant?(layout.tenantWidth || 92.45):(layout.landlordWidth || 226.55))*4/3).toFixed(2),height,
-     role:signer.role,name:signer.name,email:signer.email});
-   }
+   const tenant=signer.role==='tenant';
+   if((tenant && layout.landlordOnly) || (!tenant && layout.tenantOnly))continue;
+   const slot=tenant?tenantSlot++:0;
+   if(slot>=8)throw new Error('The original riders have space for eight tenants.');
+   for(const kind of layout.kinds || ['signature','full_name'])fields.push(field(layout,signer,slot,kind,layout.place(signer.role,slot,kind)));
   }
  }
  return fields;
-}
-
-function noticeFields(signers,layout){
- const result=[];
- function add(s,kind,anchor,origin,x,lineY,width,target){
-  const height=kind==='signature'?18:12;
-  result.push({id:`${layout.id}-${s.recipientId}-${kind}`,recipientId:s.recipientId,documentId:'1',document:layout.document,layout:layout.id,kind,slot:0,anchor,units:'pixels',scale:.5,
-   xOffset:+((x-origin[0])*4/3).toFixed(2),yOffset:+((lineY-origin[1])*4/3-height).toFixed(2),width:width*4/3,height,role:s.role,name:s.name,email:s.email,target});
- }
- for(const s of signers){
-  const tenant=s.role==='tenant';
-  if(layout.id==='window_guards' && tenant){
-   add(s,'signature','Tenant’s Signature:',[36.1,536.05],36,561.5,334.95,{paragraph:'Tenant’s Signature:',next:true});
-   add(s,'date_signed','Tenant’s Signature:',[36.1,536.05],36,593.3,334.95,{paragraph:'Date:',next:true});
-  }
-  if(layout.id==='bedbug'){
-   const anchor=tenant?'Signature of Tenant(s):':'Signature of Owner/Agent:',origin=tenant?[42.7,617.19]:[42.7,674.89];
-   add(s,'signature',anchor,origin,tenant?153.85:173.2,tenant?628:685.7,tenant?238.1:219.1,{table:0,p:tenant?31:35,tab:0});
-   add(s,'date_signed',anchor,origin,tenant?429.9:430.3,tenant?628:685.7,102.1,{table:0,p:tenant?31:35,tab:1});
-  }
-  if(layout.id==='allergen' && !tenant){
-   for(const [i,kind] of ['signature','full_name','date_signed'].entries())add(s,kind,'Signed:',[50.5,330.03],114.3,[341.9,355.3,368.7][i],153.35,{table:0,p:1+i*2});
-  }
-  if(layout.id==='dhcr'){
-   const anchor=tenant?'Tenant Signature(s) (Ink or Electronic)':'Owner/Owner Representative Signature(s)',origin=tenant?[351.45,719.36]:[343.95,356.41],y=tenant?717.9:355;
-   add(s,'signature',anchor,origin,279.4,y,311.55,{table:tenant?3:1,p:1});
-   add(s,'date_signed',anchor,origin,36,y,235.35,{table:tenant?3:1,p:0});
-  }
- }
- return result;
 }

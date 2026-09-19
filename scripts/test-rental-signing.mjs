@@ -4,7 +4,7 @@ import {makeRentalSigning} from '../backend/core/rental-signing.ts';
 import {makeDocusign,envelopeDefinition} from '../backend/adapters/esign-docusign/index.ts';
 import {buildSigningLease,sha256} from '../worker/signing-template.js';
 import {signingConfiguration} from '../worker/signing.js';
-import {SIGNING_DOCUMENTS,hasConcession} from '../site/shared/lease-signing-layout.js';
+import {SIGNING_DOCUMENTS,TAB_GEOMETRY,hasConcession} from '../site/shared/lease-signing-layout.js';
 import {readEntries,readEntryText} from '../worker/zip.js';
 let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};const reject=async f=>{await assert.rejects(f);checks++;};
 const template=readFileSync('lease/template/lease-template.docx');
@@ -33,6 +33,42 @@ for(const d of document.documents){
  }
  if(d.layout==='allergen')eq(fields.map(t=>[t.role,t.kind]),[['landlord','signature'],['landlord','full_name'],['landlord','date_signed']]);
 }
+// Every field's anchor token is written exactly once, invisibly, and the
+// merged review copy carries none of them.
+const reviewXml=await readEntryText(entries(document.docx),'word/document.xml');
+eq(reviewXml.includes('\\LEASE-R1-SIG\\'),false);eq(reviewXml.includes('w:val="FFFFFF"'),false);
+for(const d of document.documents){
+ const xml=await readEntryText(entries(d.bytes),'word/document.xml');
+ for(const t of document.tabs.filter(t=>t.documentId===d.documentId)){
+  eq(xml.split(t.anchor).length,2);
+  eq(new RegExp(`<w:r><w:rPr><w:color w:val="FFFFFF"/><w:sz w:val="4"/><w:szCs w:val="4"/>(<w:u w:val="single" w:color="000000"/>)?</w:rPr><w:t xml:space="preserve">${t.anchor.replace(/\\/g,'\\\\')}</w:t></w:r>`).test(xml),true);
+  eq(t.xOffset,t.kind==='signature' && t.scale===.65?173.33:t.layout==='window_guards' && t.kind==='signature'?133.33:0);if(t.kind!=='signature' || t.scale===.75)eq(t.yOffset,+((TAB_GEOMETRY[t.kind].below-TAB_GEOMETRY[t.kind].height+(TAB_GEOMETRY[t.kind].anchorHeight??TAB_GEOMETRY[t.kind].height))*96/72).toFixed(2));eq(t.placement,undefined);
+ }
+}
+// Tenant B's copy of a one-line notice carries only Tenant B's token, and the
+// main agreement's initials sit on the second and third underlined segments.
+const wgB=document.documents.find(d=>d.layout==='window_guards' && d.tenantRecipientId==='2');
+eq(wgB.xml.includes('\\WG-R2-SIG\\'),true);eq(wgB.xml.includes('\\WG-R1-SIG\\'),false);
+eq(/Tenant’s Signature:<\/w:t><\/w:r><\/w:p>/.test(wgB.xml),true);
+eq(wgB.xml.includes('\\WG-R2-SIG\\'),true);
+const lease=document.documents.find(d=>d.layout==='lease');
+// Tiny anchors must retain the original paragraph font/height via a full-size
+// nonbreaking space, otherwise only occupied signature lines jump upward.
+eq(lease.xml.includes('<w:t xml:space="preserve">\u00a0</w:t>'),true);
+eq(document.tabs.find(t=>t.kind==='signature').scale,.75);
+eq(document.tabs.find(t=>t.kind==='initial').scale,.8);
+eq(document.tabs.find(t=>t.kind==='full_name').fontSize,'Size11');
+eq(lease.xml.indexOf('\\LEASE-R1-INIT38\\')<lease.xml.indexOf('\\LEASE-R2-INIT38\\'),true);
+// Tokens inside an underlined segment carry a black underline so the line
+// stays unbroken; tokens in empty cells do not.
+eq(lease.xml.includes('<w:u w:val="single" w:color="000000"/></w:rPr><w:t xml:space="preserve">\\LEASE-R1-INIT38\\'),true);
+eq(lease.xml.includes('<w:u w:val="single" w:color="000000"/></w:rPr><w:t xml:space="preserve">\\LEASE-R1-SIG\\'),false);
+eq(lease.xml.indexOf('\\LEASE-R2-INIT38\\')<lease.xml.indexOf('\\LEASE-R1-INIT39\\'),true);
+// One underlined segment and its gap (two tabs) separate the two tenants'
+// initials; one underlined tab separates the bedbug signature from its date.
+eq((lease.xml.slice(lease.xml.indexOf('\\LEASE-R1-INIT38\\'),lease.xml.indexOf('\\LEASE-R2-INIT38\\')).match(/<w:tab\s*\/>/g) || []).length,2);
+const bedbugA=document.documents.find(d=>d.layout==='bedbug' && d.tenantRecipientId==='1');
+eq((bedbugA.xml.slice(bedbugA.xml.indexOf('\\BEDBUG-R1-SIG\\'),bedbugA.xml.indexOf('\\BEDBUG-R1-DATE\\')).match(/<w:tab\s*\/>/g) || []).length,1);
 for(const text of ['', '  ', 'None', 'N/A', 'No rent concession in this mock tenancy.','MOCK TEST ONLY — NOT A REAL TENANCY'])eq(hasConcession({'concession.terms':text}),false);
 const noConcession=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),{...values,'concession.terms':''},signers);
 eq(noConcession.tabs.some(t=>t.layout==='concession'),false);
@@ -45,6 +81,14 @@ eq(definition.eventNotification.includeHMAC,'true');eq(definition.allowReassign,
 const many=Array.from({length:8},(_,i)=>({...signers[0],recipientId:String(i+1),memberId:String(i),name:`Tenant ${i+1}`}));
 const large=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),values,[...many,{...signers[2],recipientId:'9'}]);eq(large.documents.length,37);
 eq(large.tabs.length,315);
+// Tight second-row slots must fit between their line and the prior name row.
+const lastRow=large.tabs.filter(t=>t.layout==='lease' && t.kind==='signature' && t.role==='tenant' && t.slot>=4);
+eq(lastRow.length,4);eq(lastRow.every(t=>t.inkHeight*.75<19),true);
+const ownerSlot=large.tabs.find(t=>t.layout==='lease' && t.kind==='signature' && t.role==='landlord');
+eq(ownerSlot.scale,.65);eq(ownerSlot.xOffset,173.33);
+// The framed stamp remains within the original long landlord underline.
+eq((ownerSlot.xOffset+ownerSlot.width)*.75<=228,true);
+
 eq(definition.recipients.signers[0].tabs.fullNameTabs.length,12);
 eq(definition.recipients.signers[0].tabs.dateSignedTabs.length,3);
 await reject(()=>buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),values,[...many,...signers]));

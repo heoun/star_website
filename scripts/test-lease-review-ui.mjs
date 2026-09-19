@@ -129,12 +129,12 @@ try{
  eq(await savedFrame.locator('.signing-field-box[data-kind="initial"]').count(),4);
  eq(await savedFrame.locator('.signing-field-box[data-kind="full_name"]').count(),3);
  await page.screenshot({path:`${out}/signing-fields-38.png`,fullPage:true});
- await panel.locator('.ws-signing-targets [data-preview-signing-fields="main-39-1-initial"]').click();
- await savedFrame.locator('[data-signing-field="main-39-1-initial"].current').waitFor();
+ await panel.locator('.ws-signing-targets [data-preview-signing-fields="lease-39-1-initial"]').click();
+ await savedFrame.locator('[data-signing-field="lease-39-1-initial"].current').waitFor();
  await page.screenshot({path:`${out}/signing-fields-39.png`,fullPage:true});
- await panel.locator('[data-preview-signing-fields="main-47-1-signature"]').click();
- await savedFrame.locator('[data-signing-field="main-47-1-signature"].current').waitFor();
- eq(await savedFrame.locator('[data-signing-field="main-47-3-full_name"]').innerText(),owner.name);
+ await panel.locator('[data-preview-signing-fields="lease-1-signature"]').click();
+ await savedFrame.locator('[data-signing-field="lease-1-signature"].current').waitFor();
+ eq(await savedFrame.locator('[data-signing-field="lease-3-full_name"]').innerText(),owner.name);
  await page.screenshot({path:`${out}/signing-fields-47.png`,fullPage:true});
  // Every new document has its own original tenant/landlord lines and navigation.
  for(const layout of ['utilities','packages','keys','insurance','rules','fines']){
@@ -148,24 +148,20 @@ try{
   await savedFrame.locator(`[data-signing-field="${layout}-3-signature"].current`).waitFor();
   await page.screenshot({path:`${out}/signing-fields-${layout}.png`,fullPage:true});
  }
- // The second row remains available in the standalone Fine Schedule.
+ // Fields are drawn on the anchor tokens the saved document carries, so a
+ // signer the package was not prepared for cannot be previewed into it.
  const slotCheck=await savedFrame.locator('#lease-doc').evaluate(async host=>{
   const {showSigningFields,clearSigningFields}=await import('/admin/signing-field-preview.js');
   const doc=await import('/admin/lease-doc.js');doc.showSections(null);
   const tenants=Array.from({length:8},(_,i)=>({recipientId:String(i+1),role:'tenant',name:`Tenant ${i+1}`,email:`tenant-${i+1}@example.test`}));
   const signers=[...tenants,{recipientId:'9',role:'landlord',name:'Landlord',email:'landlord@example.test'}];
-  const {SIGNING_DOCUMENTS}=await import('/shared/lease-signing-layout.js');
-  const results=[];
-  for(const layout of SIGNING_DOCUMENTS.filter(d=>d.id==='fines')){
-   showSigningFields(host,signers,`${layout.id}-8-full_name`,layout.id,{standalone:true});
-   const table=host.querySelectorAll('table')[1],ps=table.querySelectorAll('p');
-   const p=ps[21+(layout.tenantParagraphOffset || 0)].getBoundingClientRect();
-   const box=host.querySelector(`[data-signing-field="${layout.id}-8-full_name"]`).getBoundingClientRect();
-   results.push([host.querySelectorAll('.signing-field-box').length,Math.abs(box.left-p.left)<1]);
-  }
-  clearSigningFields();return results;
+  let refused='';
+  try{showSigningFields(host,signers,'fines-8-full_name','fines',{standalone:true});}catch(error){refused=error.message;}
+  const tokens=[...host.querySelectorAll('section.docx span')].filter(s=>/^\\FINES-R\d+-(SIG|NAME)\\$/.test(s.textContent));
+  const tiny=tokens.every(s=>parseFloat(getComputedStyle(s).fontSize)<4 && getComputedStyle(s).color==='rgb(255, 255, 255)');
+  clearSigningFields();return [refused.includes('anchors'),tokens.length,tiny];
  });
- eq(slotCheck,[[18,true]]);
+ eq(slotCheck,[true,6,true]);
  for(const layout of ['window_guards','bedbug','sprinkler','allergen','alarms','smoking','concession','dhcr','good_cause']){
   await panel.locator('[data-signing-layout]').selectOption(layout);
   const recipient=layout==='allergen'?'3':'1';

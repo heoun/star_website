@@ -1,42 +1,29 @@
 // Screen-only overlays: never write into the DOCX or change its layout.
-import {signingFields,SIGNING_DOCUMENTS,LOCAL_TABLE_BASE,signingFieldLabel} from '../shared/lease-signing-layout.js';
+// Each box is drawn on the field's anchor token as the renderer laid it out,
+// with the same offsets and sizes the DocuSign tab gets, so what the screen
+// shows is what the converted document will carry.
+import {signingFields,signingFieldLabel} from '../shared/lease-signing-layout.js';
 let layer=null;
 export function clearSigningFields(){layer?.remove();layer=null;}
 export function showSigningFields(host,signers,selectedId,layoutId='lease',options={}){
  clearSigningFields();
- const fields=signingFields(signers,layoutId,options.values),layout=SIGNING_DOCUMENTS.find(d=>d.id===layoutId),tables=host.querySelectorAll('table');
+ const fields=signingFields(signers,layoutId,options.values);
  if(!fields.length)return {selected:null,count:0};
- const tableBase=options.standalone?LOCAL_TABLE_BASE[layoutId]:0;
- const initials=[...host.querySelectorAll('section.docx p')].filter(p=>/^Tenant\(s\)[’'] initials:/.test(p.textContent.trim()));
- const isUnderlined=span=>{for(let e=span;e && e.tagName!=='P';e=e.parentElement)if(getComputedStyle(e).textDecorationLine.includes('underline'))return true;return false;};
- function target(field){
-  if(field.target){
-   const t=field.target;
-   if(t.paragraph){
-    const p=[...host.querySelectorAll('section.docx p')].find(p=>p.textContent.trim()===t.paragraph);
-    return t.next?p?.nextElementSibling:p;
-   }
-   const p=tables[t.table+(options.standalone?0:LOCAL_TABLE_BASE[layoutId])]?.querySelectorAll('p')[t.p];
-   return t.tab===undefined?p:[...(p?.querySelectorAll('.docx-tab-stop') || [])].filter(isUnderlined)[t.tab];
-  }
-  if(field.kind==='initial')return [...(initials[field.section==='38'?0:1]?.querySelectorAll('.docx-tab-stop') || [])].filter(isUnderlined)[field.slot];
-  const table=tables[(field.role==='tenant'?layout.tenantTable:layout.landlordTable)-tableBase];
-  const index=field.role==='landlord'?(field.kind==='signature'?1:3):(layout.tenantParagraphOffset || 0)+(field.slot<4?0:10)+(field.kind==='signature'?3:8)+field.slot%4;
-  return table?.querySelectorAll('p')[index];
- }
- const targets=fields.map(field=>({field,element:target(field)}));
- if(targets.some(t=>!t.element))throw new Error('The original signature lines could not be located.');
+ const spans=[...host.querySelectorAll('section.docx span')];
+ const targets=fields.map(field=>({field,element:spans.filter(s=>s.textContent===field.anchor)}));
+ if(targets.some(t=>t.element.length!==1))throw new Error('The signing anchors could not be located in this document. Prepare the package again.');
  const selected=targets.find(t=>t.field.id===selectedId) || targets[0];
- selected.element.scrollIntoView({block:'center',inline:'nearest'});
+ selected.element[0].scrollIntoView({block:'center',inline:'nearest'});
  host.style.position='relative';
  layer=document.createElement('div');layer.className='signing-field-layer';layer.setAttribute('aria-label','Signing Field Preview');
  const base=host.getBoundingClientRect(),scale=base.width/host.offsetWidth || 1;
  for(const {field,element} of targets){
-  const r=element.getBoundingClientRect(),box=document.createElement('div');
-  const bottom=(r.bottom-base.top)/scale-1,height=field.height;
+  const r=element[0].getBoundingClientRect(),box=document.createElement('div');
   box.className=`signing-field-box ${field.role}${field.id===selected.field.id?' current':''}`;
   box.dataset.signingField=field.id;box.dataset.kind=field.kind;box.dataset.recipient=field.recipientId;
-  box.style.cssText=`left:${(r.left-base.left)/scale}px;top:${bottom-height}px;width:${r.width/scale}px;height:${height}px`;
+  // The tab's bottom-left sits on the token's bottom-left plus the offsets;
+  // the box drawn here is the ink DocuSign centres inside that tab.
+  box.style.cssText=`left:${(r.left-base.left)/scale+field.xOffset}px;top:${(r.bottom-base.top)/scale+field.yOffset+field.height-field.anchorHeight-field.inkLift-field.inkHeight}px;width:${field.width}px;height:${field.inkHeight}px`;
   const tenantIndex=(options.tenantOrder || signers.filter(s=>s.role==='tenant').map(s=>s.recipientId)).indexOf(field.recipientId)+1;
   const who=field.role==='tenant'?`T${tenantIndex}`:'Landlord';
   box.textContent=field.kind==='full_name'?field.name:field.kind==='date_signed'?'Date Signed':`${who} · ${signingFieldLabel(field.kind)}`;

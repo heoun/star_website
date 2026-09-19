@@ -42,42 +42,50 @@ staff 不能在发送请求中任意覆盖邮箱。需要更正时返回原资�
 正文、表格、样式及资源，不重排签字表格、不增加日期栏、不扩展或删除下划线。
 每个文件单独绑定签署字段，避免多个 rider 使用相同文字时定位到其他文件。
 
-2026-09-18 起按用户要求逐份确认。已配置主合同 **New York Residential Lease Agreement**：
+### 锚点 token（2026-09-19 起）
 
-- 第 38、39 条：每位租客各一处 Initials，按原有八条下划线分配。
-- 第 47 条：每位租客一组 Signature / Print Name，使用原有两排、每排四个位置。
-- 第 47 条：房东签署人一组 Signature / Print Name；姓名来自个人签署人而非公司名。
-- 超过八位租客明确报错，不改变原稿排版。
+每个签署字段由唯一的 2 磅白色 token 定位，写入原签字线所在的段落或表格单元格。
+DocuSign 在自己的转换 PDF 中解析锚点，正文分页改变时字段随之移动。
+空白签字段落同时保留一枚使用原段落字体属性的不可见不换行空格；否则转换器会用
+2 磅 token 重新计算行高，使已放字段的下划线向上移动。原边框和正文均保留。
+initials / Bedbug 的 token 延续黑色下划线；合并审阅版不含 token。
 
-`site/shared/lease-signing-layout.js` 保存主合同字段清单，使用原文中唯一的条款标题和
-执行段落定位；源模板 hash 改变、定位文本缺失或重复时停止准备。
-E-sign Recipients 提供 **Preview Signing Fields**，每位收件人下的字段按钮可跳转至
-对应原有下划线，蓝色表示租客、紫色表示房东；Print Name 显示该收件人的全名。
-预览覆盖层仅用于平台核对，不写入合同。
+`site/shared/lease-signing-layout.js` 统一提供预览与发送几何参数。Sandbox 回读确认：
+签名和 initials 的锚点参考高度分别固定为 33pt / 38.4pt，并不会随 scaleValue 变化。
+因此偏移必须补偿参考高度与实际缩放高度的差值。默认签名为 .75、initials 为 .8；
+Print Name 和日期使用 11pt。签名图上的 Signed by 头和 ID 尾保留。
+八租客表的第二排只有约 19pt 净空，使用 .55 的完整签字框以免压住上一排姓名；
+房东签字使用 .65，沿原较长签字线向右内缩 130pt，避开上方房东标题。
+Window Guards 的签字沿原线内缩 100pt，避开上一行标签。
+预览与跨收件人重叠校验均使用可见签字框（包括头尾），排除透明控件底部的空白。
+旧 v5–v7 草稿禁止发送，必须取消并重新生成 v8。
 
-2026-09-18 主合同平台预览已获用户确认；同批新增 Utilities – Simple Form、Packages Rider、
-Key Rider、New York Renters Insurance Rider、Community Rules Rider、Fine Schedule。
-六份均按各自原有八个租客位及一个房东位配置 Signature / Print Name，不增加日期。
-Packages 的表格有额外空段落，Key 的行距和列宽不同，分别保存测量值与预览映射。
-Fine Schedule 仍属于原文档导航中的 Community Rules 范围，但签署预览可独立选择。
-E-sign Recipients 中通过 Document 下拉框切换位置预览。
+已用 Sandbox 的单租客草稿转换 PDF 和回读 tab 核查 59 个字段，均落在原线附近且无字段重叠。
+八租客主合同的 34 个字段使用已有供应商转换 PDF 和锚点坐标做本地投影检查；
+新尺寸尚未重新上传验证。实际签字风格仍需在签署界面最终核对。
 
-其余九份的配置如下。用户已于 2026-09-18 确认全部平台签字预览，已解除临时发送暂停，
-下一步通过 sandbox 签署核对供应商转换结果：
-
-- Window Guards：租客 Signature / Date Signed。
-- Bedbug：租客和房东各 Signature / Date Signed。
+- 主合同：第 38、39 条每位租客一处 Initials（第 i 位租客在第 i 段下划线）；
+  第 47 条每位租客一组 Signature / Print Name，两排各四格；房东一组。超过八位
+  租客明确报错。
+- Utilities、Packages、Keys、Renters Insurance、Community Rules、Fine Schedule、
+  Sprinkler、Gas/CO/Smoke Alarm、Smoking、Rent Concession（仅填写实际减免条款时）、
+  Good Cause：沿用各自原有的八个租客格和一个房东格。
+- Window Guards：租客 Signature / Date Signed 分别放在相应标签下一行的原下划线上。
+- Bedbug：租客和房东各 Signature / Date Signed，接在各自标签之后的下划线段起点。
 - Indoor Allergen：仅房东 Signature / Print Name / Date Signed。
-- DHCR：租客和房东各 Signature / Date Signed。
-- Sprinkler、Gas/CO/Smoke Alarm、Smoking、Good Cause：沿用原有租客和房东 Signature / Print Name。
-- Rent Concession：只有填写实际减免条款时才配置 Signature / Print Name；空值、None、N/A 等不产生签署字段。
+- DHCR：租客和房东各 Signature / Date Signed，落在各自那一行的两个格子里。
 
 Window Guards、Bedbug、DHCR 原稿只有一组租客签字线，为每位租客生成独立副本，
-分别填入该租客资料，并通过 **Tenant Copy** 切换预览，避免多人字段重叠。
-其余表单沿用原有八个租客位置。Date Signed 由 DocuSign 在对应收件人签署时填写。
-平台校验每份已保存源文件的 hash 后显示覆盖层；预览内容不写进合同正文。
-平台覆盖层和本地 Word 渲染不能证明 DocuSign 转换后的最终坐标准确；生产使用前仍须
-核对 DocuSign sandbox 转换后的 PDF 与字段。
+分别填入该租客资料，token 里带收件人编号，所以整个信封里没有重复的锚点。
+
+E-sign Recipients 的 **Preview Signing Fields** 直接在渲染出来的 token 上画框，
+偏移和尺寸与发给 DocuSign 的一致；找不到或找到多个 token 时拒绝预览。
+
+发送前，创建 draft 后用 `include_anchor_tab_locations` 回读每个 tab，核对每个
+字段恰好落在自己的文档和页面上，并检查同一收件人在同一页的字段两两不相交；
+任一条不满足就不发。平台覆盖层和本地 Word 渲染不能证明 DocuSign 转换后的最终
+坐标准确；生产使用前仍须核对 DocuSign sandbox 转换后的 PDF 与字段，并据此
+校准 `TAB_GEOMETRY`。
 
 签署包冻结 `lease_snapshot`、approval revision、模板版本、逐人收件人、tabs、
 各源 DOCX 及合并审阅版的路径和 SHA-256。发送前展示的合同必须对应同一个 package ID；

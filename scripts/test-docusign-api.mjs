@@ -50,36 +50,48 @@ for(const format of ['pkcs1','pkcs8']) {
  creationTimeout=true;
  await assert.rejects(()=>api.createDraft({package:pkg,documents:[]}),/document preparation timed out.*existing request is retained/);checks++;
 }
-// Envelope-wide anchor scope: discard matches in other documents, migrate a
-// retained draft once, and fail closed when a required field is missing.
+// Envelope-wide anchor scope: discard matches in other documents, then fail
+// closed when a field is missing, duplicated, or overlaps another.
 {
- const pkg={templateVersion:'star-lease-2026-09-18-all-v4',signers:[{recipientId:'1',role:'landlord',name:'Owner',email:'owner@example.test',routingOrder:2}],documents:[{documentId:'1',layout:'lease'},{documentId:'2',layout:'utilities'}],tabs:[
-  {recipientId:'1',documentId:'1',kind:'signature',anchor:'Execution',xOffset:96,yOffset:192,units:'pixels'},
-  {recipientId:'1',documentId:'2',kind:'full_name',anchor:'Execution',xOffset:96,yOffset:192,units:'pixels'}]};
+ const pkg={templateVersion:'star-lease-2026-09-19-anchor-v8',signers:[{recipientId:'1',role:'landlord',name:'Owner',email:'owner@example.test',routingOrder:2}],documents:[{documentId:'1',layout:'lease'},{documentId:'2',layout:'utilities'}],tabs:[
+  {recipientId:'1',documentId:'1',kind:'signature',anchor:'\\LEASE-R1-SIG\\',xOffset:0,yOffset:3.33,width:120,height:44,scale:.6,units:'pixels'},
+  {recipientId:'1',documentId:'1',kind:'full_name',anchor:'\\LEASE-R1-NAME\\',xOffset:0,yOffset:3.33,width:120,height:14.67,fontSize:'Size11',units:'pixels'}]};
  const definition=envelopeDefinition(pkg,[],'https://example.test/hook');
- eq(definition.recipients.signers[0].tabs.signHereTabs[0].anchorUnits,'inches');
- eq(definition.recipients.signers[0].tabs.signHereTabs[0].anchorXOffset,'1');
- eq(Number(definition.recipients.signers[0].tabs.signHereTabs[0].anchorYOffset),2-21/72);
- let tabs={signHereTabs:[{tabId:'s',tabLabel:'star-lease-field-0',documentId:'1',pageNumber:'1',xPosition:'100',yPosition:'200'},{tabId:'wrong',tabLabel:'star-lease-field-0',documentId:'2',pageNumber:'1',xPosition:'100',yPosition:'200'}],fullNameTabs:[{tabId:'n',tabLabel:'star-lease-field-1',documentId:'2',pageNumber:'1',xPosition:'100',yPosition:'200'}]};
- let sent=0,deleted=0,aligned=0;
+ const sign=definition.recipients.signers[0].tabs.signHereTabs[0];
+ eq(sign.anchorUnits,'inches');eq(sign.anchorXOffset,'0');eq(Number(sign.anchorYOffset),3.33/96);eq(sign.scaleValue,'0.6');eq(sign.anchorMatchWholeWord,'false');
+ eq(definition.recipients.signers[0].tabs.fullNameTabs[0].fontSize,'Size11');
+ let tabs={signHereTabs:[{tabId:'s',tabLabel:'star-lease-field-0-v3',documentId:'1',pageNumber:'1',xPosition:'100',yPosition:'200',width:'120',height:'29'},{tabId:'wrong',tabLabel:'star-lease-field-0-v3',documentId:'2',pageNumber:'1',xPosition:'100',yPosition:'200'}],fullNameTabs:[{tabId:'n',tabLabel:'star-lease-field-1-v3',documentId:'1',pageNumber:'1',xPosition:'100',yPosition:'240',width:'200',height:'15'}]};
+ let sent=0,deleted=0;
  const http=async(url,init={})=>{
   if(url.endsWith('/oauth/token'))return Response.json({access_token:'fake'});
   if(url.endsWith('/oauth/userinfo'))return Response.json({accounts:[{account_id:'account',base_uri:'https://demo.docusign.net'}]});
   if(url.includes('/tabs')){
    if(init.method==='DELETE'){const body=JSON.parse(init.body);for(const kind of Object.keys(body))tabs[kind]=tabs[kind].filter(t=>!body[kind].some(d=>d.tabId===t.tabId));deleted++;}
-   if(init.method==='PUT'){const body=JSON.parse(init.body);for(const kind of Object.keys(body))for(const change of body[kind])Object.assign(tabs[kind].find(t=>t.tabId===change.tabId),change);aligned++;}
+   if(init.method==='PUT')throw new Error('Tabs are never rewritten after conversion.');
    return Response.json(tabs);
   }
   if(init.method==='PUT' && JSON.parse(init.body).status==='sent'){sent++;return Response.json({});}
   throw new Error('Unexpected mock endpoint');
  };
  const api=makeDocusign({environment:'demo',integrationKey:'integration',userId:'sender',accountId:'account',privateKey:pair.privateKey.export({type:'pkcs8',format:'pem'}),hmacSecret:'test',webhookUrl:'https://example.test/hook'},http);
- await api.send(id,pkg);eq(sent,1);eq(deleted,1);eq(aligned,1);eq(tabs.signHereTabs[0].yPosition,'179');eq(tabs.fullNameTabs[0].tabLabel,'star-lease-field-1-v2');
- await api.send(id,pkg);eq(deleted,1);eq(aligned,1);
+ await api.send(id,pkg);eq(sent,1);eq(deleted,1);eq(tabs.signHereTabs.length,1);
+ await api.send(id,pkg);eq(deleted,1);eq(sent,2);
+ // Two of one signer's fields on the same page and spot.
+ tabs.fullNameTabs[0].yPosition='220';
+ await assert.rejects(()=>api.send(id,pkg),/overlap/);checks++;eq(sent,2);
+ // A signature control's transparent footer may cover the name control.
+ // Its visible stamp still must not touch the name itself.
+ pkg.tabs[0].inkHeight=20;pkg.tabs[0].inkLift=12;
+ await api.send(id,pkg);eq(sent,3);
+ tabs.fullNameTabs[0].yPosition='208';
+ await assert.rejects(()=>api.send(id,pkg),/overlap/);checks++;eq(sent,3);
+ delete pkg.tabs[0].inkHeight;delete pkg.tabs[0].inkLift;
+ await assert.rejects(()=>api.send(id,{...pkg,templateVersion:'star-lease-2026-09-19-anchor-v7'}),/outdated signing layout/);checks++;eq(sent,3);
  tabs.fullNameTabs=[];
- await assert.rejects(()=>api.send(id,pkg),/does not match the reviewed signing fields/);checks++;eq(sent,2);
+ await assert.rejects(()=>api.send(id,pkg),/does not match the reviewed signing fields/);checks++;eq(sent,3);
+ tabs.fullNameTabs=[{tabId:'n',tabLabel:'star-lease-field-1-v3',documentId:'1',pageNumber:'1',xPosition:'100',yPosition:'240'}];
  tabs.signHereTabs.push({...tabs.signHereTabs[0],tabId:'duplicate'});
- await assert.rejects(()=>api.send(id,pkg),/does not match the reviewed signing fields/);checks++;eq(sent,2);
+ await assert.rejects(()=>api.send(id,pkg),/does not match the reviewed signing fields/);checks++;eq(sent,3);
 }
 await assert.rejects(()=>boundedBytes(new Response('12345').body,4));checks++;
 console.log(`PASS ${checks} DocuSign API checks: PKCS#1/PKCS#8 JWT, account discovery, draft/send, transaction recovery, downloads and void`);

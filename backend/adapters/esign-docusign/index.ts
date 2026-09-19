@@ -34,20 +34,7 @@ export async function boundedBytes(stream: ReadableStream<Uint8Array> | null, li
 }
 
 const tabKey={signature:'signHereTabs',initial:'initialHereTabs',date_signed:'dateSignedTabs',full_name:'fullNameTabs'};
-const tabLabel=(index:number)=>`star-lease-field-${index}-v2`;
-// Word and the browser renderer retain different heights for empty table
-// paragraphs. These deltas were checked against DocuSign's converted v4 PDF;
-// the original document bytes and underline targets remain unchanged.
-function lineAdjustment(pkg:RentalSigningPackage,tab:RentalSigningPackage['tabs'][number]) {
-  if(pkg.templateVersion!=='star-lease-2026-09-18-all-v4')return 0;
-  const layout=pkg.documents.find(d=>d.documentId===tab.documentId)?.layout;
-  const signer=pkg.signers.find(s=>s.recipientId===tab.recipientId);
-  if(layout==='window_guards')return -4;
-  if(!layout || ['keys','bedbug','allergen','dhcr'].includes(layout) || tab.kind==='initial')return 0;
-  if(signer?.role==='landlord')return layout==='sprinkler'?-24:-21;
-  const slot=pkg.signers.filter(s=>s.role==='tenant').findIndex(s=>s.recipientId===tab.recipientId);
-  return slot>=4?-10:0;
-}
+const tabLabel=(index:number)=>`star-lease-field-${index}-v3`;
 export function envelopeDefinition(pkg: RentalSigningPackage, documents: {documentId:string;bytes:Uint8Array}[], webhookUrl: string) {
   return {
     status:'created',transactionId:pkg.id,emailSubject:'Please sign your lease — Star Realty',
@@ -57,11 +44,12 @@ export function envelopeDefinition(pkg: RentalSigningPackage, documents: {docume
       for(const [index,t] of pkg.tabs.entries()) {
         if(t.recipientId!==s.recipientId)continue;
         const key=tabKey[t.kind];
-        // Stored offsets are CSS pixels (96/in). Vendor pixel offsets depend on
-        // document DPI; physical units preserve the reviewed line geometry.
+        // The anchor is the field's own token, so the offsets are the per-kind
+        // constants that rest the tab on the line. Stored as CSS pixels
+        // (96/in); physical units keep them independent of document DPI.
         tabs[key].push({documentId:t.documentId,tabLabel:tabLabel(index),anchorString:t.anchor,anchorUnits:'inches',
-          anchorXOffset:String(t.xOffset/96),anchorYOffset:String(t.yOffset/96+lineAdjustment(pkg,t)/72),anchorIgnoreIfNotPresent:'false',
-          anchorCaseSensitive:'true',anchorMatchWholeWord:'true',...(t.kind==='signature'||t.kind==='initial'?{scaleValue:String(t.scale??.7)}:{fontSize:'Size9',font:'TimesNewRoman'})});
+          anchorXOffset:String(t.xOffset/96),anchorYOffset:String(t.yOffset/96),anchorIgnoreIfNotPresent:'false',
+          anchorCaseSensitive:'true',anchorMatchWholeWord:'false',...(t.kind==='signature'||t.kind==='initial'?{scaleValue:String(t.scale??.6)}:{fontSize:t.fontSize || 'Size9',font:'TimesNewRoman'})});
       }
       return {recipientId:s.recipientId,name:s.name,email:s.email,routingOrder:String(s.routingOrder),tabs};
     })},
@@ -129,11 +117,13 @@ export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSi
       return rows.length?read(rows[0].envelopeId):null;
     },
     async send(id,pkg){
+      if(/^star-lease-2026-09-19-anchor-v[5-7]$/.test(pkg.templateVersion))throw fail('This draft uses an outdated signing layout. Cancel this request and prepare a new signing package.');
+      const placed:{label:string;field:string;documentId:string;page:number;x:number;y:number;w:number;h:number}[]=[];
       // Anchor scope is account-dependent and commonly envelope-wide, even
       // with documentId. Remove cross-document matches from the DRAFT only,
       // then verify exactly one field in its intended document before sending.
       for(const signer of pkg.signers){
-        const expected=pkg.tabs.map((t,i)=>({...t,label:tabLabel(i),legacyLabel:`star-lease-field-${i}`})).filter(t=>t.recipientId===signer.recipientId);
+        const expected=pkg.tabs.map((t,i)=>({...t,label:tabLabel(i)})).filter(t=>t.recipientId===signer.recipientId);
         if(!expected.length)continue;
         const endpoint=path(id)+`/recipients/${encodeURIComponent(signer.recipientId)}/tabs`;
         const load=async()=>json(await api(endpoint+'?include_anchor_tab_locations=true'));
@@ -141,25 +131,33 @@ export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSi
         for(const [kind,list] of Object.entries(actual)){
           if(!Array.isArray(list))continue;
           for(const tab of list){
-            const target=expected.find(t=>(t.label===tab.tabLabel || t.legacyLabel===tab.tabLabel) && tabKey[t.kind]===kind);
+            const target=expected.find(t=>t.label===tab.tabLabel && tabKey[t.kind]===kind);
             if(!target || !tab.tabId)throw fail('The DocuSign draft contains an unexpected signing field. Review it before sending.');
             if(String(tab.documentId)!==target.documentId)(remove[kind] ||= []).push({tabId:tab.tabId});
           }
         }
         if(Object.keys(remove).length){await api(endpoint,'DELETE',remove);actual=await load();}
-        // Recover a draft created before calibration without creating a new
-        // envelope or changing its frozen source. The label makes this repeatable.
-        const align:Record<string,unknown[]>={};
-        for(const target of expected){
-          const legacy=(actual[tabKey[target.kind]] || []).filter((t:Record<string,string>)=>t.tabLabel===target.legacyLabel);
-          if(legacy.length>1)throw fail('The DocuSign draft has duplicate signing fields. No invitation was sent.');
-          if(legacy.length===1){const t=legacy[0];(align[tabKey[target.kind]] ||= []).push({tabId:t.tabId,tabLabel:target.label,documentId:target.documentId,pageNumber:t.pageNumber,xPosition:t.xPosition,yPosition:String(Math.round(Number(t.yPosition)+lineAdjustment(pkg,target))),anchorString:''});}
-        }
-        if(Object.keys(align).length){await api(endpoint,'PUT',align);actual=await load();}
+        // Every field landed exactly once, on its own document and page, and
+        // no two of this signer's fields cover the same spot.
         for(const target of expected){
           const matches=(actual[tabKey[target.kind]] || []).filter((t:Record<string,string>)=>t.tabLabel===target.label);
-          if(matches.length!==1 || String(matches[0].documentId)!==target.documentId || !(Number(matches[0].pageNumber)>0) || !Number.isFinite(Number(matches[0].xPosition)) || !Number.isFinite(Number(matches[0].yPosition)))throw fail('The DocuSign draft does not match the reviewed signing fields. No invitation was sent.');
+          const m=matches[0],page=Number(m?.pageNumber),x=Number(m?.xPosition),y=Number(m?.yPosition);
+          if(matches.length!==1 || String(m.documentId)!==target.documentId || !(page>0) || !Number.isFinite(x) || !Number.isFinite(y))throw fail('The DocuSign draft does not match the reviewed signing fields. No invitation was sent.');
+          // DocuSign's signature controls include transparent bottom padding.
+          // Test the visible stamp, not that padding, against adjacent name rows.
+          const w=Number(m.width)>0?Number(m.width):(target.width??0)*72/96;
+          const h=Number(m.height)>0?Number(m.height):(target.height??0)*72/96;
+          const inkH=target.inkHeight===undefined?h:target.inkHeight*72/96;
+          const lift=(target.inkLift??0)*72/96;
+          if(!(w>0 && h>0 && inkH>0 && inkH<=h+1 && lift>=0 && inkH+lift<=h+1))throw fail('The signing field dimensions are invalid. No invitation was sent.');
+          placed.push({label:target.label,field:`${target.kind} for recipient ${target.recipientId}`,documentId:target.documentId,page,x,y:y+h-lift-inkH,w,h:inkH});
         }
+      }
+      for(const a of placed)for(const b of placed){
+          if(a===b || a.documentId!==b.documentId || a.page!==b.page)continue;
+          // Allow only PDF coordinate rounding, never a real ink intersection.
+          const slack=2;
+          if(a.x+slack<b.x+b.w && b.x+slack<a.x+a.w && a.y+slack<b.y+b.h && b.y+slack<a.y+a.h)throw fail(`Two signing fields overlap in the converted lease (${a.field} and ${b.field}, document ${a.documentId} page ${a.page}). No invitation was sent.`);
       }
       await api(path(id),'PUT',{status:'sent'});
     },read,

@@ -22,11 +22,17 @@ export interface RentalSigningTab {
   documentId: string;
   kind: 'signature' | 'initial' | 'date_signed' | 'full_name';
   scale?: number;
-  // Unique visible text in the source document; offsets select each signer’s line.
+  fontSize?: string;
+  anchorHeight?: number;
+  inkHeight?: number;
+  inkLift?: number;
+  // The field's own anchor token, written invisibly where the field goes.
   // Missing or repeated anchors block preparation.
   anchor: string;
   xOffset: number;
   yOffset: number;
+  width?: number;
+  height?: number;
   units: 'pixels';
 }
 
