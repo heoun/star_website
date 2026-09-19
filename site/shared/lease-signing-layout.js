@@ -11,7 +11,7 @@
 // What remains here is structure: which table, row and cell a slot occupies,
 // or which paragraph carries the line. Geometry is the small TAB_GEOMETRY
 // table below, shared by every document and signer.
-export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-19-anchor-v8';
+export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-19-anchor-v9';
 export const SIGNING_LAYOUT_REVIEW_REQUIRED=false;
 
 // PDF points. The tab control includes transparent padding; `ink` describes
@@ -35,8 +35,6 @@ const PX=96/72;
 const standardCell=(role,slot,kind)=>role==='landlord'
  ?{table:'landlord',row:kind==='full_name'?1:0,cell:1,...(kind==='signature'?{xInset:130}:{})}
  :{table:'tenant',row:1+(slot>=4?2:0)+(kind==='full_name'?1:0),cell:1+slot%4};
-// The sprinkler notice merges "Tenant:" into the first Signature row.
-const sprinklerCell=(role,slot,kind)=>role==='landlord'?standardCell(role,slot,kind):{table:'tenant',row:(slot>=4?2:0)+(kind==='full_name'?1:0),cell:1+slot%4};
 
 export const SIGNING_DOCUMENTS=[
  {id:'lease',document:'lease',name:'New York Residential Lease Agreement',tables:{tenant:2,landlord:3},place:standardCell,
@@ -51,7 +49,7 @@ export const SIGNING_DOCUMENTS=[
   kinds:['signature','date_signed'],place:(role,slot,kind)=>kind==='signature'?{paragraph:{is:'Tenant’s Signature:'},nextLine:true,xInset:100}:{paragraph:{is:'Date:'},nextLine:true}},
  {id:'bedbug',document:'bedbug',name:'Bedbug Infestation History Disclosure',individual:true,kinds:['signature','date_signed'],
   place:(role,slot,kind)=>({paragraph:{contains:role==='tenant'?'Signature of Tenant(s):':'Signature of Owner/Agent:'},beforeUnderlined:kind==='signature'?0:1})},
- {id:'sprinkler',document:'sprinkler',name:'Sprinkler System Notice',tables:{tenant:1,landlord:2},place:sprinklerCell},
+ {id:'sprinkler',document:'sprinkler',name:'Sprinkler System Notice',tables:{tenant:1,landlord:2},place:standardCell},
  {id:'allergen',document:'allergen',name:'Indoor Allergen Hazards Notice',landlordOnly:true,kinds:['signature','full_name','date_signed'],
   tables:{landlord:0},place:(role,slot,kind)=>({table:'landlord',row:{signature:0,full_name:1,date_signed:2}[kind],cell:1})},
  {id:'alarms',document:'alarms',name:'Gas Leak, Carbon Monoxide and Smoke Alarm Rider',tables:{tenant:1,landlord:2},place:standardCell},

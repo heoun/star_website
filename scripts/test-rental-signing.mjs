@@ -45,6 +45,14 @@ for(const d of document.documents){
   eq(t.xOffset,t.kind==='signature' && t.scale===.65?173.33:t.layout==='window_guards' && t.kind==='signature'?133.33:0);if(t.kind!=='signature' || t.scale===.75)eq(t.yOffset,+((TAB_GEOMETRY[t.kind].below-TAB_GEOMETRY[t.kind].height+(TAB_GEOMETRY[t.kind].anchorHeight??TAB_GEOMETRY[t.kind].height))*96/72).toFixed(2));eq(t.placement,undefined);
  }
 }
+// Identical underlying table metrics prevent per-document font and line drift.
+const sourceXml=await readEntryText(entries(template),'word/document.xml');
+const tables=[...sourceXml.matchAll(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)].map(m=>m[0]);
+const canonical=s=>s.replace(/ w14:(?:paraId|textId)="[^"]*"/g,'');
+for(const index of [5,7,10,12,14,17,21,25,29,31,37]){
+ eq(canonical(tables[index]),canonical(tables[2]));
+ eq(canonical(tables[index+1]),canonical(tables[3]));
+}
 // Tenant B's copy of a one-line notice carries only Tenant B's token, and the
 // main agreement's initials sit on the second and third underlined segments.
 const wgB=document.documents.find(d=>d.layout==='window_guards' && d.tenantRecipientId==='2');

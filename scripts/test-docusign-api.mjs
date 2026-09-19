@@ -53,7 +53,7 @@ for(const format of ['pkcs1','pkcs8']) {
 // Envelope-wide anchor scope: discard matches in other documents, then fail
 // closed when a field is missing, duplicated, or overlaps another.
 {
- const pkg={templateVersion:'star-lease-2026-09-19-anchor-v8',signers:[{recipientId:'1',role:'landlord',name:'Owner',email:'owner@example.test',routingOrder:2}],documents:[{documentId:'1',layout:'lease'},{documentId:'2',layout:'utilities'}],tabs:[
+ const pkg={templateVersion:'star-lease-2026-09-19-anchor-v9',signers:[{recipientId:'1',role:'landlord',name:'Owner',email:'owner@example.test',routingOrder:2}],documents:[{documentId:'1',layout:'lease'},{documentId:'2',layout:'utilities'}],tabs:[
   {recipientId:'1',documentId:'1',kind:'signature',anchor:'\\LEASE-R1-SIG\\',xOffset:0,yOffset:3.33,width:120,height:44,scale:.6,units:'pixels'},
   {recipientId:'1',documentId:'1',kind:'full_name',anchor:'\\LEASE-R1-NAME\\',xOffset:0,yOffset:3.33,width:120,height:14.67,fontSize:'Size11',units:'pixels'}]};
  const definition=envelopeDefinition(pkg,[],'https://example.test/hook');
@@ -86,7 +86,7 @@ for(const format of ['pkcs1','pkcs8']) {
  tabs.fullNameTabs[0].yPosition='208';
  await assert.rejects(()=>api.send(id,pkg),/overlap/);checks++;eq(sent,3);
  delete pkg.tabs[0].inkHeight;delete pkg.tabs[0].inkLift;
- await assert.rejects(()=>api.send(id,{...pkg,templateVersion:'star-lease-2026-09-19-anchor-v7'}),/outdated signing layout/);checks++;eq(sent,3);
+ await assert.rejects(()=>api.send(id,{...pkg,templateVersion:'star-lease-2026-09-19-anchor-v8'}),/outdated signing layout/);checks++;eq(sent,3);
  tabs.fullNameTabs=[];
  await assert.rejects(()=>api.send(id,pkg),/does not match the reviewed signing fields/);checks++;eq(sent,3);
  tabs.fullNameTabs=[{tabId:'n',tabLabel:'star-lease-field-1-v3',documentId:'1',pageNumber:'1',xPosition:'100',yPosition:'240'}];
