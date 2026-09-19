@@ -42,8 +42,25 @@ for(const d of document.documents){
  for(const t of document.tabs.filter(t=>t.documentId===d.documentId)){
   eq(xml.split(t.anchor).length,2);
   eq(new RegExp(`<w:r><w:rPr><w:color w:val="FFFFFF"/><w:sz w:val="4"/><w:szCs w:val="4"/>(<w:u w:val="single" w:color="000000"/>)?</w:rPr><w:t xml:space="preserve">${t.anchor.replace(/\\/g,'\\\\')}</w:t></w:r>`).test(xml),true);
-  eq(t.xOffset,t.kind==='signature' && t.scale===.65?173.33:t.layout==='window_guards' && t.kind==='signature'?133.33:0);if(t.kind!=='signature' || t.scale===.75)eq(t.yOffset,+((TAB_GEOMETRY[t.kind].below-TAB_GEOMETRY[t.kind].height+(TAB_GEOMETRY[t.kind].anchorHeight??TAB_GEOMETRY[t.kind].height))*96/72).toFixed(2));eq(t.placement,undefined);
+  eq(Number.isFinite(t.xOffset)&&Number.isFinite(t.yOffset),true);eq(t.placement,undefined);
  }
+}
+// Preserve section 47; riders share its source table but keep text off the rules.
+const tab=(layout,kind,role='tenant')=>document.tabs.find(t=>t.layout===layout&&t.kind===kind&&t.role===role);
+eq(tab('lease','full_name').yOffset,1.33);
+eq(tab('lease','signature').yOffset,5.67);
+for(const layout of SIGNING_DOCUMENTS.filter(l=>l.place===SIGNING_DOCUMENTS[0].place && l.id!=='lease')){
+ eq(tab(layout.id,'full_name').fontSize,tab('lease','full_name').fontSize);
+ eq(tab(layout.id,'full_name').yOffset<tab('lease','full_name').yOffset,true);
+ eq(tab(layout.id,'signature').scale,tab('lease','signature').scale);
+}
+eq(Math.abs((tab('window_guards','signature').xOffset-tab('window_guards','date_signed').xOffset)*.75-4)<.01,true);
+eq(document.tabs.filter(t=>t.kind==='date_signed').every(t=>t.yOffset<0),true);
+eq(tab('bedbug','signature').xOffset>0,true);
+eq(tab('bedbug','signature').yOffset<tab('lease','signature').yOffset,true);
+for(const role of ['tenant','landlord'])for(const [kind,lineWidth] of [['signature',311.6],['date_signed',235.4]]){
+ const t=tab('dhcr',kind,role);
+ eq(Math.abs((t.xOffset+t.width/2)*.75-lineWidth/2)<.01,true);
 }
 // Identical underlying table metrics prevent per-document font and line drift.
 const sourceXml=await readEntryText(entries(template),'word/document.xml');

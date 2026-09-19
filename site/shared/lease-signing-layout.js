@@ -24,7 +24,7 @@ export const TAB_GEOMETRY={
  signature:{scale:.75,width:112.5,height:41.25,anchorHeight:33,below:12.5,ink:{height:24.25,lift:11.25}},
  initial:{scale:.8,width:48,height:51.2,anchorHeight:38.4,below:20.5,ink:{height:15.33,lift:20}},
  full_name:{fontSize:'Size11',width:106,height:13,below:1,ink:{height:13,lift:0}},
- date_signed:{fontSize:'Size11',width:78,height:13,below:1,ink:{height:13,lift:0}}
+ date_signed:{fontSize:'Size11',width:50,height:13,below:-2,ink:{height:13,lift:0}}
 };
 const PX=96/72;
 
@@ -45,10 +45,12 @@ export const SIGNING_DOCUMENTS=[
  {id:'insurance',document:'insurance',name:'New York Renters Insurance Rider',tables:{tenant:0,landlord:1},place:standardCell},
  {id:'rules',document:'rules',name:'Community Rules Rider',tables:{tenant:0,landlord:1},place:standardCell},
  {id:'fines',document:'rules',name:'Fine Schedule',tables:{tenant:1,landlord:2},place:standardCell},
+ // DocuSign resolves Date Signed 4pt to the right of Sign Here at the same
+ // anchor x. Compensate so their visible left edges align on these two lines.
  {id:'window_guards',document:'window_guards',name:'Window Guards Required Lease Notice to Tenant',individual:true,tenantOnly:true,
-  kinds:['signature','date_signed'],place:(role,slot,kind)=>kind==='signature'?{paragraph:{is:'Tenant’s Signature:'},nextLine:true,xInset:100}:{paragraph:{is:'Date:'},nextLine:true}},
+  kinds:['signature','date_signed'],place:(role,slot,kind)=>kind==='signature'?{paragraph:{is:'Tenant’s Signature:'},nextLine:true,xInset:100}:{paragraph:{is:'Date:'},nextLine:true,xInset:96}},
  {id:'bedbug',document:'bedbug',name:'Bedbug Infestation History Disclosure',individual:true,kinds:['signature','date_signed'],
-  place:(role,slot,kind)=>({paragraph:{contains:role==='tenant'?'Signature of Tenant(s):':'Signature of Owner/Agent:'},beforeUnderlined:kind==='signature'?0:1})},
+  place:(role,slot,kind)=>({paragraph:{contains:role==='tenant'?'Signature of Tenant(s):':'Signature of Owner/Agent:'},beforeUnderlined:kind==='signature'?0:1,xInset:kind==='signature'?6:4})},
  {id:'sprinkler',document:'sprinkler',name:'Sprinkler System Notice',tables:{tenant:1,landlord:2},place:standardCell},
  {id:'allergen',document:'allergen',name:'Indoor Allergen Hazards Notice',landlordOnly:true,kinds:['signature','full_name','date_signed'],
   tables:{landlord:0},place:(role,slot,kind)=>({table:'landlord',row:{signature:0,full_name:1,date_signed:2}[kind],cell:1})},
@@ -56,7 +58,7 @@ export const SIGNING_DOCUMENTS=[
  {id:'smoking',document:'smoking',name:'Smoking Policy Rider',tables:{tenant:2,landlord:3},place:standardCell},
  {id:'concession',document:'concession',name:'Rent Concession Rider',conditional:true,tables:{tenant:0,landlord:1},place:standardCell},
  {id:'dhcr',document:'dhcr',name:'DHCR Electronic Lease Consent',individual:true,kinds:['signature','date_signed'],tables:{tenant:3,landlord:1},
-  place:(role,slot,kind)=>({table:role,row:0,cell:kind==='signature'?1:0})},
+  place:(role,slot,kind)=>({table:role,row:0,cell:kind==='signature'?1:0,lineWidth:kind==='signature'?311.6:235.4,align:'center'})},
  {id:'good_cause',document:'good_cause',name:'Good Cause Eviction Notice',tables:{tenant:0,landlord:1},place:standardCell}
 ];
 export const signingFieldLabel=kind=>({signature:'Signature',initial:'Initials',full_name:'Print Name',date_signed:'Date Signed'})[kind];
@@ -80,10 +82,15 @@ function field(layout,signer,slot,kind,placement,section='') {
   g={...g,scale,width:g.width*ratio,height:g.height*ratio,below:g.ink.lift*ratio+1.25,
    ink:{height:g.ink.height*ratio,lift:g.ink.lift*ratio}};
  }
+ // Rider names and dates need clearance for descenders above their lines.
+ // Keep section 47's approved position unchanged.
+ if(kind==='full_name' && layout.id!=='lease')g={...g,below:-1.5};
+ if(kind==='signature' && layout.id==='bedbug')g={...g,below:g.below-1};
+ const x=placement.align==='center'?(placement.lineWidth-g.width)/2:(placement.xInset || 0);
  return {id:`${layout.id}-${section?section+'-':''}${signer.recipientId}-${kind}`,recipientId:signer.recipientId,documentId:'1',document:layout.document,layout:layout.id,
   ...(section?{section}:{}),kind,slot,role:signer.role,name:signer.name,email:signer.email,
   anchor:anchorToken(layout.id,signer.recipientId,kind,section),placement:{...placement,table:placement.table?layout.tables[placement.table]:undefined},
-  units:'pixels',xOffset:+((placement.xInset || 0)*PX).toFixed(2),yOffset:+((g.below-g.height+(g.anchorHeight??g.height))*PX).toFixed(2),anchorHeight:+((g.anchorHeight??g.height)*PX).toFixed(2),width:+(g.width*PX).toFixed(2),height:+(g.height*PX).toFixed(2),inkHeight:+(g.ink.height*PX).toFixed(2),inkLift:+(g.ink.lift*PX).toFixed(2),...(g.scale?{scale:g.scale}:{fontSize:g.fontSize})};
+  units:'pixels',xOffset:+(x*PX).toFixed(2),yOffset:+((g.below-g.height+(g.anchorHeight??g.height))*PX).toFixed(2),anchorHeight:+((g.anchorHeight??g.height)*PX).toFixed(2),width:+(g.width*PX).toFixed(2),height:+(g.height*PX).toFixed(2),inkHeight:+(g.ink.height*PX).toFixed(2),inkLift:+(g.ink.lift*PX).toFixed(2),...(g.scale?{scale:g.scale}:{fontSize:g.fontSize})};
 }
 
 export function mainAgreementFields(signers){
