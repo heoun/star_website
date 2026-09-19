@@ -117,7 +117,7 @@ export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSi
       return rows.length?read(rows[0].envelopeId):null;
     },
     async send(id,pkg){
-      if(/^star-lease-2026-09-19-anchor-v[5-8]$/.test(pkg.templateVersion))throw fail('This draft uses an outdated signing layout. Cancel this request and prepare a new signing package.');
+      if(/^star-lease-2026-09-19-anchor-v(?:[5-9]|10)$/.test(pkg.templateVersion))throw fail('This draft uses an outdated signing layout. Cancel this request and prepare a new signing package.');
       const placed:{label:string;field:string;documentId:string;page:number;x:number;y:number;w:number;h:number}[]=[];
       // Anchor scope is account-dependent and commonly envelope-wide, even
       // with documentId. Remove cross-document matches from the DRAFT only,

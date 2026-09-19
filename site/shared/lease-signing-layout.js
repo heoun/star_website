@@ -11,7 +11,7 @@
 // What remains here is structure: which table, row and cell a slot occupies,
 // or which paragraph carries the line. Geometry is the small TAB_GEOMETRY
 // table below, shared by every document and signer.
-export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-19-anchor-v9';
+export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-19-anchor-v11';
 export const SIGNING_LAYOUT_REVIEW_REQUIRED=false;
 
 // PDF points. The tab control includes transparent padding; `ink` describes
@@ -23,7 +23,7 @@ export const SIGNING_LAYOUT_REVIEW_REQUIRED=false;
 export const TAB_GEOMETRY={
  signature:{scale:.75,width:112.5,height:41.25,anchorHeight:33,below:12.5,ink:{height:24.25,lift:11.25}},
  initial:{scale:.8,width:48,height:51.2,anchorHeight:38.4,below:20.5,ink:{height:15.33,lift:20}},
- full_name:{fontSize:'Size11',width:106,height:13,below:1,ink:{height:13,lift:0}},
+ full_name:{fontSize:'Size11',width:106,height:13,below:-1.5,ink:{height:13,lift:0}},
  date_signed:{fontSize:'Size11',width:50,height:13,below:-2,ink:{height:13,lift:0}}
 };
 const PX=96/72;
@@ -33,7 +33,7 @@ const PX=96/72;
 // landlord table has Signature and Print Name rows with one cell. `tables`
 // are indices within the standalone document.
 const standardCell=(role,slot,kind)=>role==='landlord'
- ?{table:'landlord',row:kind==='full_name'?1:0,cell:1,...(kind==='signature'?{xInset:130}:{})}
+ ?{table:'landlord',row:kind==='full_name'?1:0,cell:1}
  :{table:'tenant',row:1+(slot>=4?2:0)+(kind==='full_name'?1:0),cell:1+slot%4};
 
 export const SIGNING_DOCUMENTS=[
@@ -73,18 +73,10 @@ const KIND_CODES={signature:'SIG',full_name:'NAME',date_signed:'DATE',initial:'I
 export const anchorToken=(layoutId,recipientId,kind,section='')=>`\\${CODES[layoutId]}-R${recipientId}-${KIND_CODES[kind]}${section}\\`;
 
 function field(layout,signer,slot,kind,placement,section='') {
- // The second tenant row has only 19pt above its underline. Keep the
- // complete DocuSign frame inside that gap. Landlord headings occupy the
- // left of their longer line, so place the stamp in the clear right half.
+ // Every signature line in the shared tables has room for the full-size
+ // stamp above it (lease/tools/space-signature-tables.py), so one geometry
+ // serves every slot, tenant or landlord, first row or second.
  let g=TAB_GEOMETRY[kind];
- if(kind==='signature' && (placement.xInset===130 || (placement.table==='tenant' && slot>=4))) {
-  const scale=placement.xInset===130?.65:.55,ratio=scale/g.scale;
-  g={...g,scale,width:g.width*ratio,height:g.height*ratio,below:g.ink.lift*ratio+1.25,
-   ink:{height:g.ink.height*ratio,lift:g.ink.lift*ratio}};
- }
- // Rider names and dates need clearance for descenders above their lines.
- // Keep section 47's approved position unchanged.
- if(kind==='full_name' && layout.id!=='lease')g={...g,below:-1.5};
  if(kind==='signature' && layout.id==='bedbug')g={...g,below:g.below-1};
  const x=placement.align==='center'?(placement.lineWidth-g.width)/2:(placement.xInset || 0);
  return {id:`${layout.id}-${section?section+'-':''}${signer.recipientId}-${kind}`,recipientId:signer.recipientId,documentId:'1',document:layout.document,layout:layout.id,

@@ -47,12 +47,13 @@ for(const d of document.documents){
 }
 // Preserve section 47; riders share its source table but keep text off the rules.
 const tab=(layout,kind,role='tenant')=>document.tabs.find(t=>t.layout===layout&&t.kind===kind&&t.role===role);
-eq(tab('lease','full_name').yOffset,1.33);
+eq(tab('lease','full_name').yOffset,-2);
 eq(tab('lease','signature').yOffset,5.67);
 for(const layout of SIGNING_DOCUMENTS.filter(l=>l.place===SIGNING_DOCUMENTS[0].place && l.id!=='lease')){
  eq(tab(layout.id,'full_name').fontSize,tab('lease','full_name').fontSize);
- eq(tab(layout.id,'full_name').yOffset<tab('lease','full_name').yOffset,true);
+ eq(tab(layout.id,'full_name').yOffset,tab('lease','full_name').yOffset);
  eq(tab(layout.id,'signature').scale,tab('lease','signature').scale);
+ eq(tab(layout.id,'signature').yOffset,tab('lease','signature').yOffset);
 }
 eq(Math.abs((tab('window_guards','signature').xOffset-tab('window_guards','date_signed').xOffset)*.75-4)<.01,true);
 eq(document.tabs.filter(t=>t.kind==='date_signed').every(t=>t.yOffset<0),true);
@@ -72,6 +73,11 @@ for(const role of ['tenant','landlord'])for(const [kind,lineWidth] of [['signatu
  eq((xml.match(/<w:spacing w:before="125" w:after="360" w:lineRule="auto" \/>/g) || []).length,12);
  eq(xml.includes('<w:trHeight w:val="265" w:hRule="atLeast" />'),false);
 }
+// The landlord signs at the left of its line, level with the tenants and at
+// the same size.
+eq(tab('lease','signature','landlord').xOffset,0);
+eq(tab('lease','signature','landlord').scale,tab('lease','signature').scale);
+eq(tab('lease','signature','landlord').yOffset,tab('lease','signature').yOffset);
 // Identical underlying table metrics prevent per-document font and line drift.
 const sourceXml=await readEntryText(entries(template),'word/document.xml');
 const tables=[...sourceXml.matchAll(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)].map(m=>m[0]);
@@ -116,13 +122,14 @@ eq(definition.eventNotification.includeHMAC,'true');eq(definition.allowReassign,
 const many=Array.from({length:8},(_,i)=>({...signers[0],recipientId:String(i+1),memberId:String(i),name:`Tenant ${i+1}`}));
 const large=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),values,[...many,{...signers[2],recipientId:'9'}]);eq(large.documents.length,37);
 eq(large.tabs.length,315);
-// Tight second-row slots must fit between their line and the prior name row.
+// The second row's line has the same room above it as the first, so every
+// tenant slot signs at full size.
 const lastRow=large.tabs.filter(t=>t.layout==='lease' && t.kind==='signature' && t.role==='tenant' && t.slot>=4);
-eq(lastRow.length,4);eq(lastRow.every(t=>t.inkHeight*.75<19),true);
+eq(lastRow.length,4);eq(lastRow.every(t=>t.scale===.75 && t.yOffset===tab('lease','signature').yOffset),true);
 const ownerSlot=large.tabs.find(t=>t.layout==='lease' && t.kind==='signature' && t.role==='landlord');
-eq(ownerSlot.scale,.65);eq(ownerSlot.xOffset,173.33);
-// The framed stamp remains within the original long landlord underline.
-eq((ownerSlot.xOffset+ownerSlot.width)*.75<=228,true);
+eq(ownerSlot.scale,.75);eq(ownerSlot.xOffset,0);
+// The full-size stamp starts at the left of the long landlord underline.
+eq(ownerSlot.width*.75<=228,true);
 
 eq(definition.recipients.signers[0].tabs.fullNameTabs.length,12);
 eq(definition.recipients.signers[0].tabs.dateSignedTabs.length,3);
