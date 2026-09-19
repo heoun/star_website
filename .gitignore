@@ -49,3 +49,6 @@ coverage/
 *.key
 *.p12
 *.pfx
+
+# DocuSign downloads are private review artifacts, archived under notes/.
+/Please_sign_your_lease_*.pdf
