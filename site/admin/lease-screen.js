@@ -443,9 +443,10 @@ function renderBar() {
 
 // Prefer the durable signing record while a DocuSign request exists.
 function leaseStatus() {
-  const signingPhase=state.signing?.signing?.phase;
-  if(signingPhase)return {label:signingPhaseLabel(signingPhase),tone:signingPhase==='completed'?'good':['needs_attention','declined','voided'].includes(signingPhase)?'off':'busy'};
   const applicationStatus = state.caseRow?.status || state.application?.status;
+  const priorPhase=state.signing?.signing?.phase;
+  const signingPhase=priorPhase==='voided' && applicationStatus==='landlord_approved'?null:priorPhase;
+  if(signingPhase)return {label:signingPhaseLabel(signingPhase),tone:signingPhase==='completed'?'good':['needs_attention','declined','voided'].includes(signingPhase)?'off':'busy'};
   if (applicationStatus === "declined") return { label: "Cancelled", tone: "off" };
   if (applicationStatus === "lease_signed") return { label: "Fully signed", tone: "good" };
   if (applicationStatus === "lease_sent") return { label: "Sent for signature", tone: "busy" };
