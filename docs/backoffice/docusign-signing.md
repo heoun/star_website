@@ -75,6 +75,15 @@ DHCR 双方签字和日期分别在原下划线宽度内居中，日期按 11pt 
 本地转换器与 DocuSign 的 Word 排版不完全一致；v9 仍须独立核查供应商转换结果，
 不能把 v8 的转换验证结论当作 v9 已验证。
 
+### 签字线上方的间距
+
+在 v9 的 sandbox 转换页上量得：签名块从「Signed by」到 ID 尾高 25pt，压线下 1.5pt，
+所以每条签字线上方需要 26.5pt 净空；「Tenant:」到租客签字线只有 14pt，
+「Landlord or Landlord’s Representative:」到房东签字线 12.8pt，八租客表第一排
+Print Name 线到第二排签字线 18.9pt。`lease/tools/space-signature-tables.py` 做三处修正：
+12 张租客表的标题行从 265 twips 加高到 600，第一排 Print Name 行从 320 加高到 560，
+12 个房东标题段落加 360 twips 段后距。三处的净空都约 4pt。
+
 - 主合同：第 38、39 条每位租客一处 Initials（第 i 位租客在第 i 段下划线）；
   第 47 条每位租客一组 Signature / Print Name，两排各四格；房东一组。超过八位
   租客明确报错。

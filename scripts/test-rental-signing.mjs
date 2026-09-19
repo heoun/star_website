@@ -62,6 +62,16 @@ for(const role of ['tenant','landlord'])for(const [kind,lineWidth] of [['signatu
  const t=tab('dhcr',kind,role);
  eq(Math.abs((t.xOffset+t.width/2)*.75-lineWidth/2)<.01,true);
 }
+// Every signature line in the shared tables has the full stamp's room above
+// it: the headings, and the first Print Name row above the second row.
+{
+ const xml=await readEntryText(entries(template),'word/document.xml');
+ eq((xml.match(/<w:trHeight w:val="600" w:hRule="atLeast" \/>/g) || []).length,12);
+ eq((xml.match(/<w:trHeight w:val="560" w:hRule="atLeast" \/>/g) || []).length,12);
+ eq((xml.match(/<w:trHeight w:val="320" w:hRule="atLeast" \/>/g) || []).length,12);
+ eq((xml.match(/<w:spacing w:before="125" w:after="360" w:lineRule="auto" \/>/g) || []).length,12);
+ eq(xml.includes('<w:trHeight w:val="265" w:hRule="atLeast" />'),false);
+}
 // Identical underlying table metrics prevent per-document font and line drift.
 const sourceXml=await readEntryText(entries(template),'word/document.xml');
 const tables=[...sourceXml.matchAll(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)].map(m=>m[0]);

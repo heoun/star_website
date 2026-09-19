@@ -28,10 +28,12 @@ wrong by hand.
 | `tools/build-template.py` | One-off. Rebuilt the template from the landlord's filled-in lease. |
 | `tools/restyle-template.py` | One-off. Underlines the placeholders and replaces the form's credit line. Idempotent. |
 | `tools/reflow-template.py` | One-off. Replaces the PDF conversion's layout tricks with text, and builds the footers. Idempotent. |
+| `tools/space-signature-tables.py` | One-off. Opens the signature tables so the e-signature stamp clears the text above each line. Idempotent. |
 
-The three one-off tools are the template, in order: `build-template.py "Lease
-Template (2).docx"`, then `restyle-template.py`, then `reflow-template.py`.
-Running the three of them against the landlord's source lease reproduces
+The one-off tools are the template, in order: `build-template.py "Lease
+Template (2).docx"`, then `restyle-template.py`, then `reflow-template.py`,
+then `space-signature-tables.py`.
+Running the four of them against the landlord's source lease reproduces
 `template/lease-template.docx` part for part — every one of the forty parts
 identical, the same parts in the same order, differing only in the timestamp
 the zip stamps on each entry. That is what makes it safe to change one of them
