@@ -472,6 +472,8 @@
         app.move_in ? `Move-in ${app.move_in}` : "",
         app.lease_term_months ? `${app.lease_term_months}-month term` : ""
       ].filter(Boolean).join(" · ");
+      const docsHtml = documentRows(app, types) + orphanRows(app, types);
+      const requestHtml = app.request ? `<div class="portal-request"><b>What We Need From You</b><p>${escapeHtml(app.request.message)}</p></div>` : "";
 
       return `
         <section class="section portal-app" data-app-card="${escapeHtml(app.id)}">
@@ -480,16 +482,15 @@
             <span class="portal-chip is-${escapeHtml(app.status)}">${escapeHtml(applicationStatus(app))}</span>
           </div>
           <p class="portal-facts">${escapeHtml(facts)}</p>
-          ${testTools?.testSteps(app,progress.met===progress.total) || ''}
-          ${app.request ? `<div class="portal-request"><b>What We Need From You</b><p>${escapeHtml(app.request.message)}</p></div>` : ""}
+          ${app.test_run && testTools
+            ? testTools.testRunBody(app, { progress, docsHtml, requestHtml, listing: listingLabel(app) })
+            : `${requestHtml}
           <p class="portal-progress${progress.met === progress.total ? " is-done" : ""}">
             ${progress.met === progress.total
               ? "All required documents received. Thank you"
               : `Required documents · ${progress.met} of ${progress.total} complete`}
           </p>
-          <div class="doc-list">
-            ${documentRows(app, types)}${orphanRows(app, types)}
-          </div>
+          <div class="doc-list">${docsHtml}</div>`}
         </section>`;
     }).join("");
 
@@ -503,7 +504,10 @@
         ? `<p class="lede">There is no application under ${escapeHtml(data.email)} yet.
              <a href="../rental/">Browse the rentals</a> and apply from any property page.
              Your application will appear here.</p>`
-        : `<p class="lede">Upload each document below as a PDF or a photo (JPEG, PNG, HEIC),
+        : apps.find(a => a.id === selectedId)?.test_run && testTools
+          ? `<p class="lede">Complete each step below to move your application forward. Documents
+             go in as a PDF or a photo (JPEG, PNG, HEIC), up to 10&nbsp;MB per file.</p>`
+          : `<p class="lede">Upload each document below as a PDF or a photo (JPEG, PNG, HEIC),
              up to 10&nbsp;MB per file. We are notified automatically once everything
              required is in.</p>`}
       <p class="form-error" hidden></p>
@@ -532,8 +536,9 @@
     const testButton=event.target.closest('[data-test-action]');
     if(testButton && testTools){
       const panel=testButton.closest('[data-test-panel]'),app=state.data.applications.find(a=>a.id===panel.dataset.testPanel);
-      panel.querySelectorAll('button').forEach(b=>b.disabled=true);panel.querySelector('[role=status]').textContent='Processing…';
-      try{await testTools.testAction(testButton,app,api,applicableTypes(app));await load();}catch(error){await load();setError(error.message);}return;
+      setError("");
+      await testTools.handleTestAction(testButton,app,{api,types:applicableTypes(app),reload:load,setError});
+      return;
     }
     const uploadButton = event.target.closest("[data-upload]");
     if (uploadButton) {

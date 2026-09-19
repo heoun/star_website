@@ -38,15 +38,26 @@ it is never accepted as the landlord's emailed decision.
    validation, review, consent and submission still use the ordinary form.
 2. Submit, then choose **Continue to Payment & Documents**. The portal selects
    that exact application. Its run ID remains visible in the portal and Admin.
-3. Choose **Pay $20 — Simulation** (no real charge). The separate provider owns
-   the payment receipt. Failure is retryable and does not unlock screening.
+3. The portal shows the test run as the applicant will see it once a screening
+   provider is connected: a step bar (Application, Fee, Documents, Screening,
+   Landlord, Lease), the current step's page, and an **Internal Test** strip
+   at the bottom with the demo controls. Pay the **Application Fee** on the
+   card form (no real charge). The card details never leave the browser; only
+   the outcome goes to the separate provider, which owns the receipt. The
+   approved test card pays, the declined test card fails, and both are one
+   click in the demo strip. A declined payment is retryable and does not
+   unlock documents or screening.
 4. Upload the required documents normally, or choose **Upload Sample Documents**.
    Samples are valid PDFs visibly labelled as test fixtures; they pass through
    normal private storage, ownership and document-count checks.
-5. Choose the screening scenario, consent and **Submit Screening Materials**.
-   The provider receives an idempotent order with application ID and material
-   references, then returns Pending before producing a result. Raw identity
-   numbers and file bytes are not sent to this simulator.
+5. On the **Credit Screening** page, confirm the identity fields, authorize the
+   screening and choose **Authorize and Submit**. Date of birth and SSN digits
+   are checked in the browser only. The scenario (scored, no score, provider
+   failure) is chosen in the demo strip. The provider receives an idempotent
+   order with application ID and material references, then returns Pending
+   before producing a result; the page shows **Preparing Your Report** and
+   refreshes itself. Raw identity numbers and file bytes are not sent to this
+   simulator.
 6. A complete scored report plus complete materials triggers the normal rental
    workflow and landlord summary email. No-score and failure scenarios block
    automatic sharing. The applicant can refresh or leave the page; the scheduler
