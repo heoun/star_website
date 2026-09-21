@@ -122,8 +122,14 @@ Allergen 均在原线上。全员用嵌入式签署签完后的 PDF 外观与上
 Window Guards、Bedbug、DHCR 原稿只有一组租客签字线，为每位租客生成独立副本，
 分别填入该租客资料，token 里带收件人编号，所以整个信封里没有重复的锚点。
 
-E-sign Recipients 的 **Preview Signing Fields** 直接在渲染出来的 token 上画框，
-偏移和尺寸与发给 DocuSign 的一致；找不到或找到多个 token 时拒绝预览。
+审核页 **Documents** 里选中一份文件，左侧立即显示该文件内容，并自动在该文件自己的
+待签副本上画出签字框（直接画在渲染出来的 token 上，偏移和尺寸与发给 DocuSign 的一致），
+文件条目下方列出图例、各签署人的字段按钮、Community Rules 的 Fine Schedule 切换和
+逐租客通知的 Tenant Copy 切换。签署包按已批准版本只准备一次，切换文件只加载该文件
+的副本；未批准、有未保存更正或签署进行中时只显示内容并说明原因。找不到或找到多个
+token 时拒绝预览。自动预览不算审阅：只有 Review Signing Package / Review Lease Draft
+才把该签署包标为已审阅，否则直接发送仍会弹出跳过审阅的确认。E-sign Recipients 只保留
+签字顺序与 DocuSign 状态。
 
 发送前，创建 draft 后用 `include_anchor_tab_locations` 回读每个 tab，核对每个
 字段恰好落在自己的文档和页面上，并检查同一收件人在同一页的字段两两不相交；
