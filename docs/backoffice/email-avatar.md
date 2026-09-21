@@ -1,7 +1,9 @@
 # Sender avatar for Star email
 
-The inbox avatar beside `Star Realty <no-reply@starreusa.com>` is controlled by
-the recipient's email service. The HTML logo, Resend dashboard domain logo and
+The inbox avatar beside `Star Real Estate <no-reply@starreusa.com>` is controlled by
+the recipient's email service. The sender display name is `Star Real Estate`
+everywhere: `MAIL_FROM` in the Worker, the Supabase SMTP sender name and the
+Google profile name of the no-reply account. The HTML logo, Resend dashboard domain logo and
 mail headers do not configure that avatar. All website email templates continue
 to use the shared sender and body branding; Supabase Auth must use the same
 sender through its SMTP settings.
@@ -49,6 +51,11 @@ with `site/png/email-logo-v1.png` attached. The new user's Admin page confirms
 exactly one license, **Cloud Identity Free**, and estimated monthly bill
 **$0.00**. The subscriptions page still shows **7** paid Workspace Business
 Starter licenses and **1** Google Voice Starter license. No paid seat was added.
+On 2026-09-21, the no-reply account's public Google profile name was changed to
+`Star Real Estate` and verified on its Name page. The Star Dev Supabase SMTP
+sender name was also changed to `Star Real Estate` and verified after reload.
+The sender address and profile photo were unchanged. Website code uses the same
+name locally; this change has not been deployed to the production Worker.
 
 The user completed the initial no-reply login on 2026-09-21. Its Google profile
 shows the black Star logo. Profile-photo visibility was changed from **People

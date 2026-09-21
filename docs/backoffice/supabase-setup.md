@@ -59,7 +59,7 @@ Use the file matching each dashboard template (for example, `reset-password.html
 from the same `worker/mail-layout.js` shell as application and landlord emails.
 Regenerate with `EMAIL_LOGO_URL=<the Worker's public HTTPS logo URL> node scripts/build-auth-email-templates.mjs`,
 then paste each generated body into Supabase. Set the SMTP sender name to
-`Star Realty` and address to `no-reply@starreusa.com`, matching `MAIL_FROM`.
+`Star Real Estate` and address to `no-reply@starreusa.com`, matching `MAIL_FROM`.
 Paste it into **Confirm signup**, **Magic Link**, and **Reset password** in
 Authentication → Emails → Templates, and save each template. This is a cloud
 Auth setting: changing this repository or rebuilding the Worker does not update
