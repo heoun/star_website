@@ -7,6 +7,7 @@
     "dev": "node scripts/dev.js",
     "dev:signing": "node scripts/dev.js --signing-scheduler",
     "dev:journey": "node scripts/dev-journey.mjs",
+    "dev:testing": "node scripts/dev-testing.mjs",
     "test:journey": "node scripts/test-internal-journey.mjs",
     "test:journey:ui": "npm run build && node scripts/test-internal-journey.mjs --ui",
     "dev:webhook": "node scripts/dev-docusign-webhook.js",
@@ -33,8 +34,9 @@
     "test:listings:db": "node scripts/test-listing-schema.mjs",
     "test:case-review": "node scripts/test-case-review.mjs",
     "test:case-queue": "node scripts/test-case-queue.mjs",
-    "test:email": "node scripts/test-email-branding.mjs",
     "test:identity": "node scripts/test-identity.mjs",
+    "test:email": "node scripts/test-email-branding.mjs",
+    "test:membership": "node scripts/test-rental-membership.mjs",
     "test:identity:db": "node scripts/test-identity-schema.mjs",
     "test:identity:ui": "node scripts/test-identity-ui.mjs",
     "test:storage": "node scripts/test-storage.mjs",
@@ -45,8 +47,8 @@
     "test:signing:ui": "node scripts/test-rental-signing-ui.mjs",
     "test:signing:webhook": "node scripts/test-docusign-webhook-forwarder.mjs",
     "test:rentals:ui": "npm run build && node scripts/test-rental-ui.mjs",
-    "test:membership": "node scripts/test-rental-membership.mjs",
-    "test:signing:sync": "node scripts/test-signing-sync.mjs"
+    "test:signing:sync": "node scripts/test-signing-sync.mjs",
+    "test:testing": "node scripts/test-testing-launcher.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

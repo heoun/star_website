@@ -27,6 +27,7 @@ const devVars = path.join(root, ".dev.vars");
 const port = process.env.PORT || "8787";
 // Anything after `--` is handed to wrangler, e.g. `npm run dev -- --remote`.
 const signingScheduler = process.argv.includes("--signing-scheduler");
+const scheduleMs=process.env.STAR_TESTING_SCHEDULE_MS==='15000'?15000:60000;
 const extraArgs = process.argv.slice(2).filter(arg => arg !== "--signing-scheduler");
 if (signingScheduler) {
   // Keep this opt-in mode on the DocuSign demo account, including cron runs.
@@ -180,12 +181,12 @@ const scheduledTimer = signingScheduler ? setInterval(async () => {
     await response.body?.cancel();
     if (!response.ok) console.warn(`  Local scheduled handler returned ${response.status}.`);
   } catch {
-    console.warn("  Local scheduled handler unavailable; retrying next minute.");
+    console.warn("  Local scheduled handler unavailable; retrying on the next tick.");
   } finally {
     scheduledBusy = false;
   }
-}, 60000) : null;
-if (signingScheduler) console.log("Local rental/signing jobs run every minute; DocuSign uses demo credentials.");
+}, scheduleMs) : null;
+if (signingScheduler) console.log(`Local rental/signing jobs run every ${scheduleMs/1000} seconds; DocuSign uses demo credentials.`);
 
 // Coalesce the burst of events an editor emits when it saves a file.
 const pending = new Set();

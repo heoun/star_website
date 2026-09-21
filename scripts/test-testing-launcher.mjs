@@ -1,0 +1,8 @@
+import assert from 'node:assert/strict';
+import {testingConfig} from './dev-testing.mjs';
+let checks=0;
+const vars={SUPABASE_URL:'https://star-dev.supabase.co',SUPABASE_SERVICE_ROLE_KEY:'fake',SUPABASE_PUBLISHABLE_KEY:'fake',APP_ENCRYPTION_KEY:'fake',INTERNAL_TEST_DATABASE_HOST:'star-dev.supabase.co',INTERNAL_TEST_USER_ID:'fake',INTERNAL_TEST_EMAIL:'tenant@example.test',INTERNAL_TEST_LANDLORD_EMAIL:'owner@example.test',INTERNAL_TEST_LISTING_IDS:'fake',SCREENING_SIMULATOR_URL:'http://127.0.0.1:8794',SCREENING_SIMULATOR_TOKEN:'fake',RESEND_API_KEY:'fake',LANDLORD_DECISION_SECRET:'fake',DOCUSIGN_INTEGRATION_KEY:'fake',DOCUSIGN_USER_ID:'fake',DOCUSIGN_ACCOUNT_ID:'fake',DOCUSIGN_PRIVATE_KEY:'fake',DOCUSIGN_CONNECT_HMAC_SECRET:'fake',INTERNAL_TESTING:'on',RENTAL_AUTOMATION:'on',RENTAL_SCREENING:'simulator',DEV_REAL_EMAIL:'true',DOCUSIGN_ENABLED:'on',DOCUSIGN_ENVIRONMENT:'demo',DEV_DOCUSIGN_SEND:'on',SITE_ORIGIN:'http://127.0.0.1:8787'};
+const source=v=>Object.entries(v).map(([k,value])=>`${k}=${value}`).join('\n');
+assert.equal(testingConfig(source(vars)).DOCUSIGN_ENVIRONMENT,'demo');checks++;
+for(const patch of [{DOCUSIGN_ENVIRONMENT:'production'},{RENTAL_SCREENING:'live'},{INTERNAL_TESTING:'off'},{SUPABASE_URL:'https://production.supabase.co'},{SITE_ORIGIN:'https://starreusa.com'},{SCREENING_SIMULATOR_URL:'https://provider.test'},{DOCUSIGN_PRIVATE_KEY:''},{DEV_REAL_EMAIL:'false'}]){assert.throws(()=>testingConfig(source({...vars,...patch})));checks++;}
+console.log(`PASS ${checks} testing launcher checks: sandbox, database, local links, provider boundaries and required configuration.`);

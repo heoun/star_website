@@ -128,4 +128,4 @@ SCREENING_SIMULATOR_TOKEN=
 # For this profile: RENTAL_AUTOMATION=on, RENTAL_SCREENING=simulator,
 # SITE_ORIGIN=http://127.0.0.1:8787, DEV_REAL_EMAIL=true.
 # Real test email is restricted to configured lead, landlord and roommate inboxes.
-# Start both services and the scheduler with npm run dev:journey.
+# Start the entire stack, callback tunnel and scheduler with npm run dev:testing.

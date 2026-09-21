@@ -184,6 +184,10 @@ DocuSign 管理的合同禁止通过手工填写 receipt 或上传 PDF 提前标
 页面在签署进行中每 5 秒读取本站状态。正常回调网络下的目标是签署后 60 秒内显示状态，
 归档下载并行，归档失败 15 秒后重试。DocuSign 自身投递延迟/断网不能承诺绝对时限。
 
+本地完整测试统一使用 `npm run dev:testing`，自动运行专用 webhook 转发、HTTPS tunnel、
+Sandbox Connect 订阅、模拟付费/筛查和 15 秒调度。启动时重放未完成测试信封的状态，
+无需重新签署或重发邀请；重启自动更新同一个按发送用户限定的 Sandbox Connect 配置。
+
 全部 signer 完成后，通过认证 API 下载 combined signed PDF 与 certificate，写入现有私有
 storage。大小、PDF 格式、文件 hash 验证通过后，原子更新每位 tenant receipt、
 landlord receipt、signed_lease 及 completed 状态。文件重试使用 package 范围内的稳定路径。

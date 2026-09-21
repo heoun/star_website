@@ -15,11 +15,29 @@ simulated HTTP provider. No real payment or credit inquiry is performed.
   delete an existing identity just to repeat a rental application.
 - Landlord: `augustusvash@gmail.com`. Activate the invited account on `/login/`
   on first use, using the email code and a password chosen by its owner.
-- Run `npm run dev:journey` to start the Worker on 8787, the screening API
-  simulator on 8794, and the existing once-per-minute rental/signing scheduler.
-  Stop any previous server on 8787 first. Keep the process running during testing.
-  Existing DocuSign Connect configuration can accelerate updates; polling also
-  reconciles the provider state when a tunnel is unavailable.
+- Run **`npm run dev:testing`**. It starts the Worker on 8787, payment/screening
+  simulator on 8794, a webhook-only listener on 8788, an HTTPS tunnel and a
+  15-second background scheduler. `dev:journey` is a compatibility alias.
+  Stop any old server first; the launcher never kills an unrelated process.
+  Wait for **TESTING READY** before starting a run. Ctrl+C stops the whole stack.
+- One-time machine dependency: Node 24+, `npm install`, and `cloudflared`
+  (`brew install cloudflared` on macOS). The configured Sandbox sender needs
+  account-admin permission for its dedicated Connect subscription. Production
+  credentials, a mismatched database, or a nonlocal screening provider fail startup.
+- Startup verifies the database schema, simulator authorization, local HMAC
+  rejection, and public HTTPS → authenticated durable inbox path. It creates or
+  updates only `Star local testing <database-host>` in the Sandbox account,
+  scoped to the configured sender. It replays pending test envelopes so a restart
+  does not strand them at the previous temporary callback URL. It never signs,
+  resends invitations, changes recipients, or clears past test applications.
+- The website and admin remain local; the tunnel exposes only the authenticated
+  DocuSign webhook. The runtime callback URL is passed to Wrangler without
+  rewriting `.dev.vars`. Callback health is checked every 30 seconds. A failed
+  child or three failed callback checks stops the stack with a visible error.
+- Login, real test email, approvals, private storage, lease generation and signing
+  run through the application's normal paths. Payment/credit use the local
+  provider simulator; DocuSign uses Sandbox. This is a full workflow rehearsal,
+  not a promise of identical production infrastructure or third-party latency.
 - Set `DEV_REAL_EMAIL=true` and a valid `RESEND_API_KEY` in `.dev.vars` before
   starting. The launcher checks both; the sender domain must also be verified
   in Resend. A screening result does not mean an email was sent: the portal

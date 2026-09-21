@@ -793,3 +793,10 @@ See [repository layout and delivery checkpoints](docs/repository.md) for source-
 Existing databases: deploy code that no longer references the removed listing columns, then run [`supabase/drop-listing-presentation-fields.sql`](supabase/drop-listing-presentation-fields.sql). This permanently deletes Price override, Neighborhood, Card badge and listing Sort order data. Photo ordering is retained. New databases use the updated `supabase/schema.sql`.
 
 Run `npm run test:listings` for the save/read flow and `npm run test:listings:db` with PGlite installed (or `PGLITE_MODULE` set) for the database migration checks.
+
+### Full local workflow testing
+
+Run `npm run dev:testing` and wait for **TESTING READY**. This supervises the
+Worker, payment/credit simulator, DocuSign Sandbox callback tunnel, Connect
+subscription and background jobs together. Ctrl+C stops the stack. Existing
+test applications remain available. See [testing setup](docs/backoffice/internal-testing.md).
