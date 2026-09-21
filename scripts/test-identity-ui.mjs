@@ -5,8 +5,9 @@ import { readFile, mkdir } from "node:fs/promises";
 import { resolve, extname } from "node:path";
 import worker from "../worker/index.js";
 import { createIdentityFixture } from "./identity-fixtures.mjs";
-const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const {env,restore}=createIdentityFixture();
+const previousCaches=globalThis.caches;
+globalThis.caches={default:{async match(){},async put(){},async delete(){return true;}}};
 env.DEV_REAL_EMAIL="true"; // Synthetic transport above; never sends email.
 const root=resolve("dist"), pending=[];
 env.ASSETS={async fetch(request){
@@ -18,13 +19,18 @@ env.ASSETS={async fetch(request){
 const server=http.createServer(async(req,res)=>{
   try{
     const chunks=[];for await(const chunk of req)chunks.push(chunk);
-    const request=new Request(`http://127.0.0.1:${server.address().port}${req.url}`,{method:req.method,headers:req.headers,...(chunks.length?{body:Buffer.concat(chunks)}:{})});
+    const request=new Request(`http://${req.headers.host}${req.url}`,{method:req.method,headers:req.headers,...(chunks.length?{body:Buffer.concat(chunks)}:{})});
     const response=await worker.fetch(request,env,{waitUntil:p=>pending.push(p)});
     res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));
   }catch(error){res.writeHead(500);res.end(error.message);}
 });
 await new Promise(resolve=>server.listen(0,"127.0.0.1",resolve));
 const base=`http://127.0.0.1:${server.address().port}`;
+if(process.argv.includes('--serve')) {
+  console.log(`Isolated identity UI fixture: ${base}/portal/ (applicant@example.test / testing-password)`);
+  await new Promise(()=>{});
+}
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const browser=await chromium.launch({headless:true});let checks=0;
 const screenshotDir=process.env.IDENTITY_UI_ARTIFACTS || "/tmp/star-identity-ui";
 await mkdir(screenshotDir,{recursive:true});
@@ -43,7 +49,14 @@ try{
   assert.equal((await(await context.request.get(`${base}/api/admin/me`)).json()).email,'admin@example.test');checks++;
   assert.equal((await(await context.request.get(`${base}/api/portal/me`)).json()).email,'applicant@example.test');checks++;
   assert.deepEqual((await context.cookies()).map(c=>c.name).filter(n=>n.startsWith('star_')).sort(),['star_portal','star_workspace']);checks++;
-  await context.request.post(`${base}/api/portal/sign-out`,{data:{}});
+  await page.goto(`${base}/portal/`);
+  await page.getByRole('button',{name:'Sign out',exact:true}).click();
+  await page.getByRole('button',{name:'Sign in',exact:true}).waitFor();checks++;
+  assert.equal((await context.cookies()).some(c=>c.name==='star_portal'),false);checks++;
+  assert.equal((await context.request.get(`${base}/api/portal/me`)).status(),401);checks++;
+  await page.goto(`${base}/apply/?id=33333333-3333-4333-8333-333333333333`);
+  await page.waitForURL('**/portal/?next=*');checks++;
+  await page.getByRole('button',{name:'Sign in',exact:true}).waitFor();checks++;
   await Promise.allSettled(pending);
   assert.equal((await context.request.get(`${base}/api/admin/me`)).status(),200);checks++;
   await context.request.post(`${base}/api/portal/login`,{data:{email:'applicant@example.test',password:'testing-password'}});
@@ -70,4 +83,4 @@ try{
   assert(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth));checks++;
   assert.deepEqual(errors,[]);checks++;
   console.log(`PASS ${checks} browser checks: sign in, create/invite, activation, recovery, sign out, role navigation and mobile layout`);
-}finally{await context.close();await browser.close();await Promise.allSettled(pending);await new Promise(resolve=>server.close(resolve));restore();}
+}finally{await context.close();await browser.close();await Promise.allSettled(pending);await new Promise(resolve=>server.close(resolve));restore();globalThis.caches=previousCaches;}

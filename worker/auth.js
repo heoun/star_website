@@ -323,6 +323,16 @@ export async function handleAuthRequest(request, env, ctx, resource) {
       return session ? json({ email: session.email }, 200, session.setCookie ? { "Set-Cookie": session.setCookie } : {}) : json({ error: "Please sign in." }, 401);
     }
     if (request.method !== "POST") return json({ error: "Method not allowed." }, 405);
+    // Signing out has no payload. Accept the original portal's bodyless POST
+    // too, while retaining the same-origin and session-scope checks above.
+    if (resource === "sign-out") {
+      const stored = decodeSessionCookie(cookieValue(request, SESSION_COOKIES[authScope(request)]));
+      if (stored?.at) {
+        // Clear this browser even if upstream revocation is temporarily unavailable.
+        ctx.waitUntil(authRequest(env, "logout?scope=local", { token: stored.at }).catch(() => {}));
+      }
+      return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(request, "", 0) });
+    }
     if (!request.headers.get("Content-Type")?.toLowerCase().startsWith("application/json")) return json({ error: "Send this form as JSON." }, 415);
     const reader = request.body?.getReader(); let size = 0; const parts = [];
     if (reader) for (;;) {
@@ -336,14 +346,6 @@ export async function handleAuthRequest(request, env, ctx, resource) {
     const safeRequest = new Request(request.url, { method: "POST", headers: request.headers, body: JSON.stringify(body) });
     const handlers = { register: handleRegister, resend: handleResend, "verify-register": handleVerifyRegister, login: handleLogin, "request-reset": handleRequestReset, "verify-reset": handleVerifyReset };
     if (handlers[resource]) return await handlers[resource](safeRequest, env);
-    if (resource === "sign-out") {
-      const stored = decodeSessionCookie(cookieValue(request, SESSION_COOKIES[authScope(request)]));
-      if (stored?.at) {
-        // Clear this browser even if upstream revocation is temporarily unavailable.
-        ctx.waitUntil(authRequest(env, "logout?scope=local", { token: stored.at }).catch(() => {}));
-      }
-      return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(request, "", 0) });
-    }
     return json({ error: "Unknown account endpoint." }, 404);
   } catch { return json({ error: "Sign-in could not be completed. Please try again." }, 503); }
 }

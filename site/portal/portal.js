@@ -527,14 +527,22 @@
     clearTimeout(pollTimer);
     if(selected?.test_run && selected.screening?.submitted && ['pending','not_started'].includes(selected.screening.status))pollTimer=setTimeout(async()=>{try{await postJson(`/applications/${selected.id}/refresh`,{});await load();}catch(e){setError(e.message);}},7000);
 
-    document.getElementById("sign-out").addEventListener("click", async () => {
+    document.getElementById("sign-out").addEventListener("click", async (event) => {
+      const button=event.currentTarget;
+      button.disabled=true;
+      clearTimeout(pollTimer);
+      setError("");
       try {
-        await api("/sign-out", { method: "POST" });
-      } catch {
-        // The cookie is gone either way.
+        await postJson("/sign-out", {});
+        state.data = null;
+        state.email = invitedEmail;
+        pendingUpload = null;
+        // Leave the old dashboard and any in-flight refresh callbacks behind.
+        window.location.replace(window.location.pathname + window.location.search);
+      } catch (error) {
+        button.disabled=false;
+        setError(`Could not sign out. ${error.message} Please try again.`);
       }
-      state.data = null;
-      renderSignIn();
     });
   }
 

@@ -112,7 +112,12 @@ try {
   assert(logout.cookie.startsWith('star_workspace='));checks++;
   eq((await call('/api/portal/me',{cookie:applicant})).status,200);
   const secondAdmin=await login('admin@example.test');
-  const portalLogout=await call('/api/auth/sign-out',{cookie:applicant+'; '+secondAdmin,body:{}});
+  // Match the old portal button exactly: a bodyless POST must clear the cookie.
+  const blockedLogout=await call('/api/portal/sign-out',{cookie:applicant,method:'POST',headers:{Origin:'https://attacker.test'}});
+  eq(blockedLogout.status,403);eq(blockedLogout.cookie,null);
+  eq((await call('/api/portal/sign-out',{cookie:applicant})).status,405);
+  const portalLogout=await call('/api/portal/sign-out',{cookie:applicant+'; '+secondAdmin,method:'POST'});
+  eq(portalLogout.status,200);assert(portalLogout.cookie.includes('Max-Age=0'));checks++;
   assert(portalLogout.cookie.startsWith('star_portal='));checks++;
   await Promise.all(pending);
   eq((await call('/api/admin/me',{cookie:secondAdmin})).status,200);
