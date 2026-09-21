@@ -27,8 +27,8 @@ remains unchanged while this option is evaluated. The user declined the proposed
 certificate price and has not confirmed 12 months of logo use; there is no
 authorization to purchase a certificate or start a subscription.
 
-The Google Admin directory contains seven users and no `no-reply@starreusa.com`
-user. The `info@starreusa.com` user has no alternate email aliases. Its Google
+Before setup, the Google Admin directory contained seven users and no
+`no-reply@starreusa.com` user. The `info@starreusa.com` user has no alternate email aliases. Its Google
 account already has a blue Star logo and profile-picture visibility is
 **Anyone**. No profile or directory settings were changed. Reusing this profile
 would require an intentional sender-address change to `info@starreusa.com`,
@@ -44,13 +44,23 @@ organizational unit was created. Its Google Workspace Business Starter
 automatic licensing is explicitly **OFF**, while Google Voice Starter inherits
 **OFF**. The root organizational unit's employee licensing was not changed.
 
-The new-user form is prepared for `Star Realty`, `no-reply@starreusa.com`, in
-`Automated Mail`, with `site/png/email-logo-v1.png` attached. Creation and the
-initial credential flow are handed to the user. After creation, verify that
-the account has only Cloud Identity Free (no paid Workspace seat), sign in as
-that user, set profile-photo visibility to Anyone, and verify actual recipient
-display. Cloud Identity supplies an identity, not a Gmail inbox. Its effect on
-Resend sender avatars remains unverified until that last check.
+The user created `Star Realty`, `no-reply@starreusa.com`, in `Automated Mail`,
+with `site/png/email-logo-v1.png` attached. The new user's Admin page confirms
+exactly one license, **Cloud Identity Free**, and estimated monthly bill
+**$0.00**. The subscriptions page still shows **7** paid Workspace Business
+Starter licenses and **1** Google Voice Starter license. No paid seat was added.
+
+The user completed the initial no-reply login on 2026-09-21. Its Google profile
+shows the black Star logo. Profile-photo visibility was changed from **People
+you interact with** to **Anyone**, saved, and verified by reopening the setting.
+Cloud Identity supplies an identity, not a Gmail inbox.
+
+Recipient-side verification: an existing Resend website notification from
+`no-reply@starreusa.com` in `info@starreusa.com`'s Gmail now visibly displays the
+black Star logo beside the sender. No test email was sent and no local contact
+photo was added. This verifies display in one same-organization Workspace inbox;
+external Gmail recipients, Supabase messages, and other mail clients remain
+unverified. Do not claim universal display from this observation.
 
 ## Current public configuration
 
@@ -69,9 +79,10 @@ aligned SPF and DMARC, but its DKIM signature used Google's
 Google Admin before relying on forwarded Workspace messages to retain alignment.
 These samples do not establish alignment for every sender or forwarding route.
 
-No DNS or provider settings were changed. Gmail BIMI needs a CMC or VMC plus
+No DNS or mail-delivery settings were changed. Gmail BIMI needs a CMC or VMC plus
 DMARC enforcement (`p=quarantine` or `p=reject`, `pct=100`). A certificate has
-not yet been supplied. Consequently, sender-avatar activation is still pending.
+not been supplied. BIMI remains inactive; the verified Google profile-avatar
+route above is separate.
 
 The existing Wrangler OAuth login can read zones but has no DNS-edit scope.
 The Cloudflare dashboard login is available if later needed; no new API
@@ -88,7 +99,7 @@ and certify these exact logo bytes. This asset is not itself a certificate.
 After deployment, its intended URL is `https://starreusa.com/brand/star-bimi.svg`.
 Do not publish a BIMI DNS assertion until its public asset/certificate URLs work.
 
-## Completion steps
+## Optional future BIMI rollout (not the chosen free route)
 
 1. Obtain or locate the organization's CMC/VMC for this logo and domain. The CA
    validates brand eligibility; a VMC also qualifies for Gmail's verified check.
