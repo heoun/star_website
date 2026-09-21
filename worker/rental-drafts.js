@@ -12,6 +12,36 @@ export async function rentalDraft(env,id) {
  if(!uuid.test(id || ''))return null;
  return (await database(env,`rental_drafts?id=eq.${id}&select=*`))[0] || null;
 }
+// A draft belongs to its authenticated creator even when a roommate is the
+// first person to submit. Never expose the roommate's application to its owner.
+export async function pendingOwnedApplications(env,session) {
+ const email=String(session?.email || '').toLowerCase();
+ if(!session?.subject || !email)return [];
+ const cards=[];
+ for(let offset=0;;offset+=100){
+  const query=new URLSearchParams({owner_id:`eq.${session.subject}`,owner_email:`eq.${email}`,select:'id,listing_id,owner_id,owner_email,invitations,activated,created_at,listings(title,property_name,unit,location)',order:'created_at.desc,id.desc',limit:'100',offset:String(offset)});
+  const drafts=await database(env,`rental_drafts?${query}`);
+  const owned=drafts.filter(d=>d.owner_id===session.subject && d.owner_email===email && uuid.test(d.id) && uuid.test(d.listing_id));
+  const active=owned.filter(d=>d.activated).map(d=>d.id);
+  const roots=active.length?await database(env,`applications?${new URLSearchParams({id:`in.(${active.join(',')})`,select:'id,listing_id,rental_group_id,status,workspace'})}`):[];
+  for(const draft of owned){
+   const root=roots.find(r=>r.id===draft.id && r.rental_group_id===draft.id && r.listing_id===draft.listing_id);
+   // Live case invitations take precedence: a canceled or removed membership
+   // must not reappear from the original draft's saved invitation list.
+   if(draft.activated && (!root || ['sent_to_landlord','landlord_approved','lease_sent','lease_signed','declined'].includes(root.status)))continue;
+   const entries=(draft.activated?root.workspace?.invitations:draft.invitations) || [];
+   const invitation=entries.find(i=>i.role==='inviter' && i.email===email && !i.accepted && uuid.test(i.id) && Date.parse(i.expires)>=Date.now());
+   if(!invitation)continue;
+   const listing=draft.listings || {};
+   cards.push({group_id:draft.id,listing_id:draft.listing_id,created_at:draft.created_at,
+    listing:{title:listing.title,property_name:listing.property_name,unit:listing.unit,location:listing.location},
+    submitted_count:entries.filter(i=>i.accepted).length,
+    continue_url:`/apply/?${new URLSearchParams({id:draft.listing_id,group:draft.id,invited:email,invite:`${draft.id}.${invitation.id}`})}`});
+  }
+  if(drafts.length<100)break;
+ }
+ return cards;
+}
 export async function saveRentalDraft(env,request,session,listingId,id,roommates,testId='') {
  if(!uuid.test(id || ''))throw fail('Start a new application before inviting roommates.',422);
  let test=null;

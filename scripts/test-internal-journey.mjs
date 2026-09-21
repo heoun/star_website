@@ -99,7 +99,7 @@ try {
  eq((await earlyOptions()).internal_test_group,lead);eq((await earlyOptions()).internal_test_pending,true);
  eq((await earlyOptions()).internal_testing,false);
  eq((await earlyOptions(wrong)).internal_test_group,null);
- eq((await earlyOptions(cookie)).internal_test_group,null);
+ eq((await earlyOptions(cookie)).internal_test_group,lead);
  eq((await earlyOptions(mateCookie,'group=invalid')).internal_test_group,null);
  eq((await earlyOptions(mateCookie,`invite=${lead}.${crypto.randomUUID()}`)).internal_test_group,null);
  eq((await earlyOptions(mateCookie,`group=${lead}`,'https://example.com')).internal_test_group,null);

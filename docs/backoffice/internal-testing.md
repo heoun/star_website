@@ -71,6 +71,14 @@ requests. Pages opened before the session-isolation update must load the new cod
 and sign in once; refreshing an unsubmitted form discards its in-memory answers.
 Existing saved invitations and group IDs remain valid.
 
+The inviter can sign back into **Applicant Portal** and choose **Continue
+Application** on an **Awaiting your application** card, even when the roommate
+submitted first or the original tab was closed. This resumes the saved group;
+it does not create a new run or expose the roommate's private application.
+The continuation includes the sample-data helper for authorized test accounts.
+Canceled, expired, removed, closed, or already accepted memberships do not show
+as pending. The form's unsaved answers are not restored.
+
 For an allowlisted roommate, a live invitation to a saved internal test case also
 shows **Fill With Sample Data**. It preserves the invited email and case, offers
 no new-run button, and does not create a separate test root. After submission,

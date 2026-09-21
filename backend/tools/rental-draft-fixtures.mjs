@@ -2,14 +2,14 @@
 // the real PostgreSQL migration in scripts/test-rental-drafts.mjs.
 export function rentalDraftFixture(state,table,body,query,response) {
  state.rental_drafts ||= [];
- if(table==='rental_drafts')return response(state.rental_drafts.filter(d=>!query.has('id') || `eq.${d.id}`===query.get('id')));
+ if(table==='rental_drafts')return response(state.rental_drafts.filter(d=>['id','owner_id','owner_email'].every(k=>!query.has(k) || `eq.${d[k]}`===query.get(k))).slice(Number(query.get('offset') || 0),Number(query.get('offset') || 0)+Number(query.get('limit') || 1000)).map(d=>({...d,listings:state.listings.find(l=>l.id===d.listing_id)})));
  if(!['save_rental_draft','submit_draft_application','record_draft_invite_delivery'].includes(table))return null;
  const id=body.p_group || body.p_id,root=state.applications.find(a=>a.id===id && a.rental_group_id===id);
  let draft=state.rental_drafts.find(d=>d.id===id);
  const failed=()=>response({error:'Invalid or closed invitation'},409);
  const invitation=(email,name,role)=>({id:crypto.randomUUID(),email,name,delivery:role?'sent':'pending',expires:new Date(Date.now()+14*86400000).toISOString(),...(role?{role}:{})});
  if(table==='save_rental_draft'){
-  if(!draft){if(state.applications.some(a=>a.id===id))return failed();draft={id,listing_id:body.p_listing,owner_id:body.p_owner,owner_email:body.p_email,invitations:[invitation(body.p_email,body.p_email,'inviter')],test_run:body.p_test,activated:false};}
+  if(!draft){if(state.applications.some(a=>a.id===id))return failed();draft={id,created_at:new Date().toISOString(),listing_id:body.p_listing,owner_id:body.p_owner,owner_email:body.p_email,invitations:[invitation(body.p_email,body.p_email,'inviter')],test_run:body.p_test,activated:false};}
   if(draft.owner_id!==body.p_owner || draft.owner_email!==body.p_email || draft.listing_id!==body.p_listing)return failed();
   if(draft.activated && (!root || ['sent_to_landlord','landlord_approved','lease_sent','lease_signed','declined'].includes(root.status)))return failed();
   const entries=structuredClone(root?.workspace.invitations || draft.invitations);

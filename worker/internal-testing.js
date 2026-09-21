@@ -12,7 +12,7 @@ export async function invitedTestContext(env,request,session,listingId,invitatio
   const group=await rentalWorkflow(env,request).store.group(root);
   if(!group) {
     const draft=await rentalDraft(env,root);
-    const match=draft?.test_run && draft.listing_id===listingId && !draft.activated && draft.owner_email!==session.email.toLowerCase() && draft.invitations.some(i=>i.email===session.email.toLowerCase() && Date.parse(i.expires)>=Date.now() && (!invitation || i.id===parts[1]));
+    const match=draft?.test_run && draft.listing_id===listingId && !draft.activated && draft.invitations.some(i=>!i.accepted && i.email===session.email.toLowerCase() && (i.role!=='inviter' || draft.owner_id===session.subject) && Date.parse(i.expires)>=Date.now() && (!invitation || i.id===parts[1]));
     return match ? {pendingGroup:root,run:{id:draft.test_run.id,created_at:draft.test_run.created_at,member_of:root}} : null;
   }
   const run=group?.root.workspace?.test_run;

@@ -1,5 +1,6 @@
 import { storageBucket } from "./storage.js";
-import { runRentalAutomation } from "./rentals.js";
+import { runRentalAutomation, rentalMode } from "./rentals.js";
+import { pendingOwnedApplications } from './rental-drafts.js';
 import { applicantChecksFor } from '../backend/app/applicant-checks.ts';
 import { internalTestParticipant,internalTestListing } from './internal-testing.js';
 // The applicant portal: /portal/ in the browser, /api/portal/* here.
@@ -263,9 +264,12 @@ export function toPortalApplication(row) {
 }
 
 async function handleList(env, session,request) {
-  const rows = await fetchApplicationsByEmail(env, session.email);
+  const [rows,pending_applications] = await Promise.all([
+    fetchApplicationsByEmail(env, session.email),
+    rentalMode(env) ? pendingOwnedApplications(env,session) : []
+  ]);
   const applications = rows.map(toPortalApplication);
-  return json({ email: session.email, internal_testing:internalTestParticipant(env,request,session),document_types: DOCUMENT_TYPES, applications });
+  return json({ email: session.email, internal_testing:internalTestParticipant(env,request,session),document_types: DOCUMENT_TYPES, applications, pending_applications });
 }
 
 async function handleUpload(request, env, ctx, session, applicationId) {

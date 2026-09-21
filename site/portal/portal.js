@@ -472,6 +472,17 @@ import { createApplicantSession } from '../shared/applicant-session.js';
   function renderDashboard() {
     const data = state.data;
     const apps = data.applications || [];
+    const pending = data.pending_applications || [];
+    const pendingCards = pending.map(app => `
+      <section class="section portal-app" data-pending-group="${escapeHtml(app.group_id)}">
+        <div class="portal-app-head">
+          <h2>${escapeHtml(listingLabel(app))}</h2>
+          <span class="portal-chip">Awaiting your application</span>
+        </div>
+        <p class="portal-facts">Group ${escapeHtml(app.group_id.slice(0,8))} · ${escapeHtml(app.submitted_count)} submitted</p>
+        <p>${app.submitted_count ? 'Your roommate has submitted. ' : ''}Complete your own application to join this group.</p>
+        <a class="submit" href="${escapeHtml(app.continue_url)}">Continue Application</a>
+      </section>`).join('');
 
     if(!apps.some(a=>a.id===selectedId))selectedId=apps[0]?.id;
     const cards = apps.filter(app=>app.id===selectedId).map((app) => {
@@ -513,7 +524,9 @@ import { createApplicantSession } from '../shared/applicant-session.js';
         <button type="button" id="sign-out">Sign out</button>
       </div>
       <h1>Your application${apps.length === 1 ? "" : "s"}</h1>
-      ${apps.length === 0
+      ${pending.length
+        ? `<p class="lede">You have an unfinished group application. Continue below to submit your own information to the same case.</p>`
+        : apps.length === 0
         ? `<p class="lede">There is no application under ${escapeHtml(data.email)} yet.
              <a href="../rental/">Browse the rentals</a> and apply from any property page.
              Your application will appear here.</p>`
@@ -524,6 +537,7 @@ import { createApplicantSession } from '../shared/applicant-session.js';
              up to 10&nbsp;MB per file. We are notified automatically once everything
              required is in.</p>`}
       <p class="form-error" hidden></p>
+      ${pendingCards}
       ${apps.length>1?`<label>Application / Test Run<select class="portal-run-select" id="application-select">${apps.map(a=>`<option value="${escapeHtml(a.id)}" ${a.id===selectedId?'selected':''}>${escapeHtml(listingLabel(a))} · ${escapeHtml(a.test_run?'Test '+a.id.slice(0,8):a.name)} · ${escapeHtml(applicationStatus(a))} · ${escapeHtml(new Date(a.created_at).toLocaleString())}</option>`).join('')}</select></label>`:''}
       ${cards}
     `;
