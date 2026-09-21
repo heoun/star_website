@@ -7,7 +7,7 @@ The agreed flow is now implemented behind `RENTAL_AUTOMATION=on`. The isolated r
 - One property can have multiple agents. Published rental applications optionally select an active property agent; the agent’s referral link preselects them. No selection leaves assignment to Admin. Property access does not grant access to every application: an agent must own or collaborate on that application group.
 - Only Admin can change the responsible Agent. The assignee must be an active Agent; Admin may be a collaborator but cannot own the assignment. Collaborator choices appear as Agent, then Admin. Reviewing or recommending an unassigned application does not silently assign the reviewing Admin.
 - One unit can have competing application groups. A group has one lead, its own common lease terms, and one or more applicants. Each applicant retains their private application and uploads. Grouping in the queue never merges competing applications.
-- A group holds one lease signer per bedroom (a studio holds one), enforced on the form, on submission, on admin invitations and on joins. Roommate invitations go out from the form's roommate step when the applicant ticks the invitation box, otherwise once the lead's application fee is paid or waived; the admin's own invitations are sent at once. The invited person signs in with the exact invited email and submits through the invitation link or from the plain application page, where an open invitation for that email and home joins them to the group. Every invitation link names the invited address; the portal starts with it filled in, and the form refuses to open under any other signed-in account and offers to switch. A roommate who applied independently before the lead is adopted into the group when the lead submits. Every invitation, whether sent from the form, after the fee or by staff, is the same branded card as the landlord decision request, from the same sender, with the home, the inviter, one button and the invited address. Insertion and joining are one transaction. Authorized staff can still join an existing independent application after explicit confirmation; the destination group’s terms and team apply. Both versions are checked.
+- A group holds one lease signer per bedroom (a studio holds one), enforced on the form, on submission, on admin invitations and on joins. Roommate invitations go out from the form's roommate step when the applicant ticks the invitation box, otherwise once the lead's application fee is paid or waived; the admin's own invitations are sent at once. The invited person signs in with the exact invited email and submits through the invitation link or from the plain application page, where an open invitation for that email and home joins them to the group. Every invitation link names the invited address; the portal starts with it filled in, and the form refuses to open under any other signed-in account and offers to switch. A roommate who applied independently before the lead is adopted into the group when the lead submits. Every invitation, whether sent from the form, after the fee or by staff, is the same branded card as the landlord decision request, from the same sender, with the home, the inviter, one button and the invited address. Insertion and joining are one transaction. Authorized staff can join an existing independent application after explicit confirmation at any stage before signing starts; the destination group’s terms and team apply. Both versions are checked. See [Joining independent applications](#joining-independent-applications).
 - Every group member must have the required uploads, fee payment or waiver, and a completed report before a decision package is created. This is completeness, not a favorable credit decision. Pending invitations block sharing. Scores, model/date and applicant-reported income appear separately for each person.
 - Each applicant is confirmed individually. Submitting the form enrols the application; once that person's own fee, required documents and report are complete, reconciliation sends them one branded “Application received” confirmation that promises a review, not an approval, even while the group waits for others. A failed send is retried even after the case is approved or signing; a declined case is never mailed. Applications submitted before enrolment existed are never mailed retroactively, and with the workflow off no applicant email is sent at submission. See [internal-testing.md](internal-testing.md#applicant-confirmation).
 - Payment precedes screening. Unpaid applications cannot trigger screening or record a completed report/score. A completed report cannot be edited back to payment pending. Contradictory imported payment/report records require evidence review and do not expose a usable credit score or allow sharing. Only the isolated demo repairs identified synthetic report/payment fixtures; real payments are never inferred from a score.
@@ -133,6 +133,51 @@ single-application delete route refuses grouped applications.
 
 Run `npm run test:membership` for domain and real PostgreSQL-compatible transaction
 coverage, including primary replacement, stale writes, cascade and signing locks.
+
+## Joining independent applications
+
+Two people who applied separately for the same unit can be combined by staff
+from the destination rental's **Applicants → Manage applicants → Join an
+existing application** list. The list shows every other independent application
+for that unit with one applicant, no pending invitations and nothing signing,
+signed or closed, whatever its stage: still collecting, information requested,
+with the landlord, or already landlord approved. Joining is always an explicit
+staff action with a confirmation; no case is ever joined automatically because
+two applications share a home or an email address. Invitations remain the only
+automatic path, and only at intake stages.
+
+The joining applicant keeps their own application row, uploads, fee receipt or
+waiver, screening report, ready-for-review confirmation and activity history,
+and their portal login is untouched; nobody pays or is screened again because
+of the join. The destination keeps its terms, lease corrections and team, and
+the joined applicant inherits that assignment. Because the household changed,
+any landlord packet, landlord decision, lease draft, lease preparation and
+frozen lease snapshot on either side is cleared and both rows return to review;
+a `merge_member` entry is written to each activity log. Reconciliation then
+recomputes readiness for the combined group and, once every member is complete,
+sends a new packet revision to the landlord. An earlier approval or a lease
+generated for a different household never carries over.
+
+A case cannot take part, in either direction, while a DocuSign envelope is
+active for it: the team voids that envelope through its own cancel flow first,
+and the join names which application is blocked. A case with a recorded
+signature, an executed lease, or a declined application is refused with that
+reason. A source group with more than one applicant or with pending invitations
+is refused; split or cancel first. Capacity, same unit, distinct applicants,
+staff access to both cases and both current versions are checked in the service
+and again inside `commit_rental_group`, which also refuses while a signing
+package is active. Existing split and delete actions are unchanged and still
+work on a combined group afterwards.
+
+`supabase/rental-flow.sql` is repeatable; re-apply it so `commit_rental_group`
+carries the stage and signing rules. Run `npm run test:merge` for domain, HTTP
+and real PostgreSQL-compatible transaction coverage.
+
+On 2026-09-21, only the updated `commit_rental_group` function was applied to
+Star Dev (`shlodyxlnepxnafthvod`) and the API schema cache was refreshed. The
+new guard was verified in the installed definition; execution remains allowed
+for `service_role` and denied for `authenticated`. No application rows were
+merged or changed by that migration. Production has not been updated.
 
 ## Invitations before submission
 
