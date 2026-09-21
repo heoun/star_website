@@ -95,7 +95,8 @@ export async function runJourneyBrowser({env,fixture,pending,advance}) {
     await page.setViewportSize({width:390,height:844});await page.screenshot({path:out+'/portal-mobile.png',fullPage:true});eq(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
     await page.setViewportSize({width:1440,height:1000});
     await login(row.workspace.recommendation.landlord_email);
-    const link=fixture.state.emails.find(m=>m.subject.includes(id.slice(0,8))).text.match(/Agree to proceed: (\S+)/)[1];
+    // The applicant's own confirmation carries the same run stamp and goes out first; the decision links are in the landlord's mail.
+    const link=fixture.state.emails.find(m=>m.subject.includes(id.slice(0,8)) && m.subject.includes('Application ready')).text.match(/Agree to proceed: (\S+)/)[1];
     await page.goto(link);await page.getByRole('button',{name:'Confirm Agree to Proceed',exact:true}).click();
     await page.getByRole('heading',{name:'Decision recorded'}).waitFor();eq(row.status,'landlord_approved');
     await page.screenshot({path:out+'/landlord-approved.png',fullPage:true});

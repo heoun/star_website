@@ -17,11 +17,14 @@ export function reportEvidenceIssue(s: ScreeningResult | undefined, applicationI
   if(s.outcome!=='scored' || !Number.isInteger(s.credit_score) || s.credit_score!<300 || s.credit_score!>850 || !text(s.model) || s.model==='Model not recorded') return 'Record the credit score and scoring model from the report.';
   return '';
 }
+// A documented no-score report is complete evidence that the team must read
+// before sharing; it is the one issue that is not the applicant's to resolve.
+export const NO_SCORE_HOLD='Report returned no credit score; needs review. Automatic sharing is blocked.';
 export function screeningIssue(row: WorkspaceApplication, allowMock=false): string {
   if(row.workspace?.screening_result?.status==='failed')return 'Credit-check provider failed to complete this report. Retry with the provider or start another internal test run.';
   const s=row.workspace?.screening_result;
   if (s?.status==='complete' && !['paid','waived'].includes(row.workspace?.checks?.fee || '')) return 'Credit report and payment records are inconsistent. Review payment evidence.';
-  return reportEvidenceIssue(s,row.id,allowMock) || (s?.outcome==='no_score' ? 'Report returned no credit score; needs review. Automatic sharing is blocked.' : '');
+  return reportEvidenceIssue(s,row.id,allowMock) || (s?.outcome==='no_score' ? NO_SCORE_HOLD : '');
 }
 export function externalReport(command: WorkspaceCommand, applicationId: string, actor: string): ScreeningResult {
   if(command.screening!=='received') return {status:'pending'};

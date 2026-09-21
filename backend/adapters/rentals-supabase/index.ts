@@ -49,6 +49,15 @@ export function makeRentalStore(config: {url: string; key: string}): RentalStore
         if(rows.length<200)break;
       }
       return ids;
+    },
+    async notices() {
+      const ids=new Set<string>();
+      for(let offset=0;;offset+=200) {
+        const rows=await request(`applications?select=id,rental_group_id&workspace->>rental_flow=eq.automatic&workspace->ready_notice->>status=in.(queued,failed)&limit=200&offset=${offset}&order=created_at.asc,id.asc`) as WorkspaceApplication[];
+        for(const r of rows) ids.add(r.rental_group_id || r.id);
+        if(rows.length<200)break;
+      }
+      return [...ids];
     }
   };
 }

@@ -372,8 +372,7 @@ async function verifyTurnstile(env, token, remoteIp) {
 // inboxes are the most common place private data leaks from, so the full
 // application stays in the admin console only.
 async function sendNotification(request, env, listing, name) {
-  const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
-  const label = home ? `${listing.title} (${home})` : listing.title;
+  const label = mailPlace(listing, listing.title);
 
   const sent = await sendEmail(request, env, {
     from: MAIL_FROM,
@@ -384,39 +383,6 @@ async function sendNotification(request, env, listing, name) {
 
   if (!sent) {
     console.error("Application notification failed for", label);
-  }
-}
-
-// The applicant's receipt. It names the property and points at the portal
-// where the supporting documents go — deliberately nothing else, because
-// inboxes are where private data leaks from, and the application's contents
-// stay in the admin console.
-async function sendReceipt(request, env, listing, email, employmentStatus) {
-  const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
-  const label = home ? `${listing.title} (${home})` : listing.title;
-  const portal = new URL("/portal/", request.url).toString();
-
-  // The checklist the portal will show them, in one sentence: it depends on
-  // whether they work or study, and the email should ask for the same things
-  // the page does.
-  const proofOfMeans = employmentStatus === "student"
-    ? "your school offer letter, your student visa or I-20"
-    : "your job offer letter or your last two paystubs";
-
-  const sent = await sendEmail(request, env, {
-    from: MAIL_FROM,
-    to: [email],
-    subject: `We received your application for ${label}`,
-    text: `Thank you for applying for ${label}.\n\n`
-      + `The next step is to upload your supporting documents in your applicant portal.\n\n    ${portal}\n\n`
-      + `We need your government ID (front and back), ${proofOfMeans}, and your last two `
-      + "months' bank statements. Tax returns for the last two years and a rental payment "
-      + "record are optional but help.\n\n"
-      + "The Star Real Estate team will review your application and follow up shortly.\n"
-  });
-
-  if (!sent) {
-    console.error("Application receipt failed for", label);
   }
 }
 
@@ -835,7 +801,10 @@ async function processApplication(request, env, ctx, body, email, session) {
       roommates: roommates.length > 0 ? roommates : null,
       pets: pets.length > 0 ? pets : null,
       message: cleanMultiline(body.message, 2000) || null,
-      ...(automatic ? {responsible_email:agent || null,workspace:{rental_flow:'automatic',invitations,terms:{'lease.commencement_date':start,'lease.end_date':end.toISOString().slice(0,10),'rent.monthly':String(listing.price_amount || ''),'deposit.amount':String(listing.price_amount || '')}}} : {})
+      // ready_notice enrols this application for the ready-for-review
+      // confirmation, stored with the row so a retry or a roommate-first
+      // join cannot lose it. Applications without it are never mailed.
+      ...(automatic ? {responsible_email:agent || null,workspace:{rental_flow:'automatic',invitations,ready_notice:{status:'queued',at:new Date().toISOString()},terms:{'lease.commencement_date':start,'lease.end_date':end.toISOString().slice(0,10),'rent.monthly':String(listing.price_amount || ''),'deposit.amount':String(listing.price_amount || '')}}} : {})
     };
     if(draft) {
       if(!ownsDraft && roommates.length)return json({error:'Join this group first. Your agent can invite additional roommates.'},422);
@@ -866,6 +835,9 @@ async function processApplication(request, env, ctx, body, email, session) {
     })());
   }
   if(!saved.workspace?.test_run)ctx.waitUntil(sendNotification(request, env, listing, fullName));
-  ctx.waitUntil(sendReceipt(request, env, listing, email, employmentStatus));
+  // The applicant is not mailed on submission. The rental workflow confirms
+  // them once their own fee, documents and screening are complete (enrolled
+  // above as workspace.ready_notice); without that workflow there is no
+  // completed-readiness step yet, so no applicant confirmation exists to send.
   return json({ ok: true, application_id:saved.id, ...(saved.workspace?.test_run?{test_run_id:saved.id}:{}) }, 201);
 }

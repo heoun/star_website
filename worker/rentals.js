@@ -33,11 +33,14 @@ export async function runRentalAutomation(env,request,id) {
 }
 export async function reconcileRentals(env,request) {
   if(!rentalMode(env)) return;
-  const flow=rentalWorkflow(env,request);
-  for(const id of await flow.store.pending()) {
+  const flow=rentalWorkflow(env,request),open=await flow.store.pending();
+  for(const id of open) {
     try{const group=await flow.store.group(id);if(group?.root.workspace?.invitations?.some(i=>!i.accepted && (!i.delivery || i.delivery==='pending')))await flow.notifyInvitations(id);}catch{console.error('Invitation delivery requires retry',id);}
     await runRentalAutomation(env,request,id);
   }
+  // Confirmations still owed on cases that moved past review. Only rows with a
+  // queued or failed notice are read, so closed cases are not polled.
+  for(const id of await flow.store.notices()) if(!open.includes(id)) await runRentalAutomation(env,request,id);
 }
 export async function rentalApplyOptions(env,listingId) {
   const listing=await fetchListing(env,listingId,{publishedOnly:true});

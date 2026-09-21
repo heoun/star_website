@@ -77,10 +77,54 @@ export function mailSubject(test, subject) {
   return `${test ? `[Internal Test ${String(test).slice(0, 8)}] ` : ""}${subject}`;
 }
 
-// The place a notification is about: building and unit, or the listing title
-// when the listing has no building name yet.
+// Words only, for asking whether a listing's title already spells out its
+// building or unit: "Sandbox — Test · 1A" and "Sandbox - Test 1A" read the
+// same, so dashes, dots and spacing never make a second copy of the name.
+const words = (value) => ` ${String(value ?? "").toLowerCase().normalize("NFKD").replace(/[^\p{L}\p{N}]+/gu, " ").trim()} `;
+const spells = (title, part) => words(title).includes(words(part));
+
+// The place a notification is about, said once. Building and unit when the
+// listing names them; the title when it does not; and the title ahead of them
+// only when it says something they do not ("Sunny 2BR · The Ashland · 4B").
+// A building name that already carries its unit ("The Ashland 4B" / "4B"), or
+// a unit that carries its building, is one part, not two. `fallback` stands in
+// for a listing with no title and no building name.
 export function mailPlace(listing, fallback) {
-  return [listing?.property_name || fallback || listing?.title, listing?.unit].filter(Boolean).join(" · ");
+  const clean = (value) => String(value ?? "").trim();
+  const title = clean(listing?.title), name = clean(listing?.property_name), unit = clean(listing?.unit);
+  const both = name && unit;
+  const parts = [both && spells(unit, name) && !spells(name, unit) ? "" : name, both && spells(name, unit) ? "" : unit].filter(Boolean);
+  const home = parts.join(" · ");
+  if (!home) return title || clean(fallback);
+  const lead = title || (name ? "" : clean(fallback));
+  if (!lead) return home;
+  const extra = parts.filter((part) => !spells(lead, part));
+  if (!extra.length) return name ? home : lead;
+  return [lead, ...extra].join(" · ");
+}
+
+// The applicant's confirmation that their own part is done: payment, required
+// documents and screening complete, the application with the leasing team. It
+// promises a review, not an approval, and says nothing about the report.
+export function readyMail(env, { place, link, test }) {
+  const heading = "Your application is ready for review";
+  const thanks = `Thank you for completing your application for ${place}.`;
+  const received = "We have received your application and supporting documents, and your payment and screening steps are complete. Our team will carefully review your information.";
+  const portal = "Please check your Applicant Portal for status updates and any requests for additional information. We will contact you if we need anything else.";
+  const fallback = "If the button doesn’t work, copy and paste this link into your browser:";
+  const text = `${test ? `INTERNAL TEST — Test application. Run ${test}\n\n` : ""}${heading}\n\n${thanks}\n\n${received}\n\n${portal}\n\nView your application\n\n    ${link}\n`;
+  const html = mailShell(env, {
+    title: heading,
+    heading,
+    test,
+    stamp: "Test application",
+    body: `<p style="margin:0 0 16px">${esc(thanks)}</p>
+<p style="margin:0 0 16px">${esc(received)}</p>
+<p style="margin:0 0 24px">${esc(portal)}</p>
+<p style="margin:0 0 12px">${mailButton("View your application", link)}</p>
+<p style="margin:0 0 24px;font-size:12px;color:#555555">${esc(fallback)}<br><a href="${esc(link)}" style="color:#111111">${esc(link)}</a></p>`
+  });
+  return { subject: mailSubject(test, `Application received · ${place}`), text, html };
 }
 
 // The roommate invitation, in text and HTML. It is sent from the form's

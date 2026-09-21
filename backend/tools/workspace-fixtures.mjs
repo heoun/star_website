@@ -100,6 +100,7 @@ export function createWorkspaceFixtures(saved) {
       if (q.has("or")) { const person = /responsible_email\.eq\."((?:\\.|[^"])*)"/.exec(q.get("or"))?.[1]?.replace(/\\([\\"])/g, "$1"); rows = rows.filter(row => row.responsible_email === person || row.collaborator_emails.includes(person)); }
       if (q.has("listings.building_id")) rows = rows.filter(row => q.get("listings.building_id").includes(embed(row).listings?.building_id));
       if (q.has("workspace->recommendation->>landlord_email")) rows = rows.filter(row => [`eq."${row.workspace?.recommendation?.landlord_email}"`,`eq.${row.workspace?.recommendation?.landlord_email}`].includes(q.get("workspace->recommendation->>landlord_email")));
+      if (q.has("workspace->ready_notice->>status")) rows = rows.filter(row => row.workspace?.ready_notice && q.get("workspace->ready_notice->>status").includes(row.workspace.ready_notice.status));
       if (q.has("status")) rows = rows.filter(row => q.get("status").includes(row.status));
       if (method === "PATCH") rows.forEach(row => { Object.assign(row, body); row.workspace_version++; });
       if (method === "DELETE") state.applications = state.applications.filter(row => !rows.includes(row));

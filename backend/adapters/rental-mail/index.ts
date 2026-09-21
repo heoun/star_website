@@ -2,7 +2,7 @@ import type { RentalMail } from '../../contracts/rentals.ts';
 import { sendEmail } from '../../../worker/email.js';
 import { isLocalRequest } from '../../../worker/env.js';
 import { createLandlordDecisionToken } from '../../../worker/landlord-decision-token.js';
-import { MAIL_FROM, esc, mailShell, mailButton, mailSubject, mailPlace, invitationMail } from '../../../worker/mail-layout.js';
+import { MAIL_FROM, esc, mailShell, mailButton, mailSubject, mailPlace, invitationMail, readyMail } from '../../../worker/mail-layout.js';
 export function makeRentalMail(env:Record<string,any>,request:Request):RentalMail {
   async function send(to:string,subject:string,text:string,html:string,key:string) {
     const ok=await sendEmail(request,env,{from:MAIL_FROM,to:[to],subject,text,html},{idempotencyKey:key});
@@ -39,6 +39,12 @@ ${members.map(m=>`<table role="presentation" width="100%" cellpadding="0" cellsp
       const link=new URL('/apply/',env.SITE_ORIGIN || request.url);link.searchParams.set('id',String(root.listing_id));link.searchParams.set('invite',`${root.id}.${i.id}`);link.searchParams.set('invited',i.email);
       const mail=invitationMail(env,{place:mailPlace(root.listings,'this home'),inviter:root.email,invitee:{name:i.name,email:i.email},link:link.toString(),expires:i.expires,test:root.workspace?.test_run ? root.id : ''});
       return send(i.email,mail.subject,mail.text,mail.html,`roommate/${i.id}`);
+    },
+    async ready(root,member,key) {
+      // The portal opens on this application once the applicant signs in.
+      const link=new URL('/portal/',env.SITE_ORIGIN || request.url);link.searchParams.set('application',member.id);
+      const mail=readyMail(env,{place:mailPlace(root.listings,'this home'),link:link.toString(),test:root.workspace?.test_run ? root.id : ''});
+      return send(String(member.email || ''),mail.subject,mail.text,mail.html,key);
     }
   };
 }

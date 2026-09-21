@@ -51,6 +51,12 @@ export interface WorkspaceState {
   signing?: { package_id: string; phase: string };
   rental_flow?: 'automatic';
   automation_issue?: string;
+  // The applicant's ready-for-review confirmation. Enrolled (queued) when the
+  // application is submitted, sent once their own payment, documents and
+  // screening are complete, retried with the same key while it fails, and
+  // cancelled, unsent, once the case or the member is declined. Rows without
+  // this marker predate enrollment and are never mailed.
+  ready_notice?: { status: 'queued' | 'sent' | 'preview' | 'failed' | 'cancelled'; at: string; attempts?: number };
   invitations?: import('./rentals.ts').RentalInvitation[];
   screening_result?: ScreeningResult;
   demo_screening_status?: 'pending' | 'no_score';

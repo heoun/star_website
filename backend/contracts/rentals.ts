@@ -8,6 +8,11 @@ export interface RentalStore {
   separate(group: RentalGroup, memberId: string, remainingRoot: string, remove: boolean, patches: Record<string, Record<string, unknown>>, actor: string): Promise<void>;
   staff(): Promise<{ email: string; name?: string; role: string; active: boolean; property_ids?: string[] }[]>;
   pending(): Promise<string[]>;
+  // Roots of automatic cases, whatever their status, with a member whose
+  // ready-for-review confirmation is still queued or failed. Only rows that
+  // carry such a notice are read; closed cases are not scanned, and a declined
+  // case leaves the set once reconciliation cancels its unsent notices.
+  notices(): Promise<string[]>;
   list(principal: RentalPrincipal): Promise<RentalGroup[]>;
   // Every automatic-flow group for one listing, competing groups included.
   listing(listingId: string): Promise<RentalGroup[]>;
@@ -19,6 +24,9 @@ export interface RentalScreening {
 export interface RentalMail {
   decision(root: WorkspaceApplication, members: RentalMemberSummary[], key: string): Promise<'sent' | 'preview' | 'failed'>;
   invite(root: WorkspaceApplication, invitation: RentalInvitation): Promise<'sent' | 'preview' | 'failed'>;
+  // One member's confirmation that their own part of the application is
+  // complete and under review. `key` is stable across retries.
+  ready(root: WorkspaceApplication, member: WorkspaceApplication, key: string): Promise<'sent' | 'preview' | 'failed'>;
 }
 export interface RentalDependencies {
   allowMockScreening?: boolean;

@@ -43,7 +43,7 @@ import {
 import { requireConfig } from './supabase.js';
 
 const CONTACT_EMAIL = "info@starreusa.com";
-import { MAIL_FROM as FROM_ADDRESS } from './mail-layout.js';
+import { MAIL_FROM as FROM_ADDRESS, mailPlace } from './mail-layout.js';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -367,9 +367,7 @@ async function handleDelete(env, ctx, session, id) {
 }
 
 async function sendCompletionNotice(request, env, application) {
-  const listing = application.listings || {};
-  const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
-  const label = home ? `${listing.title} (${home})` : (listing.title || "a property");
+  const label = mailPlace(application.listings, "a property");
 
   const sent = await sendEmail(request, env, {
     from: FROM_ADDRESS,

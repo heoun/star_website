@@ -1,4 +1,4 @@
-import { screeningIssue, reportEvidenceIssue, externalReport } from './screening.ts';
+import { screeningIssue, reportEvidenceIssue, externalReport, NO_SCORE_HOLD } from './screening.ts';
 import type { RentalDependencies, RentalGroup, RentalMemberSummary, RentalPrincipal, RentalInvitation } from '../contracts/rentals.ts';
 import type { WorkspaceApplication, WorkspaceCommand, WorkspaceState, WorkspaceTerms } from '../contracts/workspace.ts';
 import { canAccessCase, projectCase, makeWorkspace, WorkspaceError, TERM_FIELDS } from './workspace.ts';
@@ -34,17 +34,24 @@ function reopen(w: WorkspaceState) {
 export function makeRentals(d: RentalDependencies) {
   async function group(id:string) { const g=await d.store.group(id); if(!g) throw new WorkspaceError('Rental not found.',404);return g; }
   async function load(p:RentalPrincipal,id:string) { const g=await group(id); if(!canAccessCase(p,g.root)) throw new WorkspaceError('Rental not found.',404);return g; }
+  // What one applicant still owes, and separately the hold a documented
+  // no-score report puts on automatic sharing: that report is complete from
+  // the applicant's side and the team's to review.
+  function memberStatus(m:WorkspaceApplication) {
+    const owed:string[]=[];
+    if(m.status==='needs_info') owed.push(`${m.name}: requested information pending`);
+    if(!text(m.name)) owed.push('Applicant legal name missing');
+    const docs=d.missingDocuments(m); if(docs.length) owed.push(`${m.name}: ${docs.join(', ')}`);
+    if(!['paid','waived'].includes(m.workspace?.checks?.fee || '') && m.workspace?.screening_result?.status!=='complete') owed.push(`${m.name}: application payment pending`);
+    const reportIssue=screeningIssue(m,d.allowMockScreening);
+    if(reportIssue && reportIssue!==NO_SCORE_HOLD) owed.push(`${m.name}: ${reportIssue}`);
+    return {owed,hold:reportIssue===NO_SCORE_HOLD ? `${m.name}: ${reportIssue}` : ''};
+  }
+  function applicantComplete(m:WorkspaceApplication) {return !memberStatus(m).owed.length;}
   function readiness(g:RentalGroup) {
     const issues:string[]=[];
     for(const i of g.root.workspace?.invitations || []) if(!i.accepted) issues.push(`${i.name || i.email}: ${Date.parse(i.expires)<Date.now() ? 'invitation expired' : 'waiting for application'}`);
-    for(const m of g.members) {
-      if(m.status==='needs_info') issues.push(`${m.name}: requested information pending`);
-      if(!text(m.name)) issues.push('Applicant legal name missing');
-      const docs=d.missingDocuments(m); if(docs.length) issues.push(`${m.name}: ${docs.join(', ')}`);
-      if(!['paid','waived'].includes(m.workspace?.checks?.fee || '') && m.workspace?.screening_result?.status!=='complete') issues.push(`${m.name}: application payment pending`);
-      const reportIssue=screeningIssue(m,d.allowMockScreening);
-      if(reportIssue) issues.push(`${m.name}: ${reportIssue}`);
-    }
+    for(const m of g.members) {const s=memberStatus(m);issues.push(...s.owed);if(s.hold) issues.push(s.hold);}
     const terms=g.root.workspace?.terms || {};
     for(const field of ['lease.commencement_date','lease.end_date','rent.monthly','deposit.amount'] as const) if(!terms[field]) issues.push(`Lease terms: ${field}`);
     return issues;
@@ -125,9 +132,43 @@ export function makeRentals(d: RentalDependencies) {
     }
     if(changed) await d.store.save(g,{[g.root.id]:{workspace:g.root.workspace}},'system');
   }
+  // Each applicant's own confirmation, once their payment, documents and
+  // screening are complete, whatever the rest of the group is waiting on.
+  // Only applications enrolled at intake qualify; older rows are never
+  // backfilled. A failed send keeps its key and waits longer each retry, and
+  // is still owed after the case moves past review. A declined case or member
+  // owes nothing: its unsent notice is cancelled, so the scheduler stops
+  // fetching a closed case for it.
+  async function notifyReady(g:RentalGroup) {
+    const now=Date.now(),declined=g.root.status==='declined';
+    const open=(m:WorkspaceApplication)=>{const n=m.workspace?.ready_notice;return n && ['queued','failed'].includes(n.status) ? n : null;};
+    const retire=g.members.filter(m=>open(m) && (declined || m.status==='declined'));
+    const due=g.members.filter(m=>{
+      const n=open(m);
+      if(!n || declined || m.status==='declined') return false;
+      if(n.status==='failed' && now-Date.parse(n.at)<Math.min(60,2**((n.attempts || 1)-1))*60000) return false;
+      return applicantComplete(m);
+    });
+    if(!retire.length && !due.length) return g;
+    const patches:Record<string,Record<string,unknown>>={};
+    for(const m of retire) {
+      m.workspace={...m.workspace,ready_notice:{...open(m)!,status:'cancelled',at:new Date().toISOString()}};
+      patches[m.id]={workspace:m.workspace};
+    }
+    for(const m of due) {
+      let status:'sent'|'preview'|'failed'='failed';
+      try {status=await d.mail.ready(g.root,m,`ready/${m.id}`);} catch {}
+      m.workspace={...m.workspace,ready_notice:{status,at:new Date().toISOString(),attempts:(m.workspace?.ready_notice?.attempts || 0)+1}};
+      patches[m.id]={workspace:m.workspace};
+    }
+    await d.store.save(g,patches,'system');
+    return group(g.root.id);
+  }
   async function reconcile(id:string) {
     let g=await group(id);
-    if(terminal(g) || g.root.status==='landlord_approved' || g.root.workspace?.rental_flow!=='automatic') return;
+    if(g.root.workspace?.rental_flow!=='automatic') return;
+    // A case that has moved past review still owes a confirmation whose send failed.
+    if(terminal(g) || g.root.status==='landlord_approved') {await notifyReady(g);return;}
     if((g.root.workspace?.invitations || []).some(i=>!i.accepted && !['sent','preview','failed'].includes(i.delivery || ''))) {await notifyInvitations(id);g=await group(id);}
     // Provider calls are idempotent; results are committed with the complete
     // household version set. A concurrent edit makes the whole save fail.
@@ -141,6 +182,7 @@ export function makeRentals(d: RentalDependencies) {
       }
     }
     if(Object.keys(patches).length) {await d.store.save(g,patches,'system');g=await group(id);}
+    g=await notifyReady(g);
     const w=g.root.workspace || {};
     if(!w.recommendation && g.root.status!=='landlord_approved' && !readiness(g).length) {
       const recipient=await d.landlord(g.root);

@@ -44,6 +44,9 @@ try {
  const id=crypto.randomUUID();eq((await submit(id,wrong)).status,403);
  let r=await submit(id);eq(r.status,201);eq((await r.json()).application_id,id);
  eq((await submit(id)).status,200);eq(fixture.state.applications.filter(a=>a.id===id).length,1);
+ // Enrolled for the ready-for-review confirmation, which waits for the applicant's own steps.
+ const receipts=email=>fixture.state.emails.filter(m=>JSON.stringify(m.to || '').includes(email) && m.subject.includes('Application received'));
+ eq(fixture.state.applications.find(a=>a.id===id).workspace.ready_notice.status,'queued');eq(receipts(account.email).length,0);
  const second=crypto.randomUUID();eq((await submit(second)).status,201);eq(fixture.state.applications.filter(a=>a.email===account.email).length,2);
  const action=async(id,kind,body={})=>{const r=await call(`/api/portal/applications/${id}/${kind}`,body,cookie);await flush();return r;};
  eq((await call(`/api/portal/applications/${id}/payment`,{outcome:'paid'},wrong)).status,403);
@@ -68,7 +71,11 @@ try {
  eq(landlordMail().length,0);
  clock+=6000;await action(id,'refresh');
  let row=fixture.state.applications.find(a=>a.id===id);eq(row.workspace.screening_result.status,'complete');eq(row.status,'sent_to_landlord');eq(landlordMail().length,1);
- await action(id,'refresh');eq(landlordMail().length,1);
+ // The applicant's own confirmation went out with the completed report, stamped as a test run and linking to this application.
+ eq(receipts(account.email).length,1);eq(row.workspace.ready_notice.status,'preview');
+ eq(receipts(account.email)[0].subject,`[Internal Test ${id.slice(0,8)}] Application received · Property A · 2A`);
+ eq(receipts(account.email)[0].html.includes(`href="http://127.0.0.1/portal/?application=${id}"`),true);
+ await action(id,'refresh');eq(landlordMail().length,1);eq(receipts(account.email).length,1);
  eq(fixture.state.applications.find(a=>a.id===second).workspace.screening_result,undefined);
  const flow=rentalWorkflow(env,new Request('http://127.0.0.1')),owner=fixture.state.staff.find(s=>s.email===row.workspace.recommendation.landlord_email);
  const landlord={role:'landlord',email:owner.email,property_ids:owner.property_ids};
@@ -78,6 +85,8 @@ try {
  for(const scenario of ['no_score','failed']){
   const run=crypto.randomUUID();eq((await submit(run)).status,201);await action(run,'payment',{outcome:'paid'});await materials(run);await action(run,'screening',{consent:true,scenario});clock+=6000;await action(run,'refresh');
   const blocked=fixture.state.applications.find(a=>a.id===run);eq(blocked.workspace.recommendation,undefined);eq(blocked.workspace.screening_result.status,scenario==='failed'?'failed':'complete');eq(landlordMail().length,1);
+  // A documented no-score report completes the applicant's part and is confirmed; a provider failure is not.
+  eq(blocked.workspace.ready_notice.status,scenario==='failed'?'queued':'preview');eq(receipts(account.email).length,2);
  }
  const portal=await(await call('/api/portal/applications',null,cookie)).json();eq(portal.internal_testing,true);eq(portal.applications.filter(a=>a.test_run).length,4);assert(!JSON.stringify(portal).includes('ssn_encrypted'));checks++;
  if(process.argv.includes('--ui')){const {runJourneyBrowser}=await import('./journey-browser-checks.mjs');await runJourneyBrowser({env,fixture,pending,advance:()=>{clock+=6000;}});}
@@ -155,6 +164,9 @@ try {
  eq((await call(`/api/portal/applications/${mateRow.id}/refresh`,{},mateCookie)).status,200);await flush();
  eq(fixture.state.applications.find(a=>a.id===mateRow.id).workspace.screening_result.status,'complete');
  eq(fixture.state.applications.find(a=>a.id===lead).workspace.test_screening,undefined);
+ // The complete roommate is confirmed on their own; the lead, paid but without documents or a report, is not.
+ eq(receipts(mate.email).length,1);eq(fixture.state.applications.find(a=>a.id===mateRow.id).workspace.ready_notice.status,'preview');
+ eq(fixture.state.applications.find(a=>a.id===lead).workspace.ready_notice.status,'queued');eq(receipts(account.email).length,2);
  // A roommate who applied first is adopted when the lead names them, and an
  // invitation the form already emailed is not sent again.
  r=await call('/api/apply',matePayload,earlyCookie);await flush();eq(r.status,201);
@@ -179,6 +191,8 @@ try {
  eq((await call(`/api/portal/applications/${aheadId}/screening`,{consent:true,scenario:'scored'},aheadCookie)).status,200);await flush();clock+=6000;
  eq((await call(`/api/portal/applications/${aheadId}/refresh`,{},aheadCookie)).status,200);await flush();
  eq(aheadRoot().workspace.screening_result.status,'complete');eq(aheadRoot().workspace.recommendation,undefined);
+ // Roommate-first intake keeps its enrolment: confirmed once while the inviter has not even applied.
+ eq(receipts(ahead.email).length,1);eq(aheadRoot().workspace.ready_notice.status,'preview');
  r=await call('/api/apply',{...matePayload,group_root:aheadGroup,invited_email:ahead.email},aheadCookie);eq(r.status,200);eq((await r.json()).application_id,aheadId);
  r=await call('/api/apply',{...payload,test_run_id:aheadGroup,roommates:[roommate(ahead.email,'Ahead')]},cookie);eq(r.status,201);
  const laterId=(await r.json()).application_id;assert.notEqual(laterId,aheadId);checks++;await flush();
@@ -200,5 +214,5 @@ try {
  r=await call('/api/apply',{...payload,draft_group_id:ordinaryGroup,roommates:[roommate(ordinaryMate.email,'Ordinary')]},ordinaryCookie);eq(r.status,201);await flush();
  eq(fixture.state.applications.filter(a=>a.rental_group_id===ordinaryGroup).length,2);
  eq(fixture.state.applications.find(a=>a.id===ordinaryGroup).workspace.invitations.every(i=>i.accepted),true);
- console.log(`PASS ${checks} internal journey checks: authenticated repeat runs, idempotent intake/payment, HTTP provider processing, required materials/consent, real rental reconciliation, one landlord packet, approval/draft, no-score/failure holds, roommate invitations and joining, production and account isolation.`);
+ console.log(`PASS ${checks} internal journey checks: authenticated repeat runs, idempotent intake/payment, HTTP provider processing, required materials/consent, real rental reconciliation, per-applicant ready-for-review confirmation, one landlord packet, approval/draft, no-score/failure holds, roommate invitations and joining, production and account isolation.`);
 } finally {await Promise.allSettled(pending);restore();server.closeAllConnections();await new Promise(r=>server.close(r));}
