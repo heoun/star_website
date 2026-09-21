@@ -37,6 +37,21 @@ by recipient-side verification. Keeping the current no-reply sender requires
 separately resolving its Google identity; do not create a paid Workspace seat
 merely to obtain an avatar.
 
+The user chose to retain `no-reply@starreusa.com`. After explicit confirmation
+of Google's agreement at checkout, **Cloud Identity Free** was activated for
+the organization ($0, no payment required). A dedicated `Automated Mail`
+organizational unit was created. Its Google Workspace Business Starter
+automatic licensing is explicitly **OFF**, while Google Voice Starter inherits
+**OFF**. The root organizational unit's employee licensing was not changed.
+
+The new-user form is prepared for `Star Realty`, `no-reply@starreusa.com`, in
+`Automated Mail`, with `site/png/email-logo-v1.png` attached. Creation and the
+initial credential flow are handed to the user. After creation, verify that
+the account has only Cloud Identity Free (no paid Workspace seat), sign in as
+that user, set profile-photo visibility to Anyone, and verify actual recipient
+display. Cloud Identity supplies an identity, not a Gmail inbox. Its effect on
+Resend sender avatars remains unverified until that last check.
+
 ## Current public configuration
 
 Read-only DNS check on 2026-09-21:
