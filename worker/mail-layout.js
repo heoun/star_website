@@ -5,7 +5,7 @@
 //
 // Bodies are plain HTML strings the caller has already escaped with `esc`.
 
-export const MAIL_FROM = "Star Realty <no-reply@starreusa.com>";
+export const MAIL_FROM = "Star Real Estate <no-reply@starreusa.com>";
 export const MAIL_LAYOUT_MARKER = 'data-star-mail-layout="v1"';
 export const MAIL_FOOTER = "Star Real Estate · Rental applications and property services";
 

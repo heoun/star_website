@@ -147,13 +147,13 @@ function drafts(row, session) {
   const workspace = `${location.origin}/admin/#/applications/${row.id}`;
   return {
     request: message => mailto(row.email, `Your application for ${where}`,
-      `Hi ${firstName(row)},\n\nThank you for applying for ${where}. To keep your application moving, we need the following.\n\n${message}\n\nYou can upload documents any time in your applicant portal.\n${portal}\n\nThank you,\n${signer}\nStar Realty`),
+      `Hi ${firstName(row)},\n\nThank you for applying for ${where}. To keep your application moving, we need the following.\n\n${message}\n\nYou can upload documents any time in your applicant portal.\n${portal}\n\nThank you,\n${signer}\nStar Real Estate`),
     landlord: to => mailto(to, `Rental recommendation for ${where}`,
-      `Hello,\n\nA rental recommendation for ${where} is waiting for your decision. Please review and confirm it in your workspace.\n${workspace}\n\nThank you,\n${signer}\nStar Realty`),
+      `Hello,\n\nA rental recommendation for ${where} is waiting for your decision. Please review and confirm it in your workspace.\n${workspace}\n\nThank you,\n${signer}\nStar Real Estate`),
     lease: () => mailto(row.email, `Your lease for ${where}`,
-      `Hi ${firstName(row)},\n\nGood news. The landlord has approved your application for ${where}. Your lease is attached for review, and the signing request will follow.\n\nThank you,\n${signer}\nStar Realty`),
+      `Hi ${firstName(row)},\n\nGood news. The landlord has approved your application for ${where}. Your lease is attached for review, and the signing request will follow.\n\nThank you,\n${signer}\nStar Real Estate`),
     landlordSigns: to => mailto(to, `Lease ready for your signature for ${where}`,
-      `Hello,\n\nAll tenants have signed the lease for ${where}. The signing request for your signature will follow.\n\nThank you,\n${signer}\nStar Realty`)
+      `Hello,\n\nAll tenants have signed the lease for ${where}. The signing request for your signature will follow.\n\nThank you,\n${signer}\nStar Real Estate`)
   };
 }
 // The request an agent is about to send, written out from what is actually

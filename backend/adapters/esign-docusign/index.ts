@@ -48,7 +48,7 @@ function envelopeSnapshot(accountId:string,envelopeId:string,e:Record<string,unk
 }
 export function envelopeDefinition(pkg: RentalSigningPackage, documents: {documentId:string;bytes:Uint8Array}[], webhookUrl: string) {
   return {
-    status:'created',transactionId:pkg.id,emailSubject:'Please sign your lease — Star Realty',
+    status:'created',transactionId:pkg.id,emailSubject:'Please sign your lease — Star Real Estate',
     documents:documents.map(d=>({documentId:d.documentId,name:pkg.documents.find(f=>f.documentId===d.documentId)?.name || 'Residential lease and riders',fileExtension:'docx',documentBase64:base64(d.bytes)})),
     recipients:{signers:pkg.signers.map(s=>{
       const tabs:Record<string,unknown[]>={signHereTabs:[],initialHereTabs:[],dateSignedTabs:[],fullNameTabs:[]};

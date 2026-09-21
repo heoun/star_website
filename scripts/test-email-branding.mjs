@@ -10,6 +10,8 @@ function verify(message){
   assert.equal(message.reply_to,base.reply_to);assert.equal(message.text,base.text);checks+=6;
 }
 try {
+  // The canonical sender every notification is stamped with.
+  assert.equal(MAIL_FROM,'Star Real Estate <no-reply@starreusa.com>');checks++;
   // Check the actual JSON sent to Resend, not just a template helper.
   for(const html of [undefined,'<div>Old unbranded email</div>',mailShell({}, {title:base.subject,heading:'Receipt',body:'<p>Branded body</p>'})]){
     let delivered,headers;
