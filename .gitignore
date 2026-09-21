@@ -43,6 +43,10 @@ coverage/
 *.tmp
 *.orig
 *.rej
+# Editor recovery files are local scratch, not source.
+*.swp
+*.swo
+*~
 
 # Local signing keys and credential bundles.
 *.pem

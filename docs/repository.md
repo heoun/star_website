@@ -74,3 +74,16 @@ npm run test:administration:db
 当前阶段与验证结果见 [开发检查点](backoffice/checkpoint-2026-09-14.md)。现行浏览器回归入口为 `npm run test:rentals:ui` 和 `npm run test:lease-import:ui`，需要 Playwright（可用 `PLAYWRIGHT_MODULE` 指定本地模块）。旧人工审核场景 `scripts/test-backoffice-ui.mjs` 已移除，它不再匹配自动申请组演示环境；旧接口的审核与权限检查仍由 `test:case-review`、`test:workspace` 和 `test:rentals` 覆盖。
 
 本轮核查没有发现误追踪的构建产物或本地凭据，因此沿用现有 `.gitignore`。`dist/`、`node_modules/`、`.wrangler/`、`.dev.vars`、`notes/` 均保持忽略。演示视频和示例附件作为可复现的合成素材保留在 `scripts/demo-assets/`；运行状态、浏览器截图和临时检查脚本留在系统临时目录。
+
+## 2026-09-21 整理
+
+清除旧浏览器日志与快照、`output/email-preview/` 邮件预览、`notes/checks/`
+一次性页面检查脚本、`.local/landlord-*-resend-*.json` 调试响应及系统缓存。
+保留需求和设计资料、签署参考文件、运行中的 `.wrangler/` 数据和
+`.local/screening-simulator/state.json`；本地凭据与私钥继续忽略。
+补充编辑器恢复文件的忽略规则，避免交换文件和备份进入提交。
+
+可重复使用的测试脚本、SQL 迁移、邮件模板生成器和 Supabase 邮件模板属于
+交付源码，必须保留。邮件模板 HTML 虽由脚本生成，仍需入库供人工部署和审阅。
+本轮按仓库清理、邮件统一、多申请人流程、签署与预览性能、完整测试环境
+分阶段提交，使用实际提交时间；不推送或部署远程环境。
