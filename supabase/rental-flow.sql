@@ -24,8 +24,18 @@ begin
  if p_actor is null or length(trim(p_actor))=0 or jsonb_typeof(p_versions)<>'object' or jsonb_typeof(p_patches)<>'object' then raise exception 'Invalid rental command';end if;
  if p_join is not null then
   select * into source from public.applications where id=p_join and rental_group_id=id;
-  if not found or source.listing_id<>a.listing_id or source.id=a.id or source.status in ('sent_to_landlord','landlord_approved','lease_sent','lease_signed','declined') or a.status in ('sent_to_landlord','landlord_approved','lease_sent','lease_signed','declined')
+  if not found or source.listing_id<>a.listing_id or source.id=a.id
     or (select count(*) from public.applications where rental_group_id=p_join)<>1 then raise exception 'Application cannot be joined' using errcode='23505';end if;
+  -- Any stage before signing starts, on either side. An envelope out for
+  -- signature is voided through its own flow first; a signature on file, an
+  -- executed lease or a closed case never joins. The signing guard trigger
+  -- separately refuses while a signing package is active.
+  if exists(select 1 from public.applications m where (m.rental_group_id=p_root or m.id=p_join) and (
+   m.status in ('lease_sent','lease_signed','declined') or m.workspace ? 'signed_lease'
+   or m.workspace ? 'tenant_signature' or m.workspace ? 'landlord_signature'
+   or coalesce(m.workspace->'signature_receipts','{}'::jsonb)<>'{}'::jsonb
+   or (m.workspace ? 'signing' and coalesce(m.workspace->'signing'->>'phase','') not in ('voided','declined'))))
+  then raise exception 'Signing or closed applications cannot be joined' using errcode='23505';end if;
  end if;
  if (select count(*) from jsonb_object_keys(p_versions))<>(select count(*) from public.applications where rental_group_id=p_root or id=p_join) or exists(
   select 1 from public.applications m where (m.rental_group_id=p_root or m.id=p_join) and (p_versions->>m.id::text)::integer is distinct from m.workspace_version

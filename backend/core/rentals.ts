@@ -31,6 +31,22 @@ function reopen(w: WorkspaceState) {
   delete w.recommendation; delete w.landlord_decision; delete w.delivery; delete w.lease_draft;
   delete w.lease_preparation; delete w.tenant_signature; delete w.landlord_signature; delete w.signature_receipts;
 }
+// Why a group can take no part in a join, as the application joined or the
+// one joining, with the reason staff read. An envelope out for signature is
+// cancelled through its own void flow first, never from here. A signature on
+// file, an executed lease or a closed case is never merged. Empty when the
+// group may join or be joined at its present stage.
+export function mergeLock(g: RentalGroup): string {
+  for(const m of [g.root,...g.members.filter(m=>m.id!==g.root.id)]) {
+    const w=m.workspace || {},name=text(m.name,200) || 'this application';
+    const signed=!!(w.tenant_signature || w.landlord_signature || Object.keys(w.signature_receipts || {}).length);
+    if(w.signing && !['voided','declined'].includes(w.signing.phase)) return `Void the DocuSign signing request for ${name} first.${signed ? ' A signature is already on that envelope.' : ''}`;
+    if(m.status==='lease_signed' || w.signed_lease) return `The lease for ${name} is already executed.`;
+    if(signed || m.status==='lease_sent') return `Signatures are already recorded for ${name}.`;
+    if(m.status==='declined') return `The application for ${name} is closed.`;
+  }
+  return '';
+}
 export function makeRentals(d: RentalDependencies) {
   async function group(id:string) { const g=await d.store.group(id); if(!g) throw new WorkspaceError('Rental not found.',404);return g; }
   async function load(p:RentalPrincipal,id:string) { const g=await group(id); if(!canAccessCase(p,g.root)) throw new WorkspaceError('Rental not found.',404);return g; }
@@ -69,7 +85,7 @@ export function makeRentals(d: RentalDependencies) {
     }
     if(g.root.workspace?.automation_issue) issues.push(g.root.workspace.automation_issue);
     base.household={members:g.members.map(m=>projectCase(p,{...m,responsible_email:g.root.responsible_email,collaborator_emails:g.root.collaborator_emails},true)),
-      invitations:g.root.workspace?.invitations || [],issues,summary:rentalMembers(g,d.allowMockScreening)};
+      invitations:g.root.workspace?.invitations || [],issues,summary:rentalMembers(g,d.allowMockScreening),join_lock:mergeLock(g)};
     base.allowed_actions=(base.allowed_actions as string[]).filter(a=>!['approve','recommend','review_and_recommend','decline','record_tenant_signature'].includes(a));
     base.allowed_actions.push('group');
     const w=g.root.workspace || {};
@@ -106,18 +122,34 @@ export function makeRentals(d: RentalDependencies) {
       if(!result.missing.length) {g.root.lease_snapshot=result.values;w.lease_preparation={by:'system',at:w.lease_draft.at};}
     } catch {w.lease_draft={values:{},missing:[],error:'Lease defaults could not be loaded. Retry draft generation.',at:new Date().toISOString(),revision:w.recommendation!.revision};}
   }
-  // An independent application for the same home joins this group; the
-  // destination keeps its terms and team.
+  // An independent application for the same home joins this group at any
+  // stage before signing starts; the destination keeps its terms and team.
+  // The household changed, so both sides lose their landlord packet,
+  // decision, lease draft and frozen snapshot and the group is reviewed
+  // again as one. Each applicant keeps their own application, uploads, fee,
+  // report, confirmation and history: nobody pays or is screened again
+  // because of the join.
   async function join(g:RentalGroup,source:RentalGroup,actor:string,detail:string) {
     const root=g.root;
-    if(source.root.id===root.id || source.members.length!==1 || source.root.listing_id!==root.listing_id || terminal(source) || ['sent_to_landlord','landlord_approved'].includes(source.root.status) || source.root.workspace?.invitations?.some(i=>!i.accepted)) throw new WorkspaceError('Choose an independent application for this same unit, before landlord review.');
+    if(source.root.id===root.id) throw new WorkspaceError('Choose a different application to join.');
+    if(source.root.listing_id!==root.listing_id) throw new WorkspaceError('Only an application for this same unit can be joined.');
+    if(source.members.length!==1) throw new WorkspaceError('The other application already has more than one applicant. Split it first.');
+    if(source.root.workspace?.invitations?.some(i=>!i.accepted)) throw new WorkspaceError('Cancel the other application’s pending invitations first.');
+    const lock=mergeLock(source) || mergeLock(g);
+    if(lock) throw new WorkspaceError(lock,409);
     if(g.members.length>=householdCapacity(root.listings)) throw new WorkspaceError(capacityMessage(root.listings));
     if(g.members.some(m=>address(m.email)===address(source.root.email))) throw new WorkspaceError('This person is already in the group.');
+    const now=new Date().toISOString(),from=source.root.status;
     root.workspace ||= {} as WorkspaceState;
     reopen(root.workspace);
-    root.workspace.activity=[...(root.workspace.activity || []),{action:'merge_member',by:actor,at:new Date().toISOString(),detail}];
+    root.workspace.activity=[...(root.workspace.activity || []),{action:'merge_member',by:actor,at:now,detail}];
     (root.workspace.invitations || []).forEach(i=>{if(i.email===address(source.root.email)) i.accepted=source.root.id;});
-    await d.store.save(g,{[root.id]:{workspace:root.workspace,status:'review',lease_snapshot:null}},actor,source.root);
+    const w=structuredClone(source.root.workspace || {}) as WorkspaceState;
+    reopen(w);delete w.terms;delete w.lease_overrides;delete w.review;delete w.automation_issue;delete w.invitations;
+    if(w.test_run) w.test_run={...w.test_run,member_of:root.id};
+    w.activity=[...(w.activity || []),{action:'merge_member',by:actor,at:now,detail:`Joined the application group led by ${text(root.name,200)} (${root.id}) from ${from}. Any approval, packet or lease draft this application held on its own no longer applies; the group is reviewed together.`}];
+    const settled=['approved','sent_to_landlord','landlord_approved'].includes(from);
+    await d.store.save(g,{[root.id]:{workspace:root.workspace,status:'review',lease_snapshot:null},[source.root.id]:{workspace:w,lease_snapshot:null,...(settled ? {status:'review'} : {})}},actor,source.root);
   }
   // Invitations wait for the lead applicant's fee. Ones the form already
   // emailed arrive marked sent; the admin's own invitations go out at once.
@@ -314,6 +346,20 @@ export function makeRentals(d: RentalDependencies) {
         await d.store.separate(g,member.id,nextRoot.id,remove,patches,p.email);
         return {...view(p,await group(nextRoot.id)),membership_change:{action:command.action,member_id:member.id,remaining_root:nextRoot.id}};
       }
+      // Joining is explicit and staff-only, at any stage before signing
+      // starts. The reason a case cannot take part is named, so the team
+      // knows whether to void an envelope or leave a signed lease alone.
+      if(command.action==='merge') {
+        if(!['manager','agent'].includes(p.role)) throw new WorkspaceError('Staff access is required to join applications.',403);
+        const lock=mergeLock(g);
+        if(lock) throw new WorkspaceError(lock,409);
+        if(!text(command.application_id)) throw new WorkspaceError('Choose the application to join.');
+        const source=await load(p,text(command.application_id));
+        if(command.source_version!==source.root.workspace_version) throw new WorkspaceError('The other application changed. Review it again.',409);
+        if(command.confirmed!==true) throw new WorkspaceError('Confirm these applicants intend to share one lease.');
+        await join(g,source,p.email,`Joined ${source.root.name} (${source.root.id}) to this lease group from ${source.root.status}; retained this group’s terms and assignment. Any previous landlord approval and lease draft no longer apply.`);
+        await reconcile(root.id);return view(p,await group(root.id));
+      }
       const patches:Record<string,Record<string,unknown>>={};
       if(terminal(g) && !['note','admin_note','assign','record_landlord_signature','archive_lease',...(root.status==='lease_sent' ? ['tenant_signed'] : [])].includes(command.action)) throw new WorkspaceError('This rental is locked for signing or closed.',403);
       if(command.action==='cancel_invite') {
@@ -323,14 +369,6 @@ export function makeRentals(d: RentalDependencies) {
         root.workspace!.invitations=root.workspace!.invitations!.filter(i=>i.id!==invitation.id);reopen(root.workspace!);
         root.workspace!.activity=[...(root.workspace!.activity || []),{action:'cancel_invite',by:p.email,at:new Date().toISOString(),detail:`Cancelled the pending invitation for ${invitation.name}`}];
         await d.store.save(g,{[root.id]:{workspace:root.workspace,status:'review',lease_snapshot:null}},p.email);
-        await reconcile(root.id);return view(p,await group(root.id));
-      }
-      if(command.action==='merge') {
-        if(p.role==='landlord' || terminal(g) || ['sent_to_landlord','landlord_approved'].includes(root.status)) throw new WorkspaceError('Change group membership before landlord review.',409);
-        const source=await load(p,text(command.application_id));
-        if(command.source_version!==source.root.workspace_version) throw new WorkspaceError('The other application changed. Review it again.',409);
-        if(command.confirmed!==true) throw new WorkspaceError('Confirm these applicants intend to share one lease.');
-        await join(g,source,p.email,`Joined ${source.root.name} to this lease group; retained the destination group’s terms and assignment.`);
         await reconcile(root.id);return view(p,await group(root.id));
       }
       if(['approve','recommend','review_and_recommend','decline','landlord_changes','record_tenant_signature'].includes(command.action)) throw new WorkspaceError('This rental uses automatic group review.',403);

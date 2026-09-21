@@ -72,7 +72,10 @@ export function createWorkspaceFixtures(saved) {
       const join=body.p_join ? state.applications.find(a=>a.id===body.p_join) : null;
       const expected=[...group,...(join?[join]:[])];
       if(!root || expected.length!==Object.keys(body.p_versions).length || expected.some(a=>a.workspace_version!==body.p_versions[a.id]))return response({error:'Changed'},409);
-      if(join && (join.listing_id!==root.listing_id || ['sent_to_landlord','landlord_approved','lease_sent','lease_signed','declined'].includes(join.status)))return response({error:'Invalid join'},409);
+      // Mirrors commit_rental_group: one independent applicant for the same
+      // unit, and nothing signing, signed or closed on either side.
+      const locked=a=>['lease_sent','lease_signed','declined'].includes(a.status) || !!a.workspace?.signed_lease || !!a.workspace?.tenant_signature || !!a.workspace?.landlord_signature || Object.keys(a.workspace?.signature_receipts || {}).length>0 || (!!a.workspace?.signing && !['voided','declined'].includes(a.workspace.signing.phase));
+      if(join && (join.listing_id!==root.listing_id || join.id===root.id || (join.rental_group_id || join.id)!==join.id || state.applications.filter(a=>(a.rental_group_id || a.id)===join.id).length!==1 || [...group,join].some(locked)))return response({error:'Invalid join'},409);
       if(join){join.rental_group_id=root.id;join.responsible_email=root.responsible_email;join.collaborator_emails=[...root.collaborator_emails];join.workspace_version++;}
       for(const [id,patch] of Object.entries(body.p_patches)){const row=state.applications.find(a=>a.id===id);Object.assign(row,structuredClone(patch));row.workspace_version++;row.updated_at=new Date().toISOString();}
       if(!body.p_patches[root.id])root.workspace_version++;
