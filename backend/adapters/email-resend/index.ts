@@ -6,7 +6,7 @@
 import { sendEmail } from "../../../worker/email.js";
 import type { EmailPort, EmailSend, EmailTemplate } from "../../contracts/email.ts";
 
-const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
+import { MAIL_FROM as FROM_ADDRESS } from '../../../worker/mail-layout.js';
 
 interface Rendered {
   subject: string;

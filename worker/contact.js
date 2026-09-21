@@ -1,7 +1,7 @@
 import { sendEmail } from "./email.js";
 
 const CONTACT_EMAIL = "info@starreusa.com";
-const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
+import { MAIL_FROM as FROM_ADDRESS } from './mail-layout.js';
 
 const ALLOWED_PROPERTY_TYPES = ["Residential", "Commercial"];
 const ALLOWED_TRANSACTION_TYPES = ["Lease", "Purchase"];
