@@ -46,10 +46,14 @@ simulated HTTP provider. No real payment or credit inquiry is performed.
   separately shows pending, sending, failed, local preview, or submitted mail.
   Submitted means accepted by the mail provider, not confirmed inbox delivery.
 
-Use separate browser profiles for Applicant, Landlord and Admin. The shared
-HttpOnly login cookie represents one identity per browser profile. The internal
-Admin preview is available only locally without a workspace session;
-it is never accepted as the landlord's emailed decision.
+Applicant accounts can be tested in separate tabs of the same browser profile.
+Each tab selects its own applicant session; invitation links select a separate
+session for the invited email, including in a duplicated tab. Login, token refresh,
+document links and sign-out use that session only. Tokens stay in HttpOnly cookies;
+sessionStorage holds only an opaque selector and the account email. Workspace
+(Admin/Landlord) identity remains separate; use separate profiles when testing
+multiple workspace roles. The internal Admin preview is available only locally
+without a workspace session and is never accepted as the landlord's decision.
 
 Roommates must open the complete invitation email link, not the listing's
 ordinary `/apply/?id=…` URL. Invitations include `invited` plus `invite` (a
@@ -61,8 +65,11 @@ submit first and immediately complete their own simulated payment, documents and
 screening. The inviter joins the same case later; the group stays out of landlord
 review until every invited member has submitted and passed the required checks. Multiple open invitations for the
 same inbox require a case-specific link; a generic link cannot pick a case.
-Switching applicant accounts affects other tabs in that browser, so submission
-checks the account again and refuses to file answers under a different login.
+Signing in as a different applicant in another tab no longer changes this form's
+account. Submission still checks the account email as a defense against mismatched
+requests. Pages opened before the session-isolation update must load the new code
+and sign in once; refreshing an unsubmitted form discards its in-memory answers.
+Existing saved invitations and group IDs remain valid.
 
 For an allowlisted roommate, a live invitation to a saved internal test case also
 shows **Fill With Sample Data**. It preserves the invited email and case, offers

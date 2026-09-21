@@ -630,7 +630,7 @@ async function processApplication(request, env, ctx, body, email, session) {
   // open. Never file one person's completed answers under the new account.
   for (const expected of [body.account_email, body.invited_email]) {
     if (expected && String(expected).trim().toLowerCase() !== email) {
-      return json({ error: "Your signed-in account changed. Reopen the invitation and sign in with your own invited email before submitting." }, 409);
+      return json({ code: "APPLICANT_ACCOUNT_CHANGED", error: "This application belongs to a different applicant account. Open it using its own account. Your answers have not been submitted." }, 409);
     }
   }
   const listingId = String(body.listing_id ?? "").trim();

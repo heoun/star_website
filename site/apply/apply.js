@@ -1,3 +1,4 @@
+import { createApplicantSession } from '../shared/applicant-session.js';
 import { endDateFor } from "../shared/lease-dates.js";
 
 (function () {
@@ -87,6 +88,7 @@ import { endDateFor } from "../shared/lease-dates.js";
   // application is filed under whoever is signed in.
   const invitedRaw = (new URLSearchParams(window.location.search).get("invited") || "").trim().toLowerCase();
   const invited = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invitedRaw) ? invitedRaw : "";
+  const applicantSession=createApplicantSession(invited);
   const portalSignIn = () => {
     window.location.replace(
       `../portal/?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
@@ -300,7 +302,7 @@ import { endDateFor } from "../shared/lease-dates.js";
     const draftId=sessionStorage.getItem(draftKey) || crypto.randomUUID();
     if(!joiningGroup)sessionStorage.setItem(draftKey,draftId);
     const optionsQuery=new URLSearchParams({id,invite:groupInvite,group:groupRoot});
-    fetch(`/api/apply/options?${optionsQuery}`).then(r=>r.json()).then(async options=>{
+    applicantSession.fetch(`/api/apply/options?${optionsQuery}`).then(r=>r.json()).then(async options=>{
       automaticRental=options.automatic===true;
       if((options.internal_testing && !joiningGroup) || options.internal_test_group){const {attachTestApplication}=await import('./internal-test.js');testApplication=attachTestApplication(form,id,{groupId:options.internal_test_group,pending:options.internal_test_pending});}
       if(!automaticRental)return;
@@ -1157,7 +1159,7 @@ import { endDateFor } from "../shared/lease-dates.js";
           : "Some roommate invitations could not be sent. The Roommates step says which, and moving on from it tries again.");
       };
 
-      const invitationRequest=fetch("/api/apply/invite", {
+      const invitationRequest=applicantSession.fetch("/api/apply/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1268,7 +1270,7 @@ import { endDateFor } from "../shared/lease-dates.js";
 
       try {
         await Promise.all([...invitationRequests]);
-        const response = await fetch("/api/apply", {
+        const response = await applicantSession.fetch("/api/apply", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "same-origin",
@@ -1453,7 +1455,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         if (!response.ok) throw new Error(payload?.error || "This property could not be loaded.");
         return payload;
       }),
-    fetch("/api/portal/me", { credentials: "same-origin" })
+    applicantSession.fetch("/api/portal/me", { credentials: "same-origin" })
       .then(async (response) => {
         if (response.status === 401) return null;
         const payload = await response.json().catch(() => null);
@@ -1470,6 +1472,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         portalSignIn();
         return;
       }
+      applicantSession.selectEmail(me.email);
       renderForm(property, me.email);
     })
     .catch((error) => showFailure(error.message));

@@ -8,6 +8,18 @@ function authScope(request) {
   const path = new URL(request.url).pathname;
   return path.startsWith('/api/auth/workspace/') || ['/api/auth/workspace-code','/api/auth/workspace-activate'].includes(path) ? 'workspace' : 'applicant';
 }
+// A selector identifies an HttpOnly cookie, never a user or a bearer token.
+// Missing selectors support old clients; a supplied invalid/missing slot must
+// never fall back to another applicant's legacy session.
+const APPLICANT_CONTEXT=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function sessionCookieName(request,scope=authScope(request)) {
+  if(scope==='workspace')return SESSION_COOKIES.workspace;
+  const header=request.headers.get('X-Applicant-Session');
+  const query=new URL(request.url).searchParams.get('applicant_session');
+  if(header!==null && query!==null && header!==query)return null;
+  const context=header ?? query;
+  return context===null ? SESSION_COOKIES.applicant : APPLICANT_CONTEXT.test(context) ? `star_portal_${context.toLowerCase()}` : null;
+}
 const SESSION_SECONDS = 7 * 24 * 60 * 60;
 
 // Mirrors the minimum set in the Supabase dashboard, so the form's error and
@@ -103,12 +115,13 @@ function cookieValue(request, name) {
 // `Secure` would make the browser drop the cookie on a plain-HTTP loopback,
 // which is exactly where development runs.
 function sessionCookie(request, value, maxAge, scope = authScope(request)) {
-  const attributes = [`${SESSION_COOKIES[scope]}=${value}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`];
+  const attributes = [`${sessionCookieName(request,scope)}=${value}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`];
   if (!isLocalRequest(request)) attributes.push("Secure");
   return attributes.join("; ");
 }
 
 export async function signedIn(request, session, env) {
+  if (!sessionCookieName(request)) return json({error:"Invalid applicant session."},400);
   if (!verifiedUser(session.user)) return json({ error: "Confirm your email before signing in." }, 403);
   if (authScope(request) === 'workspace') {
     const resolved = await resolveStaff(env, {email: session.user.email, subject: session.user.id});
@@ -127,7 +140,9 @@ export async function signedIn(request, session, env) {
 export async function readSession(request, env, scope = authScope(request)) {
   if (!authConfig(env)) return null;
 
-  const stored = decodeSessionCookie(cookieValue(request, SESSION_COOKIES[scope]));
+  const name=sessionCookieName(request,scope);
+  if(!name)return null;
+  const stored = decodeSessionCookie(cookieValue(request, name));
   if (!stored) return null;
 
   const user = await authRequest(env, "user", { method: "GET", token: stored.at });
@@ -315,6 +330,7 @@ export function sameOriginMutation(request) {
 // Called by both /api/auth and the existing applicant endpoints.
 export async function handleAuthRequest(request, env, ctx, resource) {
   if (!authConfig(env)) return json({ error: "Sign-in is temporarily unavailable." }, 503);
+  if (!sessionCookieName(request)) return json({error:"Invalid applicant session."},400);
   if (!sameOriginMutation(request)) return json({ error: "Use this website to submit the form." }, 403);
   if (authScope(request) === 'workspace' && !['login','me','request-reset','verify-reset','sign-out'].includes(resource)) return json({error:'Unknown workspace account endpoint.'},404);
   try {
@@ -326,7 +342,7 @@ export async function handleAuthRequest(request, env, ctx, resource) {
     // Signing out has no payload. Accept the original portal's bodyless POST
     // too, while retaining the same-origin and session-scope checks above.
     if (resource === "sign-out") {
-      const stored = decodeSessionCookie(cookieValue(request, SESSION_COOKIES[authScope(request)]));
+      const stored = decodeSessionCookie(cookieValue(request, sessionCookieName(request)));
       if (stored?.at) {
         // Clear this browser even if upstream revocation is temporarily unavailable.
         ctx.waitUntil(authRequest(env, "logout?scope=local", { token: stored.at }).catch(() => {}));

@@ -34,7 +34,7 @@
     "test:listings:db": "node scripts/test-listing-schema.mjs",
     "test:case-review": "node scripts/test-case-review.mjs",
     "test:case-queue": "node scripts/test-case-queue.mjs",
-    "test:identity": "node scripts/test-identity.mjs",
+    "test:identity": "node scripts/test-identity.mjs && node scripts/test-applicant-sessions.mjs",
     "test:email": "node scripts/test-email-branding.mjs",
     "test:membership": "node scripts/test-rental-membership.mjs",
     "test:identity:db": "node scripts/test-identity-schema.mjs",

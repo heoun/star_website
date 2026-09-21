@@ -1,3 +1,4 @@
+import { createApplicantSession } from '../shared/applicant-session.js';
 (function () {
   const container = document.getElementById("portal");
   if (!container) return;
@@ -40,6 +41,8 @@
   const invitedRaw = (new URLSearchParams(window.location.search).get("email") || "").trim().toLowerCase();
   const invitedEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invitedRaw) ? invitedRaw : "";
 
+  const applicantSession=createApplicantSession(invitedEmail);
+
   const state = {
     email: invitedEmail,      // carried between the auth steps
     data: null      // the signed-in payload: email, document_types, applications
@@ -56,7 +59,7 @@
   document.body.appendChild(fileInput);
 
   async function api(path, options = {}) {
-    const response = await fetch(`/api/portal${path}`, { credentials: "same-origin", ...options });
+    const response = await applicantSession.fetch(`/api/portal${path}`, { credentials: "same-origin", ...options });
     const isJson = (response.headers.get("Content-Type") || "").includes("application/json");
     const payload = isJson ? await response.json().catch(() => null) : null;
 
@@ -68,11 +71,14 @@
     return payload;
   }
 
-  const postJson = (path, body) => api(path, {
+  const postJson = (path, body) => {
+    if(body.email)applicantSession.selectEmail(body.email);
+    return api(path, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body)
-  });
+    });
+  };
 
   const setError = (message) => {
     const el = container.querySelector(".form-error");
@@ -418,7 +424,7 @@
 
     const list = files.map((doc) => `
       <li class="doc-file">
-        <a href="/api/portal/documents/${escapeHtml(doc.id)}" target="_blank" rel="noopener">${escapeHtml(doc.file_name || "document")}</a>
+        <a href="${escapeHtml(applicantSession.documentUrl(`/api/portal/documents/${doc.id}`))}" target="_blank" rel="noopener">${escapeHtml(doc.file_name || "document")}</a>
         <span class="doc-size num">${formatSize(doc.size_bytes)}</span>
         <button type="button" class="doc-remove" data-remove="${escapeHtml(doc.id)}">Remove</button>
       </li>`).join("");
@@ -625,6 +631,7 @@
         renderRegister();
         return;
       }
+      applicantSession.selectEmail(state.data.email);
       // Someone who arrived here mid-application and is already signed in
       // goes straight back to the form.
       if (nextPath) {

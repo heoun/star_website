@@ -18,7 +18,8 @@ try{
  let response=await call('/api/apply/options?id='+ids.listing);let options=await response.json();eq(options.agents.map(a=>a.email),['agent-a@example.test']);
  const before=fixture.state.applications.length;
  response=await call('/api/apply',{...payload,invited_email:'roommate@example.test'},cookie);eq(response.status,409);eq(fixture.state.applications.length,before);
- response=await call('/api/apply',{...payload,account_email:'roommate@example.test'},cookie);eq(response.status,409);eq(fixture.state.applications.length,before);
+ response=await call('/api/apply',{...payload,account_email:'roommate@example.test'},cookie);eq(response.status,409);eq(fixture.state.applications.length,before);eq((await response.json()).code,'APPLICANT_ACCOUNT_CHANGED');
+ response=await call('/api/apply',{...payload,account_email:'applicant@example.test'});eq(response.status,401);eq(fixture.state.applications.length,before);
  const listing=fixture.state.listings.find(l=>l.id===ids.listing);listing.published=false;
  response=await call('/api/apply',payload,cookie);eq(response.status,404);eq(fixture.state.applications.length,before);
  listing.published=true;

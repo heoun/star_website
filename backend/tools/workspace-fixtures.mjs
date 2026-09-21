@@ -90,6 +90,12 @@ export function createWorkspaceFixtures(saved) {
       state.applications.push(row);return response(row);
     }
     if (table === "applications") {
+      if(method==='POST') {
+        if(body.id && state.applications.some(a=>a.id===body.id))return response([]);
+        const id=body.id || crypto.randomUUID();
+        const row={id,rental_group_id:id,status:'new',workspace_version:0,created_at:new Date().toISOString(),updated_at:new Date().toISOString(),collaborator_emails:[],...body};
+        state.applications.push(row);return response([row]);
+      }
       let rows = state.applications.filter(row => match(row, q, "id") && match(row, q, "workspace_version") && (!q.has("rental_group_id") || String(row.rental_group_id || row.id)===q.get("rental_group_id").replace(/^eq\./,"")) && (!q.has("listing_id") || String(row.listing_id)===q.get("listing_id").replace(/^eq\./,"")));
       if (q.has("or")) { const person = /responsible_email\.eq\."((?:\\.|[^"])*)"/.exec(q.get("or"))?.[1]?.replace(/\\([\\"])/g, "$1"); rows = rows.filter(row => row.responsible_email === person || row.collaborator_emails.includes(person)); }
       if (q.has("listings.building_id")) rows = rows.filter(row => q.get("listings.building_id").includes(embed(row).listings?.building_id));
@@ -139,7 +145,7 @@ export function createWorkspaceFixtures(saved) {
       if(method==='POST'){const row={id:crypto.randomUUID(),created_at:new Date().toISOString(),...body};state.documents.push(row);return response([row]);}
       const rows = state.documents.filter(row => match(row, q, "id") && match(row,q,'application_id'));
       if (method === "DELETE") state.documents = state.documents.filter(row => !rows.includes(row));
-      return response(rows);
+      return response(q.get("select")?.includes("applications(email)") ? rows.map(row=>({...row,applications:{email:state.applications.find(a=>a.id===row.application_id)?.email}})) : rows);
     }
     if (table === "lease_settings_for_listing") {
       const listing = state.listings.find(row => row.id === body.p_listing_id);

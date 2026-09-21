@@ -34,7 +34,10 @@ const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || "playwright");
 const browser=await chromium.launch({headless:true});let checks=0;
 const screenshotDir=process.env.IDENTITY_UI_ARTIFACTS || "/tmp/star-identity-ui";
 await mkdir(screenshotDir,{recursive:true});
-const context=await browser.newContext({viewport:{width:1360,height:900}}),page=await context.newPage();
+const applicantContext=crypto.randomUUID();
+const context=await browser.newContext({viewport:{width:1360,height:900},extraHTTPHeaders:{'X-Applicant-Session':applicantContext}});
+await context.addInitScript(id=>{if(!sessionStorage.getItem('star-applicant-context'))sessionStorage.setItem('star-applicant-context',JSON.stringify({id,email:'applicant@example.test'}));},applicantContext);
+const page=await context.newPage();
 const errors=[];page.on("pageerror",error=>errors.push(error.message));
 try{
   const applicantLogin=await context.request.post(`${base}/api/portal/login`,{data:{email:'applicant@example.test',password:'testing-password'}});
@@ -48,11 +51,11 @@ try{
   await page.getByLabel("Password",{exact:true}).fill("testing-password");await page.getByRole("button",{name:"Sign in",exact:true}).click();await page.waitForURL("**/admin/**");checks++;
   assert.equal((await(await context.request.get(`${base}/api/admin/me`)).json()).email,'admin@example.test');checks++;
   assert.equal((await(await context.request.get(`${base}/api/portal/me`)).json()).email,'applicant@example.test');checks++;
-  assert.deepEqual((await context.cookies()).map(c=>c.name).filter(n=>n.startsWith('star_')).sort(),['star_portal','star_workspace']);checks++;
+  assert.deepEqual((await context.cookies()).map(c=>c.name).filter(n=>n.startsWith('star_')).sort(),[`star_portal_${applicantContext}`,'star_workspace']);checks++;
   await page.goto(`${base}/portal/`);
   await page.getByRole('button',{name:'Sign out',exact:true}).click();
   await page.getByRole('button',{name:'Sign in',exact:true}).waitFor();checks++;
-  assert.equal((await context.cookies()).some(c=>c.name==='star_portal'),false);checks++;
+  assert.equal((await context.cookies()).some(c=>c.name===`star_portal_${applicantContext}`),false);checks++;
   assert.equal((await context.request.get(`${base}/api/portal/me`)).status(),401);checks++;
   await page.goto(`${base}/apply/?id=33333333-3333-4333-8333-333333333333`);
   await page.waitForURL('**/portal/?next=*');checks++;
