@@ -15,9 +15,11 @@
 .ws-review-row:focus-within,.ws-review-field>summary:focus-visible{outline:2px solid #205570;outline-offset:2px}
 @container(max-width:440px){.ws-review-row,.ws-review-field>summary{grid-template-columns:minmax(0,1fr) auto;gap:3px 10px}.ws-review-row>.ws-label,.ws-review-field>summary>.ws-label{grid-column:1/-1}.ws-review-value{grid-column:1}.ws-row-action{grid-column:2}.ws-review-section .ws-section-head p{font-size:11px}}
 @media(max-width:700px){#lease-fields .ws-body{padding:0 14px 18px}.lease-pane-head{flex-wrap:wrap}.lease-doc-name{max-width:45%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lease-actions{flex-wrap:wrap}}
-.ws-signing-preview{border-top:1px solid #dce5eb;margin:12px 0 24px;padding-top:16px}
-.ws-signing-preview h3{font-size:15px;margin:0 0 8px}.ws-signing-preview>.ws-hint{margin:6px 0 12px;line-height:1.6}
-.ws-signer .ws-signing-targets{margin-top:10px}
-.ws-signing-targets{display:flex;flex-wrap:wrap;gap:6px;margin-top:5px}.ws-signing-targets button{font-size:12px;padding:6px 10px}.ws-signing-targets button[aria-pressed=true]{background:#e5f1f6;border-color:#205570;color:#205570}
-
-.ws-preview-document{display:grid;gap:6px;font-size:12px;margin:12px 0}.ws-preview-document select{width:100%;box-sizing:border-box;font:inherit;padding:9px;border:1px solid #ccd8df;border-radius:6px;background:white;color:#203744}
+.ws-doc-detail{padding:12px 13px 14px;background:#fbfcfd;border-left:2px solid var(--blue);font-size:12px}
+.ws-doc-detail h4{margin:0 0 8px;font-size:11px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--soft)}
+.ws-doc-parts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px}.ws-doc-parts-label{font-size:11px;color:var(--soft);margin-right:2px}
+.ws-doc-parts button{font-size:12px;padding:5px 10px;border-radius:999px}.ws-doc-parts button[aria-pressed=true]{background:#e5f1f6;border-color:#205570;color:#205570}
+.ws-field-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0 0 8px;padding:0;list-style:none;font-size:11.5px;color:#5c6d79}.ws-field-legend li{display:flex;align-items:center;gap:6px}
+.ws-field-legend i{display:inline-block;width:14px;height:10px;border:1px solid #236f91;background:#d8eef9;border-radius:2px}.ws-field-legend i.landlord{border-color:#8056ac;background:#efe2ff}.ws-field-legend i.date{border-style:dashed;background:#fff}
+.ws-preview-status{margin:0;line-height:1.6;max-width:none}.ws-preview-status.is-error{color:#a1251b}.ws-preview-status button{font-size:12px;padding:5px 10px;margin-left:8px}
+.ws-signing-targets{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}.ws-signing-who{flex-basis:100%;font-size:11.5px;font-weight:600;color:#203744}.ws-signing-targets button{font-size:12px;padding:6px 10px}.ws-signing-targets button[aria-pressed=true]{background:#e5f1f6;border-color:#205570;color:#205570}

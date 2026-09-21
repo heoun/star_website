@@ -133,8 +133,12 @@ function propertyTerms(state) {
     return `<details class="ws-fold ws-review-fold"${missing?' open':''}><summary><span class="ws-fold-title">${name}</span><span class="ws-fold-note">${missing?`${missing} Missing`:esc(short)}</span></summary><div class="ws-fold-body">${fields.map(f=>row(f.id,state)).join('')}</div></details>`;
   }).join(''),`Corrections here apply to this lease only.${state.isManager()?` <a href="#/properties">Manage Property Defaults</a>`:''}`);
 }
+// The selected document opens in place: its signing fields are drawn on the
+// document itself and listed in a detail panel directly beneath its entry,
+// which the lease screen fills (it owns the signing package and the frame).
 function documentsPanel(state) {
-  return section('Lease Documents',`<div class="ws-docs">${state.documents.map(d=>`<button type="button" class="ws-doc${state.activeDocument===d.id?' is-on':''}" data-ws-doc="${esc(d.id)}" aria-pressed="${state.activeDocument===d.id}"><span class="ws-doc-name">${esc(d.name)}</span><span class="ws-doc-why">Sections ${d.from+1}–${d.to+1}${d.conditionalOn && !(state.values[d.conditionalOn])?' · Review Required':''}</span></button>`).join('')}</div>`,`${state.documents.length} documents included. Select a document to review it.`);
+  const detail=state.mode==='lease';
+  return section('Lease Documents',`<div class="ws-docs">${state.documents.map(d=>{const on=state.activeDocument===d.id;return `<button type="button" class="ws-doc${on?' is-on':''}" data-ws-doc="${esc(d.id)}" aria-pressed="${on}"><span class="ws-doc-name">${esc(d.name)}</span><span class="ws-doc-why">Sections ${d.from+1}–${d.to+1}${d.conditionalOn && !(state.values[d.conditionalOn])?' · Review Required':''}</span></button>${on && detail?`<div class="ws-doc-detail" data-workspace-document-preview data-document="${esc(d.id)}"></div>`:''}`;}).join('')}</div>`,`${state.documents.length} documents included. Select a document to review it${detail?' and its signing fields':''}.`);
 }
 function recipientsPanel(state) {
   return `<div data-workspace-recipients>${signingRecipients(state)}</div>`+

@@ -12,4 +12,6 @@ body{margin:0;padding:14px;background:#f1efe8}
 .signing-field-layer{position:absolute;inset:0;pointer-events:none;z-index:5}
 .signing-field-box{position:absolute;box-sizing:border-box;border:1px solid #236f91;background:#d8eef9e8;color:#123f53;font:10px Arial,sans-serif;line-height:1.1;display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .signing-field-box.landlord{border-color:#8056ac;background:#efe2ffe8;color:#583078}
+/* A date DocuSign fills at signing, not a value the lease already carries. */
+.signing-field-box[data-kind=date_signed]{border-style:dashed;background:#fffffff2}
 .signing-field-box.current{outline:2px solid #de9c24;outline-offset:2px}

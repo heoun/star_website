@@ -78,10 +78,57 @@ try{
  eq(await page.locator('#lease-doc .is-current-match').count(),1);
  eq(await page.locator('#lease-doc .is-current-match').isVisible(),true);
  assert.notEqual(await page.locator('#lease-doc-name').innerText(),'New York Residential Lease Agreement');checks++;
+ // Closing the screen while its package is still being prepared must not let
+ // that stale work reach the reopened screen.
+ const frame=page.frameLocator('iframe[title="Lease for Signing"]');
+ const preparePattern='**/api/admin/cases/*/signing';
+ await page.route(preparePattern,async route=>{if(route.request().method()!=='POST')return route.fallback();await new Promise(r=>setTimeout(r,1500));await route.continue();});
+ const prepared=page.waitForResponse(r=>r.request().method()==='POST' && /\/signing$/.test(r.url()));
  await panel.getByRole('tab',{name:'Documents',exact:true}).click();
  eq(await panel.locator('[data-ws-doc=""]').count(),0);eq(await panel.locator('[data-ws-doc]').count(),15);
+ eq(await panel.locator('[data-preview-status="loading"]').count(),1);
+ eq(await page.locator('#lease-draft').isDisabled(),true);
+ await page.getByRole('button',{name:/Back to Rental/}).click();
+ await page.getByRole('tab',{name:'Lease & Decision',exact:true}).waitFor();
+ await page.goto(`${base}/admin/#/leases/${ids.b}`);
+ await panel.getByRole('heading',{name:'Landlord & Signer',exact:true}).waitFor();
+ await (await prepared).finished();await page.waitForTimeout(400);
+ eq(await page.locator('iframe[title="Lease for Signing"]').count(),0);
+ eq(await page.locator('#lease-doc-name').innerText(),'New York Residential Lease Agreement');
+ eq(await page.locator('#lease-review-feedback').isHidden(),true);
+ eq(await page.locator('#lease-draft').isEnabled(),true);
+ eq(await panel.getByRole('tab',{selected:true}).innerText(),'Lease Information');
+ eq(packages.size,1);
+ await page.unroute(preparePattern);
+ // A slow frame with a quick switch draws only the last selection, and
+ // previewing one document does not count as reviewing the package.
+ const mergedPattern='**/api/admin/cases/*/signing?package=*&file=source';
+ await page.route(mergedPattern,async route=>{await new Promise(r=>setTimeout(r,1500));await route.continue();});
+ await panel.getByRole('tab',{name:'Documents',exact:true}).click();
  await panel.locator('[data-ws-doc="utilities"]').click();eq(await page.locator('#lease-doc-name').innerText(),'Utilities Rider');
+ await panel.locator('[data-ws-doc="packages"]').click();
+ await frame.locator('[data-signing-field="packages-1-signature"].current').waitFor();
+ eq(await frame.locator('[data-signing-field^="utilities-"],[data-signing-field^="lease-"]').count(),0);
+ eq(await page.locator('#lease-doc-name').innerText(),'Packages Rider');
+ eq(await panel.locator('[data-workspace-document-preview]').evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),'packages');
+ eq(await page.locator('#lease-draft').isVisible(),true);
+ await page.unroute(mergedPattern);
+ await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();
+ await panel.getByText('Draft preview · Not sent. Sending without opening the signing package requires confirmation.',{exact:true}).waitFor();
+ await panel.getByRole('tab',{name:'Documents',exact:true}).click();
+ await frame.locator('[data-signing-field="packages-1-signature"].current').waitFor();
+ // An explicit review while a document is shown opens the whole package and marks it reviewed.
+ await page.locator('#lease-draft').click();
+ await page.getByText('Review the lease and signer details, then send with DocuSign.',{exact:true}).waitFor();
+ eq(await page.locator('#lease-all-documents').getAttribute('aria-pressed'),'true');
+ eq(await panel.locator('[data-workspace-document-preview]').count(),0);
+ eq(await page.locator('#lease-draft').isHidden(),true);
+ eq(packages.size,1);
+ await panel.locator('[data-ws-doc="utilities"]').click();
+ await frame.locator('[data-signing-field="utilities-1-signature"].current').waitFor();
+ eq(await page.locator('#lease-draft').isHidden(),true);
  await page.getByRole('button',{name:'View All Documents',exact:true}).click();eq(await page.locator('#lease-all-documents').getAttribute('aria-pressed'),'true');
+ eq(await panel.locator('[data-workspace-document-preview]').count(),0);
  await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  const start=panel.locator('[data-ws-row="lease.commencement_date"]');await start.locator(':scope > summary').click();
  await start.locator('input').fill('11/01/2026');eq(await panel.locator('[data-lease-input="lease.end_date"]').inputValue(),'10/31/2027');
@@ -115,13 +162,13 @@ try{
  eq(await panel.getByRole('button',{name:'Review Lease Draft',exact:true}).count(),0);
  eq(await panel.getByRole('button',{name:'Send With DocuSign',exact:true}).count(),0);
  eq(await page.getByRole('button',{name:'Send With DocuSign',exact:true}).isEnabled(),true);
- eq(packages.size,0);
+ eq(packages.size,1); // Prepared once for the first approval when Documents opened; a new approval needs a new package.
  await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  await page.getByRole('button',{name:'Review Signing Package',exact:true}).click();
  await page.getByText('Review the lease and signer details, then send with DocuSign.',{exact:true}).waitFor();
- eq(packages.size,1);
+ eq(packages.size,2);
  const savedFrame=page.frameLocator('iframe[title="Lease for Signing"]');
- const savedPackage=[...packages.values()][0];
+ const savedPackage=[...packages.values()].at(-1);
  const qaSource=await page.request.get(`${base}/api/admin/cases/${ids.b}/signing?package=${savedPackage.id}&file=source`);
  await writeFile(`${out}/main-signing-review.docx`,await qaSource.body());
  await savedFrame.locator('section.docx').first().waitFor();
@@ -133,33 +180,58 @@ try{
  eq(await page.getByRole('button',{name:'Review Signing Package',exact:true}).count(),0);
  await page.getByText('Signing package opened for review · Not sent.',{exact:true}).waitFor();
  await page.screenshot({path:`${out}/signing-recipients.png`,fullPage:true});
- await panel.getByRole('button',{name:'Preview Signing Fields',exact:true}).click();
+ // Selecting a document under Documents shows its own signing copy with the
+ // fields drawn on it. No separate document selector or preview button remains.
+ await panel.getByRole('tab',{name:'Documents',exact:true}).click();
+ eq(await panel.locator('[data-signing-layout],[data-signing-tenant],.ws-signing-preview').count(),0);
+ eq(await page.getByRole('button',{name:'Preview Signing Fields',exact:true}).count(),0);
+ const detail=panel.locator('[data-workspace-document-preview]');
+ await panel.locator('[data-ws-doc="lease"]').click();
  await page.getByText('New York Residential Lease Agreement · Signing field preview only. Nothing has been sent.',{exact:true}).waitFor();
+ eq(await detail.count(),1);
+ eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),'lease');
+ eq(await detail.locator('[data-preview-status]').getAttribute('data-preview-status'),'ready');
+ eq(await detail.locator('.ws-field-legend li').allTextContents(),['Tenants','Landlord','Date Signed, entered when that person signs']);
+ eq(await detail.locator('[data-preview-signing-fields][aria-pressed="true"]').getAttribute('data-preview-signing-fields'),'lease-38-1-initial');
  eq(await savedFrame.locator('.signing-field-box').count(),10);
  eq(await savedFrame.locator('.signing-field-box[data-kind="initial"]').count(),4);
  eq(await savedFrame.locator('.signing-field-box[data-kind="full_name"]').count(),3);
  await page.screenshot({path:`${out}/signing-fields-38.png`,fullPage:true});
- await panel.locator('.ws-signing-targets [data-preview-signing-fields="lease-39-1-initial"]').click();
+ await detail.locator('[data-preview-signing-fields="lease-39-1-initial"]').click();
  await savedFrame.locator('[data-signing-field="lease-39-1-initial"].current').waitFor();
  await page.screenshot({path:`${out}/signing-fields-39.png`,fullPage:true});
- await panel.locator('[data-preview-signing-fields="lease-1-signature"]').click();
+ await detail.locator('[data-preview-signing-fields="lease-1-signature"]').click();
  await savedFrame.locator('[data-signing-field="lease-1-signature"].current').waitFor();
  eq(await savedFrame.locator('[data-signing-field="lease-3-full_name"]').innerText(),owner.name);
  await page.screenshot({path:`${out}/signing-fields-47.png`,fullPage:true});
- // Every new document has its own original tenant/landlord lines and navigation.
+ // Every rider opens its own copy with its original tenant/landlord lines and navigation.
  for(const layout of ['utilities','packages','keys','insurance','rules','fines']){
-  await panel.locator('[data-signing-layout]').selectOption(layout);
+  if(layout==='fines')await detail.locator('[data-preview-layout="fines"]').click();
+  else await panel.locator(`[data-ws-doc="${layout}"]`).click();
   await savedFrame.locator(`[data-signing-field="${layout}-1-signature"].current`).waitFor();
   eq(await savedFrame.locator('.signing-field-box').count(),6);
   eq(await savedFrame.locator('.signing-field-box[data-kind="initial"]').count(),0);
   eq(await savedFrame.locator(`[data-signing-field="${layout}-3-full_name"]`).innerText(),owner.name);
   eq(await savedFrame.locator('.signing-field-box.current').evaluate(el=>{const r=el.getBoundingClientRect();return r.width>80 && r.top>=0 && r.bottom<innerHeight;}),true);
-  await panel.locator(`[data-preview-signing-fields="${layout}-3-signature"]`).click();
+  eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),layout==='fines'?'rules':layout);
+  eq(await page.locator('#lease-doc-name').innerText(),({utilities:'Utilities Rider',packages:'Packages Rider',keys:'Key Rider',insurance:'Renters Insurance Rider',rules:'Community Rules Rider',fines:'Fine Schedule'})[layout]);
+  await detail.locator(`[data-preview-signing-fields="${layout}-3-signature"]`).click();
   await savedFrame.locator(`[data-signing-field="${layout}-3-signature"].current`).waitFor();
   await page.screenshot({path:`${out}/signing-fields-${layout}.png`,fullPage:true});
  }
+ eq(await detail.locator('[data-preview-layout]').allTextContents(),['Community Rules Rider','Fine Schedule']);
+ // Switching quickly settles on the last document only.
+ await panel.locator('[data-ws-doc="utilities"]').click();
+ await panel.locator('[data-ws-doc="packages"]').click();
+ await savedFrame.locator('[data-signing-field="packages-1-signature"].current').waitFor();
+ await page.getByText('Packages Rider · Signing field preview only. Nothing has been sent.',{exact:true}).waitFor();
+ eq(await savedFrame.locator('[data-signing-field^="utilities-"]').count(),0);
+ eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),'packages');
+ eq(await page.locator('#lease-doc-name').innerText(),'Packages Rider');
  // Fields are drawn on the anchor tokens the saved document carries, so a
  // signer the package was not prepared for cannot be previewed into it.
+ await panel.locator('[data-ws-doc="rules"]').click();await detail.locator('[data-preview-layout="fines"]').click();
+ await savedFrame.locator('[data-signing-field="fines-1-signature"].current').waitFor();
  const slotCheck=await savedFrame.locator('#lease-doc').evaluate(async host=>{
   const {showSigningFields,clearSigningFields}=await import('/admin/signing-field-preview.js');
   const doc=await import('/admin/lease-doc.js');doc.showSections(null);
@@ -173,12 +245,14 @@ try{
  });
  eq(slotCheck,[true,6,true]);
  for(const layout of ['window_guards','bedbug','sprinkler','allergen','alarms','smoking','concession','dhcr','good_cause']){
-  await panel.locator('[data-signing-layout]').selectOption(layout);
+  await panel.locator(`[data-ws-doc="${layout}"]`).click();
   const recipient=layout==='allergen'?'3':'1';
   await savedFrame.locator(`[data-signing-field="${layout}-${recipient}-signature"].current`).waitFor();
   eq(await savedFrame.locator('.signing-field-box').count(),({window_guards:2,bedbug:4,allergen:3,dhcr:4})[layout] || 6);
   eq(await savedFrame.locator('.signing-field-box[data-kind="date_signed"]').count(),({window_guards:1,bedbug:2,allergen:1,dhcr:2})[layout] || 0);
-  for(const button of await panel.locator('.ws-signing-targets [data-preview-signing-fields]').all()){
+  if(layout==='bedbug')eq(await savedFrame.locator('.signing-field-box[data-kind="date_signed"]').first().evaluate(el=>getComputedStyle(el).borderTopStyle),'dashed');
+  eq(await detail.locator('[data-preview-tenant]').count(),['window_guards','bedbug','dhcr'].includes(layout)?2:0);
+  for(const button of await detail.locator('[data-preview-signing-fields]').all()){
    const id=await button.getAttribute('data-preview-signing-fields');await button.click();
    const box=savedFrame.locator(`[data-signing-field="${id}"].current`);await box.waitFor();
    // Clicking an already-selected field redraws its overlay asynchronously.
@@ -192,15 +266,34 @@ try{
   }
   await page.screenshot({path:`${out}/signing-fields-${layout}.png`,fullPage:true});
   if(['window_guards','bedbug','dhcr'].includes(layout)){
-   await panel.locator('[data-signing-tenant]').selectOption('2');
+   await detail.locator('[data-preview-tenant="2"]').click();
    await savedFrame.locator(`[data-signing-field="${layout}-2-signature"].current`).waitFor();
    eq(await savedFrame.locator('.signing-field-box[data-recipient="1"]').count(),0);
    eq(await savedFrame.locator(`[data-signing-field="${layout}-2-signature"]`).innerText(),'T2 · Signature');
    assert.match(await savedFrame.locator('#lease-doc').innerText(),/Applicant E/);checks++;
-   await panel.locator('[data-signing-tenant]').selectOption('1');
+   await detail.locator('[data-preview-tenant="1"]').click();
    await savedFrame.locator(`[data-signing-field="${layout}-1-signature"].current`).waitFor();
   }
  }
+ // E-sign Recipients keeps the signing order and DocuSign status only.
+ await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();
+ eq(await panel.locator('.ws-signer').count(),3);
+ eq(await panel.locator('.ws-signing-preview,.ws-signing-targets,[data-signing-layout],[data-preview-signing-fields]').count(),0);
+ // Reopening Documents shows the selected document's fields again.
+ await panel.getByRole('tab',{name:'Documents',exact:true}).click();
+ await detail.locator('[data-preview-status="ready"]').waitFor();
+ eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),'good_cause');
+ // A copy that fails to load says so under the document and can be retried.
+ const partPattern='**/api/admin/cases/*/signing?package=*&file=source&document=*';
+ await page.route(partPattern,route=>route.fulfill({status:503,contentType:'text/plain',body:'unavailable'}));
+ await panel.locator('[data-ws-doc="keys"]').click();
+ await detail.locator('[data-preview-status="error"]').waitFor();
+ eq(await savedFrame.locator('.signing-field-box').count(),0);
+ await page.unroute(partPattern);
+ await detail.getByRole('button',{name:'Try Again',exact:true}).click();
+ await savedFrame.locator('[data-signing-field="keys-1-signature"].current').waitFor();
+ eq(await detail.locator('[data-preview-status]').getAttribute('data-preview-status'),'ready');
+ await page.screenshot({path:`${out}/documents-signing-fields.png`,fullPage:true});
  for(const part of savedPackage.record.package.documents){
   if(part.tenantRecipientId && part.tenantRecipientId!=='1')continue;
   const response=await page.request.get(`${base}/api/admin/cases/${ids.b}/signing?package=${savedPackage.id}&file=source&document=${part.documentId}`);
@@ -254,7 +347,12 @@ try{
  eq(await page.getByRole('button',{name:'Review Lease Draft',exact:true}).count(),1);
  await page.getByRole('button',{name:'Review Lease Draft',exact:true}).click();
  await page.locator('#lease-final').filter({hasText:'Send With DocuSign'}).waitFor();
- eq(packages.size,1); // The reviewed package is reused after navigating back.
+ eq(packages.size,2); // The reviewed package is reused after navigating back.
+ await panel.getByRole('tab',{name:'Documents',exact:true}).click();
+ await panel.locator('[data-ws-doc="smoking"]').click();
+ await savedFrame.locator('[data-signing-field="smoking-1-signature"].current').waitFor();
+ eq(packages.size,2);
+ await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  // A saved document with different bytes must never be marked as reviewed.
  await page.getByRole('button',{name:/Back to Rental/}).click();
  const sourcePattern='**/api/admin/cases/**/signing?package=*&file=source';
@@ -271,7 +369,30 @@ try{
  await reviewedRent.locator(':scope > summary').click();await reviewedRent.locator('input').fill('3200');
  eq(await page.locator('iframe[title="Lease for Signing"]').count(),0);
  eq(await page.locator('#lease-final').isDisabled(),true);
+ // With unsaved corrections the document still opens; its signing fields wait for a saved, approved lease.
+ await panel.getByRole('tab',{name:'Documents',exact:true}).click();
+ await panel.locator('[data-ws-doc="lease"]').click();
+ eq(await detail.locator('[data-preview-status]').getAttribute('data-preview-status'),'unavailable');
+ assert.match(await detail.locator('[data-preview-status]').innerText(),/Save your corrections/);checks++;
+ eq(await page.locator('iframe[title="Lease for Signing"]').count(),0);
+ eq(await page.locator('#lease-doc-name').innerText(),'New York Residential Lease Agreement');
+ eq(await page.locator('#lease-doc section.docx:not([data-doc-hidden])').count()>0,true);
+ await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
+ await reviewedRent.locator(':scope > summary').click();
  await reviewedRent.locator('input').fill('3100');await reviewedRent.getByRole('button',{name:'Done',exact:true}).click();
+ // A rider without signing fields shows its content and says so, drawing nothing.
+ const signingPattern='**/api/admin/cases/*/signing';
+ await page.route(signingPattern,async route=>{if(route.request().method()!=='POST')return route.fallback();const response=await route.fetch();const body=await response.json();if(body.signing?.values)body.signing.values['concession.terms']='';await route.fulfill({response,json:body});});
+ await panel.getByRole('tab',{name:'Documents',exact:true}).click();
+ await panel.locator('[data-ws-doc="concession"]').click();
+ await detail.locator('[data-preview-status="empty"]').waitFor();
+ assert.match(await detail.locator('[data-preview-status]').innerText(),/No rent concession is specified/);checks++;
+ await savedFrame.locator('section.docx:not([data-doc-hidden])').first().waitFor();
+ eq(await savedFrame.locator('.signing-field-box').count(),0);
+ eq(await detail.locator('[data-preview-signing-fields]').count(),0);
+ eq(await page.locator('#lease-doc-name').innerText(),'Rent Concession Rider');
+ await page.unroute(signingPattern);
+ await page.screenshot({path:`${out}/documents-no-fields.png`,fullPage:true});
  // No send here: the isolated signing tests cover dispatch and confirmation.
  await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  await page.setViewportSize({width:390,height:844});await page.getByRole('button',{name:'Lease Information',exact:true}).click();
@@ -309,5 +430,5 @@ try{
  await page.unroute(failedStatus);await page.locator('#lease-final').click();
  await page.locator('#lease-review-feedback').filter({hasText:'Status checked at'}).waitFor();checks++;
  await page.screenshot({path:`${out}/signing-status.png`,fullPage:true});
- eq(errors,[]);console.log(`PASS ${checks} lease review UI checks: compact groups, exact household recipients, document navigation, local edits, approval reset, lease-only saves, preview and mobile`);
+ eq(errors,[]);console.log(`PASS ${checks} lease review UI checks: compact groups, exact household recipients, document navigation, per-document signing fields, local edits, approval reset, lease-only saves, preview and mobile`);
 }finally{if(process.env.DEBUG_REVIEW)console.log((await page.locator('body').innerText()).slice(-3500));await browser.close();await new Promise(r=>server.close(r));await Promise.allSettled(pending);restore();}

@@ -34,13 +34,19 @@ function locate(fieldId,contexts,index=0){
  first.scrollIntoView({block:'center',inline:'nearest',behavior:'instant'});
  parent.postMessage({type:'signing-document-located',packageId,fieldId,found:true,index,total:matches.length,document:owner?.id || ''},location.origin);
 }
-let messages=Promise.resolve();
+let messages=Promise.resolve(),previewRequests=0;
 window.addEventListener('message',event=>{
  if(event.source!==parent || event.origin!==location.origin || event.data?.packageId!==packageId)return;
+ // Requests queue behind the mount in progress. A later preview request
+ // supersedes an earlier one still waiting, so the copy nobody is looking at
+ // is never fetched or rendered.
+ if(['signing-fields-preview','signing-document-view'].includes(event.data.type))previewRequests+=1;
+ const request=event.data.type==='signing-fields-preview'?previewRequests:0;
  messages=messages.then(async()=>{
  if(event.data.type==='signing-document-view'){await mountSaved();show(event.data.document);}
  if(event.data.type==='signing-document-locate'){await mountSaved();locate(event.data.fieldId,event.data.contexts,event.data.index);}
  if(event.data.type==='signing-fields-preview'){
+  if(request!==previewRequests)return;
   try{
    const layout=SIGNING_DOCUMENTS.find(d=>d.id===(event.data.layout || 'lease'));
    if(!layout)throw new Error('Signing positions are not configured for this document.');
@@ -50,8 +56,8 @@ window.addEventListener('message',event=>{
    const signers=part.tenantRecipientId?event.data.signers.filter(s=>s.role==='landlord' || s.recipientId===part.tenantRecipientId):event.data.signers;
    fieldPreview={signers,selected:event.data.selected,layout:layout.id,options:{standalone:true,values:event.data.values,tenantOrder:event.data.signers.filter(s=>s.role==='tenant').map(s=>s.recipientId)}};
    const result=showSigningFields(host,fieldPreview.signers,fieldPreview.selected,fieldPreview.layout,fieldPreview.options);
-   parent.postMessage({type:'signing-fields-ready',packageId,...result},location.origin);
-  }catch(error){parent.postMessage({type:'signing-fields-error',packageId,message:error.message},location.origin);}
+   parent.postMessage({type:'signing-fields-ready',packageId,layout:layout.id,documentId:part.documentId,...result},location.origin);
+  }catch(error){parent.postMessage({type:'signing-fields-error',packageId,layout:event.data.layout,documentId:event.data.document?.documentId,message:error.message},location.origin);}
  }
  if(event.data.type==='signing-document-zoom')host.style.zoom=String(Math.max(.5,Math.min(1.5,Number(event.data.zoom)||1)));
  if(event.data.type==='signing-document-zoom' && fieldPreview)showSigningFields(host,fieldPreview.signers,fieldPreview.selected,fieldPreview.layout,fieldPreview.options);
