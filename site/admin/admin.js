@@ -648,7 +648,7 @@ async function goto({ name, id }) {
   }
 
   if (name === "leases") {
-    if (!applicationsLoaded) await refreshApplications();
+    if (!id && !applicationsLoaded) await refreshApplications();
 
     // One lease is the workspace — the document beside what it will say. It
     // covers the console rather than drawing into it, so the route opens it

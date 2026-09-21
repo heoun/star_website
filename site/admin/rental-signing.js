@@ -4,18 +4,25 @@ export const signingPhaseLabel=phase=>phaseLabel[phase] || phase || 'Not sent';
 import {SIGNING_TEMPLATE_VERSION} from '../shared/lease-signing-layout.js';
 // Previews stay in memory only, scoped to the exact rental revision.
 const previews = new Map();
+const preparing = new Map();
 export function signingPreview(ctx) {
  const entry=previews.get(ctx.id);
- if(entry && entry.version===ctx.row.workspace_version && entry.preview.template_version===SIGNING_TEMPLATE_VERSION)return entry;
+ if(entry && entry.version===ctx.row.workspace_version && entry.preview.template_version===SIGNING_TEMPLATE_VERSION && Date.now()-Date.parse(entry.preview.created_at)<55*60000)return entry;
  previews.delete(ctx.id);return null;
 }
 export function invalidateSigningReview(id) { previews.delete(id); }
 export async function prepareSigningPackage(ctx) {
  const prior=signingPreview(ctx);if(prior)return prior;
- const result=await ctx.api(`/cases/${ctx.id}/signing`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'prepare',version:ctx.row.workspace_version})});
- if(result.reserved)return null;
- const entry={preview:result.signing,version:ctx.row.workspace_version,reviewed:false};
- previews.set(ctx.id,entry);return entry;
+ const key=`${ctx.id}:${ctx.row.workspace_version}`;
+ if(preparing.has(key))return preparing.get(key);
+ const pending=(async()=>{
+  const result=await ctx.api(`/cases/${ctx.id}/signing`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'prepare',version:ctx.row.workspace_version})});
+  if(result.reserved)return null;
+  const entry={preview:result.signing,version:ctx.row.workspace_version,reviewed:false};
+  previews.set(ctx.id,entry);return entry;
+ })();
+ preparing.set(key,pending);
+ try{return await pending;}finally{preparing.delete(key);}
 }
 export async function sendSigningPackage(ctx,entry) {
  if(signingPreview(ctx)!==entry)throw new Error('The lease changed. Prepare a new signing package.');
@@ -64,13 +71,39 @@ function previewMarkup(entry,ctx) {
  if(!entry)return '';
  return `<section class="signing-package"><div class="signing-package-heading"><h4>Signing Recipients</h4><span class="signing-status">Not Sent</span></div>${recipientsMarkup(entry.preview.signers)}<div class="signing-next"><p>${entry.reviewed?'Lease opened for review. Ready when you are.':'Review the lease before sending. Skipping review requires confirmation.'}</p><div class="signing-actions"><button type="button" class="signing-action" data-signing-review>Review Lease Draft</button><button type="button" class="signing-action primary" data-signing-send ${!ctx.signing?.configuration?.canSend || ctx.signing?.configuration?.placementReviewRequired?'disabled':''}>Send With DocuSign</button></div></div></section>`;
 }
+// Six stages of one signing request. The bar is drawn from the record the
+// server projects, so both screens that show the panel agree.
+const STEPS=['Prepared','Uploaded','Sent','Tenants Sign','Landlord Signs','Completed'];
+export function signingProgress(record) {
+ const tenants=record.signers.filter(s=>s.role==='tenant'),signed=tenants.filter(s=>s.status==='completed').length;
+ const landlordSigned=record.signers.some(s=>s.role==='landlord' && s.status==='completed');
+ const invited=record.signers.some(s=>['sent','delivered','completed','declined','delivery_failed'].includes(s.status));
+ const phase=record.phase,issue=phase==='needs_attention';
+ // A request that needs attention stays on the step it reached: past Sent
+ // once anyone was invited, past Uploaded once the envelope exists.
+ const uploading=phase==='preparing' || (issue && !invited && !record.envelope_id);
+ const sending=phase==='sending' || (issue && !invited && !!record.envelope_id);
+ let at,detail;
+ if(phase==='completed'){at=STEPS.length;detail='Every signature is in and the signed lease is filed.';}
+ else if(phase==='archiving'){at=5;detail='Every signature is in. Saving the signed lease and its completion certificate.';}
+ else if(uploading){at=1;detail=record.uploading?`Uploading ${record.documents?.length || 'the'} documents to DocuSign and placing the signing fields. This can take a few minutes. Invitations have not been sent yet.`:'Queued for DocuSign. Invitations have not been sent yet.';}
+ else if(sending){at=2;detail='Checking signing fields and sending invitations. Please keep this signing request.';}
+ else if(signed<tenants.length){at=3;detail=signed?`${signed} of ${tenants.length} tenants ${signed===1?'has':'have'} signed. The landlord is invited after every tenant has signed.`:'DocuSign has sent the invitations. Tenants sign first; the landlord is invited after every tenant has signed.';}
+ else if(!landlordSigned){at=4;detail='All tenants have signed. Waiting for the landlord’s signature.';}
+ else {at=5;detail='Every signature is in. Saving the signed lease and its completion certificate.';}
+ return {at,detail,steps:STEPS.map((label,i)=>({label,state:i<at?'done':i===at?(issue?'issue':'now'):'todo'}))};
+}
+function progressMarkup(record) {
+ const p=signingProgress(record);
+ return `<ol class="signing-steps" aria-label="Signing Progress">${p.steps.map(s=>`<li class="${({done:'is-done',now:'is-now',issue:'is-issue'})[s.state] || ''}"${s.state==='now' || s.state==='issue'?' aria-current="step"':''}>${s.label}</li>`).join('')}</ol><p class="signing-progress-detail">${esc(p.detail)}</p>${record.updated_at?`<p class="signing-status">Last updated: ${esc(new Date(record.updated_at).toLocaleString())}</p>`:''}`;
+}
 export function signingMarkup(ctx) {
  const record=ctx.signing?.signing,config=ctx.signing?.configuration;
  const active=record && !['voided','declined'].includes(record.phase);
  const entry=signingPreview(ctx);
  const canPrepare=!ctx.row.progression_blocked && ctx.row.status==='landlord_approved' && ctx.w.lease_preparation && !active;
- const progress=active?`<p><strong>${esc(phaseLabel[record.phase] || record.phase)}</strong></p>${record.issue?`<p role="status">${esc(record.issue)}</p>`:''}${ctx.workspaceReview?'':'<ul>'+record.signers.map(s=>`<li><b>${esc(s.name)}</b> · ${esc(s.role)} · ${esc(s.email)}<br>${esc(s.status==='delivery_failed'?'Email Delivery Failed':s.status==='completed'?'Signed':s.status==='declined'?'Declined':s.role==='landlord' && !record.signers.filter(p=>p.role==='tenant').every(p=>p.status==='completed')?'Waiting for all tenants':s.status || 'Waiting to send')}${s.deliveryIssue?`<br>${esc(s.deliveryIssue)}`:''}</li>`).join('')+'</ul>'}${record.completed?`<p><a class="desk-button" href="/api/admin/cases/${esc(ctx.id)}/signing?file=signed">Download signed lease</a> <a class="desk-button" href="/api/admin/cases/${esc(ctx.id)}/signing?file=certificate">Completion certificate</a></p>`:record.void_requested?'<p>Cancellation requested. Waiting for DocuSign confirmation.</p>':`<details><summary>Cancel this signing request</summary><form data-signing-void class="cw-form"><label>Reason<input name="reason" required maxlength="200"></label><button type="submit" ${!config?.canSend?'disabled':''}>Void envelope</button></form></details>`}`:'';
- return `<div class="signing-panel" data-rental-signing><div class="signing-panel-heading"><h3>DocuSign Signing</h3>${config?.environment==='demo'?'<span class="signing-environment">Sandbox</span>':''}</div>${ctx.workspaceReview?'':'<p class="signing-intro">All tenants sign first. The landlord receives their invitation after every tenant has signed.</p>'}${!active && !canPrepare?'<p>Complete the application evidence, landlord approval and lease draft before preparing a signing package.</p>':''}${!config?.canSend?`<p class="cw-note">${esc(config?.message || 'DocuSign is unavailable.')}</p>`:''}${!active && config?.placementReviewRequired?'<p class="cw-note">Signing positions are being reviewed document by document. Sending is paused until all 15 documents are confirmed.</p>':''}${progress}${active?`<p class="signing-progress-detail">${record.phase==='preparing'?'Preparing your documents in DocuSign. This can take a few minutes. Invitations have not been sent yet.':record.phase==='sending'?'Checking signing fields and sending invitations. Please keep this signing request.':record.phase==='in_progress'?'DocuSign has accepted the invitations. Tenants sign first; the landlord is invited after all tenants finish.':''}</p>${record.updated_at?`<p class="signing-status">Last updated: ${esc(new Date(record.updated_at).toLocaleString())}</p>`:''}`:''}${record && !active?`<p>Previous signing request: ${esc(phaseLabel[record.phase])}. ${canPrepare?'The approved lease is ready for a new signing package.':'Review the application and obtain a new landlord approval before sending a replacement.'}</p>`:''}${!ctx.workspaceReview && canPrepare && !entry?`<button type="button" class="signing-action" data-signing-prepare ${!config?.enabled?'disabled':''}>Review Signing Package</button>`:''}<div data-signing-preview>${!ctx.workspaceReview && canPrepare?previewMarkup(entry,ctx):''}</div><p data-signing-feedback role="status" aria-live="polite"></p></div>`;
+ const progress=active?`<p><strong>${esc(phaseLabel[record.phase] || record.phase)}</strong></p>${progressMarkup(record)}${record.issue?`<p role="status">${esc(record.issue)}</p>`:''}${ctx.workspaceReview?'':'<ul>'+record.signers.map(s=>`<li><b>${esc(s.name)}</b> · ${esc(s.role)} · ${esc(s.email)}<br>${esc(s.status==='delivery_failed'?'Email Delivery Failed':s.status==='completed'?'Signed':s.status==='declined'?'Declined':s.role==='landlord' && !record.signers.filter(p=>p.role==='tenant').every(p=>p.status==='completed')?'Waiting for all tenants':({sent:'Invitation Sent',delivered:'Signing Link Opened'})[s.status] || s.status || 'Waiting to send')}${s.deliveryIssue?`<br>${esc(s.deliveryIssue)}`:''}</li>`).join('')+'</ul>'}${record.completed?`<p><a class="desk-button" href="/api/admin/cases/${esc(ctx.id)}/signing?file=signed">Download signed lease</a> <a class="desk-button" href="/api/admin/cases/${esc(ctx.id)}/signing?file=certificate">Completion certificate</a></p>`:record.void_requested?'<p>Cancellation requested. Waiting for DocuSign confirmation.</p>':`<details><summary>Cancel this signing request</summary><form data-signing-void class="cw-form"><label>Reason<input name="reason" required maxlength="200"></label><button type="submit" ${!config?.canSend?'disabled':''}>Void envelope</button></form></details>`}`:'';
+ return `<div class="signing-panel" data-rental-signing><div class="signing-panel-heading"><h3>DocuSign Signing</h3>${config?.environment==='demo'?'<span class="signing-environment">Sandbox</span>':''}</div>${ctx.workspaceReview?'':'<p class="signing-intro">All tenants sign first. The landlord receives their invitation after every tenant has signed.</p>'}${!active && !canPrepare?'<p>Complete the application evidence, landlord approval and lease draft before preparing a signing package.</p>':''}${!config?.canSend?`<p class="cw-note">${esc(config?.message || 'DocuSign is unavailable.')}</p>`:''}${!active && config?.placementReviewRequired?'<p class="cw-note">Signing positions are being reviewed document by document. Sending is paused until all 15 documents are confirmed.</p>':''}${progress}${record && !active?`<p>Previous signing request: ${esc(phaseLabel[record.phase])}. ${canPrepare?'The approved lease is ready for a new signing package.':'Review the application and obtain a new landlord approval before sending a replacement.'}</p>`:''}${!ctx.workspaceReview && canPrepare && !entry?`<button type="button" class="signing-action" data-signing-prepare ${!config?.enabled?'disabled':''}>Review Signing Package</button>`:''}<div data-signing-preview>${!ctx.workspaceReview && canPrepare?previewMarkup(entry,ctx):''}</div><p data-signing-feedback role="status" aria-live="polite"></p></div>`;
 }
 export function bindSigning(host,ctx,reload) {
  const panel=host.querySelector('[data-rental-signing]');if(!panel)return;

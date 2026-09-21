@@ -157,21 +157,26 @@ function targetLabelFor() {
 
 async function fetchValues() {
   if (state.mode === "lease") {
-    const {case:caseRow}=await api(`/cases/${encodeURIComponent(state.application.id)}`);
+    const id=encodeURIComponent(state.application.id);
+    const [{case:caseRow},signing,payload]=await Promise.all([
+      api(`/cases/${id}`),
+      api(`/cases/${id}/signing`).catch(()=>({configuration:{enabled:false}})),
+      api(`/lease/document/${id}`,{method:'POST',body:JSON.stringify({mode:'values'})})
+    ]);
     state.caseRow=caseRow;
-    state.signing=await api(`/cases/${encodeURIComponent(state.application.id)}/signing`).catch(()=>({configuration:{enabled:false}}));
+    state.signing=signing;
     const phase=caseRow.workspace?.signing?.phase;
     state.readOnly=state.requestedReadOnly || ['lease_sent','lease_signed','declined'].includes(caseRow.status) || !!(phase && !['voided','declined'].includes(phase));
     state.landlordEmail=state.signing?.signing?.signers?.find(s=>s.role==='landlord')?.email || caseRow.workspace?.recommendation?.landlord_email || '';
     if(!state.landlordEmail){
-      const {landlords=[]}=await api(`/cases/${encodeURIComponent(state.application.id)}/participants`).catch(()=>({}));
+      const [{landlords=[]},buildingData]=await Promise.all([
+        api(`/cases/${id}/participants`).catch(()=>({})),
+        buildings.length?Promise.resolve({buildings}):api('/buildings').catch(()=>({buildings:[]}))
+      ]);
+      buildings=buildingData.buildings;
       const building=buildings.find(b=>b.id===caseRow.listings?.building_id);
       state.landlordEmail=landlords.find(l=>l.email===building?.landlord_signer_email)?.email || (landlords.length===1?landlords[0].email:'');
     }
-    const payload = await api(`/lease/document/${encodeURIComponent(state.application.id)}`, {
-      method: "POST",
-      body: JSON.stringify({ mode: "values" })
-    });
     state.values = payload.values;
     state.frozen=payload.frozen;
     state.baseValues=structuredClone(payload.values);
@@ -202,8 +207,8 @@ async function fetchValues() {
 export async function openLeaseScreen(options = {}) {
   stopSigningPolling();
   clearSigningDocument();
-  await loadRegistry();
-  ({ buildings } = await api("/buildings").catch(() => ({ buildings: [] })));
+  const [,buildingData]=await Promise.all([loadRegistry(),options.application?Promise.resolve({buildings:[]}):api('/buildings').catch(()=>({buildings:[]}))]);
+  buildings=buildingData.buildings;
 
   state = blankState();
   state.mode = options.mode === "defaults" ? "defaults"
@@ -257,7 +262,7 @@ export async function openLeaseScreen(options = {}) {
 
   setStatus("Rendering the lease…");
   try {
-    if (!mounted) {
+    await Promise.all([fetchValues(),(async()=>{if (!mounted) {
       const summary = await doc.mountDocument(docHost, { onSlotClick: focusField });
       mounted = true;
       verifyTemplate(summary);
@@ -265,7 +270,7 @@ export async function openLeaseScreen(options = {}) {
       // render that just happened, and kept for the life of the page.
       packageDocuments = mapDocuments(summary.sectionTexts);
       verifyPackage(packageDocuments, summary.sections);
-    }
+    }})()]);
     // Set on every open, not only the first: blankState() wipes it, and the
     // form used to fall back to registry order from the second open onwards.
     state.documentOrder = doc.fieldsInDocument();
@@ -281,7 +286,6 @@ export async function openLeaseScreen(options = {}) {
     for (const field of state.fields) state.occurrences[field.id] = doc.occurrenceCount(field.id);
     state.targetLabel = targetLabelFor();
 
-    await fetchValues();
     syncChecked();
     recomputeMissing();
     doc.patchValues(state.values, state.missingLabels);
@@ -998,6 +1002,7 @@ function clearSigningDocument(){
 }
 async function reviewSigningDocument(entry){
   if(state.dirty.size || signingPreview(signingContext())!==entry)throw new Error('The lease changed. Prepare a new signing package.');
+  if(signingEntry===entry && signingFrame && entry.reviewed){showDocument('');return;}
   clearSigningDocument();signingEntry=entry;signingLoading=true;entry.reviewed=false;updateActions();
   const frame=document.createElement('iframe');signingFrame=frame;
   frame.title='Lease for Signing';frame.style.cssText='width:100%;flex:1;min-height:0;border:0;background:#f1efe8';

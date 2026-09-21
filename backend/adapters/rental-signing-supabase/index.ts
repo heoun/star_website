@@ -12,10 +12,17 @@ export function makeSigningStore(config:{url:string;key:string}) {
     async reserve(input){return rpc('reserve_rental_signing',{p_id:input.package.id,p_actor:input.principal.email,p_versions:input.expectedMemberVersions});},
     async save(record,version,token){await rpc('save_rental_signing',{p_id:record.package.id,p_record:record,p_version:version,p_token:token});},
     async enqueueNotice(notice,hash){await rpc('enqueue_rental_signing',{p_notice:notice,p_hash:hash});},
+    async notices(envelope){
+      const rows=await request(`rental_signing_inbox?${new URLSearchParams({'notice->>accountId':`eq.${envelope.accountId}`,'notice->>envelopeId':`eq.${envelope.envelopeId}`,order:'received_at.desc',limit:'30',select:'notice'})}`);
+      return rows.map((row:{notice:import('../../contracts/rental-signing.ts').RentalSigningNotice})=>row.notice);
+    },
     async claimDue(limit){return rpc('claim_rental_signing',{p_limit:limit});},
     async release(id,token,retry){await rpc('release_rental_signing',{p_id:id,p_token:token,p_retry:retry});}
   };
   return {...store,
+    async previews(id:string):Promise<{record:RentalSigningRecord;member_versions:Record<string,number>}[]> {
+      return request(`rental_signing_packages?${new URLSearchParams({rental_id:`eq.${id}`,reserved:'eq.false',created_at:`gt.${new Date(Date.now()-55*60000).toISOString()}`,order:'created_at.desc',limit:'3',select:'record,member_versions'})}`);
+    },
     async preview(pkg:RentalSigningPackage,versions:Record<string,number>) {
       const record:RentalSigningRecord={package:pkg,version:0,phase:'preparing',envelope:null,updatedAt:new Date().toISOString()};
       await request('rental_signing_packages',{id:pkg.id,rental_id:pkg.rentalId,record,member_versions:versions});return record;

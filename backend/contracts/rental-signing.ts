@@ -79,7 +79,8 @@ export interface RentalSigningRecord {
   issue?: string;
   voidReason?: string;
   creationAttemptedAt?: string;
-  nextReadAt?: string; // persisted provider polling budget, including webhook hints
+  nextReadAt?: string; // persisted budget for fallback API polling only
+  lastNoticeAt?: string;
   signedPdf?: RentalSigningFile;
   certificate?: RentalSigningFile;
   updatedAt: string;
@@ -87,11 +88,12 @@ export interface RentalSigningRecord {
 
 export interface RentalSigningNotice {
   // HMAC is verified over the original bytes before JSON parsing.
-  // Used only to schedule reconciliation, never as a trusted status patch.
+  // Only the HMAC-verified, normalized snapshot is retained, never URLs or files.
   accountId: string;
   envelopeId: string;
   event: string;
   generatedAt: string;
+  envelope?: RentalSigningEnvelope;
 }
 
 export interface RentalSigningProvider {
@@ -127,6 +129,7 @@ export interface RentalSigningStore {
   // Durable inbox, deduplication, and work scheduling committed before HTTP 2xx.
   // An unknown envelope is retained for correlation with an in-flight creation.
   enqueueNotice(notice: RentalSigningNotice, payloadSha256: string): Promise<void>;
+  notices(envelope: RentalSigningEnvelope): Promise<RentalSigningNotice[]>;
   // Claim has a lease expiry and fencing token; an expired worker cannot commit.
   claimDue(limit: number, now: string): Promise<{
     packageId: string; claimToken: string; expiresAt: string;

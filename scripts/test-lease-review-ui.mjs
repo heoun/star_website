@@ -8,7 +8,7 @@ import {completeDemoState} from './demo-data.mjs';
 import {seedRentalDemo} from './rental-demo-data.mjs';
 import {rentalWorkflow} from '../worker/rentals.js';
 import {ids} from '../backend/tools/workspace-fixtures.mjs';
-const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+
 const identity=createIdentityFixture(),{fixture,env,restore,user}=identity;
 await completeDemoState(fixture.state);await seedRentalDemo(fixture.state);
 const concessionExample='A one-time $500 rent credit applies to October 2026. October rent due is $2,600; the regular monthly rent of $3,100 resumes in November 2026.';
@@ -19,13 +19,23 @@ env.RENTAL_AUTOMATION='on';env.RENTAL_SCREENING='mock';
 const keys=new Set();env.LOCAL_EMAIL_SINK={async send(m,key){if(!keys.has(key)){keys.add(key);fixture.state.emails.push(m);}}};
 Object.assign(env,{DOCUSIGN_ENABLED:'on',DOCUSIGN_ENVIRONMENT:'demo',DEV_DOCUSIGN_SEND:'on',DOCUSIGN_INTEGRATION_KEY:'test',DOCUSIGN_USER_ID:'test',DOCUSIGN_ACCOUNT_ID:'test',DOCUSIGN_PRIVATE_KEY:'test',DOCUSIGN_CONNECT_HMAC_SECRET:'test',DOCUSIGN_WEBHOOK_URL:'https://example.test/api/webhooks/docusign'});
 const packages=new Map(),upstream=globalThis.fetch;
-globalThis.fetch=async(input,init={})=>{const u=new URL(input);if(u.pathname.endsWith('/rental_signing_packages')){if(init.method==='POST'){const row=JSON.parse(init.body);packages.set(row.id,row);return Response.json([row]);}const selected=u.searchParams.get('id')?.slice(3);return Response.json([...packages.values()].filter(p=>(!selected || p.id===selected)&&(!u.searchParams.has('reserved') || p.reserved)));}return upstream(input,init);};
+globalThis.fetch=async(input,init={})=>{const u=new URL(input);if(u.pathname.endsWith('/rental_signing_packages')){if(init.method==='POST'){const row=JSON.parse(init.body);packages.set(row.id,row);return Response.json([row]);}const selected=u.searchParams.get('id')?.slice(3);return Response.json([...packages.values()].filter(p=>(!selected || p.id===selected)&&(!u.searchParams.has('reserved') || !!p.reserved===(u.searchParams.get('reserved')==='eq.true'))));}return upstream(input,init);};
 env.APPLICANT_DOCS.head=async path=>fixture.state.files[path]?{}:null;
 const root=resolve('dist'),pending=[];
 env.ASSETS={async fetch(request){const path=new URL(request.url).pathname,file=resolve(root,`.${path}${path.endsWith('/')?'index.html':''}`);if(!file.startsWith(root+'/'))return new Response(null,{status:404});try{return new Response(await readFile(file),{headers:{'Content-Type':({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.svg':'image/svg+xml'})[extname(file)] || 'application/octet-stream'}});}catch{return new Response(null,{status:404});}}};
 const server=http.createServer(async(req,res)=>{try{const parts=[];for await(const c of req)parts.push(c);const response=await worker.fetch(new Request(`http://127.0.0.1:${server.address().port}${req.url}`,{method:req.method,headers:req.headers,...(parts.length?{body:Buffer.concat(parts)}:{})}),env,{waitUntil:p=>pending.push(p)});res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));}catch(e){console.error(e);res.writeHead(500);res.end('Failed');}});
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
-const base=`http://127.0.0.1:${server.address().port}`,browser=await chromium.launch({headless:true}),context=await browser.newContext({viewport:{width:1600,height:1080},reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
+const base=`http://127.0.0.1:${server.address().port}`;
+if(process.argv.includes('--serve')){
+ const flow=rentalWorkflow(env,new Request(base));await flow.reconcile(ids.b);
+ const row=fixture.state.applications.find(a=>a.id===ids.b),owner=fixture.state.staff.find(s=>s.email===row.workspace.recommendation.landlord_email);
+ await flow.execute(owner,ids.b,{action:'landlord_accept',version:row.workspace_version,revision:row.workspace.recommendation.revision});
+ env.DEV_ADMIN_EMAIL='admin@example.test';env.DEV_ADMIN_ROLE='manager';
+ console.log(`Synthetic review verification: ${base}/admin/#/applications/${ids.b}`);
+ await new Promise(()=>{});
+}
+const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
+const browser=await chromium.launch({headless:true}),context=await browser.newContext({viewport:{width:1600,height:1080},reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 if(process.env.DEBUG_REVIEW){page.on('response',r=>{if(r.status()>=400)console.log('HTTP',r.status(),r.url());});page.on('console',m=>{if(m.type()==='error')console.log(m.text());});}
 const out='/tmp/star-lease-review-ui';await mkdir(out,{recursive:true});let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
@@ -278,7 +288,8 @@ try{
  await page.goto(`${base}/admin/#/applications`);await page.goto(`${base}/admin/#/leases/${ids.b}`);
  await page.locator('#lease-final').filter({hasText:'View Signing Status'}).waitFor();
  await page.locator('#lease-final').click();
- await panel.getByText('Preparing your documents in DocuSign.',{exact:false}).waitFor();
+ await panel.getByText('Queued for DocuSign.',{exact:false}).waitFor();
+ eq(await panel.locator('.signing-steps [aria-current="step"]').textContent(),'Uploaded');
  await page.locator('#lease-review-feedback').filter({hasText:'Status checked at'}).waitFor();checks++;
  eq(await page.locator('#lease-bar').getByText('Preparing to send',{exact:true}).count(),1);
  await page.evaluate(()=>window.reviewDocument=document.querySelector('.lease-pane-doc'));

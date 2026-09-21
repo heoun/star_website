@@ -8,8 +8,25 @@ export function makeRentalSigning(store:RentalSigningStore,provider:RentalSignin
     async function current(){const fresh=await store.get(id);if(!fresh || fresh.version!==record.version)throw new Error('Signing changed while processing.');}
     try {
       if(['completed','voided','declined'].includes(record.phase))return null;
-      if(record.envelope?.status!=='completed' && record.nextReadAt && Date.parse(record.nextReadAt)>Date.now())return record.nextReadAt;
       let fetched=false;
+      if(record.envelope) {
+        // Connect is authenticated push, not polling. Apply only complete
+        // snapshots for this immutable envelope and its exact recipient IDs.
+        const notices=(await store.notices(record.envelope)).sort((a,b)=>Date.parse(a.generatedAt)-Date.parse(b.generatedAt));
+        for(const notice of notices) {
+          const latest=notice.envelope,before=record.envelope,at=Date.parse(notice.generatedAt);
+          if(!latest || !Number.isFinite(at) || at>Date.now()+300000 || at<=Date.parse(record.lastNoticeAt || '1970-01-01') || latest.accountId!==before.accountId || latest.envelopeId!==before.envelopeId)continue;
+          if(latest.recipients.length!==record.package.signers.length || new Set(latest.recipients.map(r=>r.recipientId)).size!==latest.recipients.length || record.package.signers.some(s=>!latest.recipients.some(r=>r.recipientId===s.recipientId)))continue;
+          if(before.status==='completed')break;
+          if(['sent','delivered'].includes(before.status) && latest.status==='created')continue;
+          if(before.status==='delivered' && latest.status==='sent')latest.status=before.status;
+          const rank={pending:0,sent:1,delivered:2,delivery_failed:3,declined:4,completed:5};
+          for(const r of latest.recipients){const previous=before.recipients.find(p=>p.recipientId===r.recipientId);if(previous && rank[previous.status]>rank[r.status])Object.assign(r,previous);}
+          record.envelope=latest;record.lastNoticeAt=notice.generatedAt;fetched=true;
+          if(['completed','declined','voided'].includes(latest.status))break;
+        }
+      }
+      if(!fetched && record.envelope?.status!=='completed' && record.nextReadAt && Date.parse(record.nextReadAt)>Date.now())return record.nextReadAt;
       if(!record.envelope) {
         if(record.voidReason && !record.creationAttemptedAt){record.phase='voided';delete record.issue;await save();return null;}
         if(Date.now()-Date.parse(record.package.createdAt)>6*86400000) {
@@ -57,8 +74,11 @@ export function makeRentalSigning(store:RentalSigningStore,provider:RentalSignin
         const expected=record.package.signers;
         if(e.recipients.length!==expected.length || expected.some(s=>!e.recipients.some(r=>r.recipientId===s.recipientId && r.status==='completed' && r.signedAt)))throw new Error('DocuSign completion does not match all expected lease signers.');
         record.phase='archiving';delete record.issue;await save();
-        record.signedPdf ||= await files.put(id,'signed_pdf',await provider.download(e.envelopeId,'signed_pdf'));
-        record.certificate ||= await files.put(id,'certificate',await provider.download(e.envelopeId,'certificate'));
+        const archived=await Promise.allSettled([
+          record.signedPdf?null:provider.download(e.envelopeId,'signed_pdf').then(stream=>files.put(id,'signed_pdf',stream)).then(file=>{record.signedPdf=file;}),
+          record.certificate?null:provider.download(e.envelopeId,'certificate').then(stream=>files.put(id,'certificate',stream)).then(file=>{record.certificate=file;})
+        ]);
+        const failed=archived.find(r=>r.status==='rejected');if(failed?.status==='rejected')throw failed.reason;
         record.phase='completed';delete record.issue;await save();return null;
       }
       record.phase=e.status==='declined'?'declined':e.status==='voided'?'voided':e.status==='created'?'sending':'in_progress';
@@ -73,12 +93,12 @@ export function makeRentalSigning(store:RentalSigningStore,provider:RentalSignin
       record.issue=error instanceof Error && !/fetch|network|JSON|crypto/i.test(error.message)?error.message.slice(0,300):'DocuSign processing needs a retry. The existing signing request is retained.';
       if(record.phase!=='archiving')record.phase='needs_attention';
       try{await save();}catch{/* Another claim/version owns the retry. */}
-      return nextPoll();
+      return record.phase==='archiving'?new Date(Date.now()+15000).toISOString():nextPoll();
     }
   }
-  return {async run(){for(const claim of await store.claimDue(3,new Date().toISOString())) {
+  return {async run(){await Promise.allSettled((await store.claimDue(3,new Date().toISOString())).map(async claim=>{
     let retry:string|null=nextPoll();
     try{const record=await store.get(claim.packageId);retry=record?await process(record,claim.claimToken):null;}
     finally{await store.release(claim.packageId,claim.claimToken,retry);}
-  }}};
+  }));}};
 }

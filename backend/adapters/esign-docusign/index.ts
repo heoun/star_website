@@ -35,6 +35,17 @@ export async function boundedBytes(stream: ReadableStream<Uint8Array> | null, li
 
 const tabKey={signature:'signHereTabs',initial:'initialHereTabs',date_signed:'dateSignedTabs',full_name:'fullNameTabs'};
 const tabLabel=(index:number)=>`star-lease-field-${index}-v3`;
+function envelopeSnapshot(accountId:string,envelopeId:string,e:Record<string,unknown>,signers:unknown):RentalSigningEnvelope {
+  if(!['created','sent','delivered','completed','declined','voided'].includes(String(e.status)) || !Array.isArray(signers) || !signers.length || !Number.isFinite(Date.parse(String(e.statusChangedDateTime))))throw fail('Unrecognized DocuSign envelope state.');
+  const recipients=signers.map((s:Record<string,string>):RentalSigningRecipientStatus=>{
+    const status=s.status==='created'?'pending':s.status==='autoresponded'?'delivery_failed':s.status;
+    if(typeof s.recipientId!=='string' || !['pending','sent','delivered','completed','declined','delivery_failed'].includes(status) || (status==='completed' && !Number.isFinite(Date.parse(s.signedDateTime))))throw fail('Unrecognized DocuSign recipient state.');
+    return {recipientId:s.recipientId,status:status as RentalSigningRecipientStatus['status'],...(s.signedDateTime?{signedAt:s.signedDateTime}:{}),
+      ...(status==='delivery_failed'?{deliveryIssue:String(s.autoRespondedReason || 'The receiving mail server rejected the invitation.').replace(/[\u0000-\u001f]/g,' ').slice(0,300)}:{})};
+  });
+  if(new Set(recipients.map(r=>r.recipientId)).size!==recipients.length)throw fail('Duplicate DocuSign recipient.');
+  return {accountId,envelopeId,status:e.status as RentalSigningEnvelope['status'],statusChangedAt:String(e.statusChangedDateTime),recipients};
+}
 export function envelopeDefinition(pkg: RentalSigningPackage, documents: {documentId:string;bytes:Uint8Array}[], webhookUrl: string) {
   return {
     status:'created',transactionId:pkg.id,emailSubject:'Please sign your lease — Star Realty',
@@ -60,7 +71,7 @@ export function envelopeDefinition(pkg: RentalSigningPackage, documents: {docume
   };
 }
 
-export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSigningProvider {
+export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSigningProvider & {configureTestingWebhook(url:string,name:string):Promise<string>;replayTestingEnvelope(id:string):Promise<void>} {
   const authHost=config.environment==='demo'?'account-d.docusign.com':'account.docusign.com';
   // This closure is request-scoped, never shared across Worker requests.
   let session:Promise<{token:string;base:string}> | undefined;
@@ -80,32 +91,45 @@ export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSi
   }
   async function api(path:string,method='GET',body?:unknown) {
     const auth=await (session ||= authenticate());
-    // Creating the draft converts every DOCX and locates its anchor tabs.
-    // Keep ordinary API calls bounded to 30s; allow this conversion up to 2m.
-    const creating=path==='/envelopes' && method==='POST';
+    // Creating the draft converts every DOCX and locates its anchor tabs, and
+    // the first read of a recipient's anchored tab positions renders every
+    // page of a multi-tenant package. Keep ordinary API calls bounded to 30s;
+    // allow those two up to 2m.
+    const creating=path==='/envelopes' && method==='POST',locating=method==='GET' && path.includes('include_anchor_tab_locations=true');
     let r:Response;
     try {
-      r=await http(auth.base+path,{method,headers:{Authorization:`Bearer ${auth.token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(creating?120000:30000)});
+      r=await http(auth.base+path,{method,headers:{Authorization:`Bearer ${auth.token}`,...(body?{'Content-Type':'application/json'}:{})},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(creating || locating?120000:30000)});
     } catch(error) {
       if(error instanceof Error && error.name==='TimeoutError')throw fail(creating?'DocuSign document preparation timed out. The existing request is retained for recovery; do not send a replacement.':'DocuSign did not respond in time. The existing request is retained for recovery.');
       throw error;
     }
-    if(!r.ok){const detail=await json(r).catch(()=>({errorCode:''}));throw fail(detail.errorCode==='TAB_OUT_OF_BOUNDS' || detail.errorCode==='ANCHOR_TAB_STRING_NOT_FOUND'?'A lease signing position could not be located. Review the signing template.':`DocuSign request failed (${r.status}). The existing signing request is retained.`,r.status===429?429:503);}
+    if(!r.ok){const detail=await json(r).catch(()=>({errorCode:''}));throw fail(detail.errorCode==='TAB_OUT_OF_BOUNDS' || detail.errorCode==='ANCHOR_TAB_STRING_NOT_FOUND'?'A lease signing position could not be located. Review the signing template.':detail.errorCode==='RECIPIENT_LIMIT_EXCEEDED'?'The DocuSign account allows fewer recipients on one envelope than this lease has signers. Sandbox accounts allow five in total. No invitation was sent.':`DocuSign request failed (${r.status}). The existing signing request is retained.`,r.status===429?429:503);}
     return r;
   }
   const path=(id:string)=>`/envelopes/${encodeURIComponent(id)}`;
   async function read(id:string):Promise<RentalSigningEnvelope> {
-    const e=await json(await api(path(id))), r=await json(await api(path(id)+'/recipients'));
-    if(!['created','sent','delivered','completed','declined','voided'].includes(e.status) || !Array.isArray(r.signers)) throw fail('Unrecognized DocuSign envelope state.');
-    return {accountId:config.accountId,envelopeId:id,status:e.status,statusChangedAt:e.statusChangedDateTime || new Date().toISOString(),
-      recipients:r.signers.map((s:Record<string,string>):RentalSigningRecipientStatus=>{
-        const status=s.status==='created'?'pending':s.status==='autoresponded'?'delivery_failed':s.status;
-        if(!['pending','sent','delivered','completed','declined','delivery_failed'].includes(status))throw fail('Unrecognized DocuSign recipient state.');
-        return {recipientId:s.recipientId,status:status as RentalSigningRecipientStatus['status'],signedAt:s.signedDateTime,
-          ...(status==='delivery_failed'?{deliveryIssue:String(s.autoRespondedReason || 'The receiving mail server rejected the invitation.').replace(/[\u0000-\u001f]/g,' ').slice(0,300)}:{})};
-      })};
+    const [e,r]=await Promise.all([api(path(id)).then(json),api(path(id)+'/recipients').then(json)]);
+    return envelopeSnapshot(config.accountId,id,{...e,statusChangedDateTime:e.statusChangedDateTime || new Date().toISOString()},r.signers);
   }
   return {
+    async replayTestingEnvelope(id) {
+      if(config.environment!=='demo' || !/^[a-f0-9-]{36}$/i.test(id))throw fail('Replay is limited to sandbox envelopes.');
+      // Historical publish uses today's callback even when the envelope was
+      // originally sent to a temporary tunnel that no longer exists.
+      await api('/connect/envelopes/publish/historical','POST',{envelopes:[id],config:{configurationType:'custom',name:'Star local testing recovery',urlToPublishTo:config.webhookUrl,allowEnvelopePublish:'true',includeHMAC:'true',requiresAcknowledgement:'true',includeDocuments:'false',deliveryMode:'SIM',eventData:{version:'restv2.1',format:'json',includeData:['recipients']}}});
+    },
+    async configureTestingWebhook(url,name) {
+      if(config.environment!=='demo' || !name.startsWith('Star local testing ') || new URL(url).protocol!=='https:' || new URL(url).pathname!=='/api/webhooks/docusign')throw fail('Testing webhooks require the sandbox account and a dedicated HTTPS listener.');
+      const list=await json(await api('/connect'));
+      const existing=(list.configurations || []).filter((c:{name:string})=>c.name===name);
+      if(existing.length>1)throw fail('Duplicate testing Connect configurations. Keep one before restarting.');
+      const body={configurationType:'custom',name,urlToPublishTo:url,allowEnvelopePublish:'true',allowSalesforcePublish:'false',allUsers:'false',allUsersExcept:'false',userIds:[config.userId],includeHMAC:'true',requiresAcknowledgement:'true',enableLog:'true',deliveryMode:'SIM',includeDocuments:'false',
+        eventData:{version:'restv2.1',format:'json',includeData:['recipients']},events:['envelope-sent','envelope-delivered','envelope-completed','envelope-declined','envelope-voided','recipient-completed','recipient-declined','recipient-autoresponded'],...(existing[0]?{connectId:existing[0].connectId}:{})};
+      const saved=await json(await api('/connect',existing[0]?'PUT':'POST',body));
+      const id=saved.connectId || existing[0]?.connectId;
+      if(!id)throw fail('DocuSign did not confirm the testing webhook.');
+      return String(id);
+    },
     async createDraft({package:pkg,documents}) {
       const e=await json(await api('/envelopes','POST',envelopeDefinition(pkg,documents,config.webhookUrl)));
       if(typeof e.envelopeId!=='string')throw fail('DocuSign creation response is incomplete. Recover the existing transaction.');
@@ -171,7 +195,12 @@ export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSi
       if(!valid)return null;
       try{const b=JSON.parse(new TextDecoder().decode(raw));
         if(String(b.data?.accountId)!==config.accountId || !/^[\da-f-]{36}$/i.test(b.data?.envelopeId || '') || typeof b.event!=='string')return null;
-        return {accountId:config.accountId,envelopeId:b.data.envelopeId,event:b.event,generatedAt:b.generatedDateTime || ''};
+        let envelope:RentalSigningEnvelope|undefined;
+        const summary=b.data.envelopeSummary;
+        if(summary && (!summary.envelopeId || summary.envelopeId===b.data.envelopeId)) {
+          try{envelope=envelopeSnapshot(config.accountId,b.data.envelopeId,summary,summary.recipients?.signers);}catch{/* Incomplete notices only wake fallback reconciliation. */}
+        }
+        return {accountId:config.accountId,envelopeId:b.data.envelopeId,event:b.event,generatedAt:b.generatedDateTime || '',...(envelope?{envelope}:{})};
       }catch{return null;}
     },
     async download(id,kind){const r=await api(path(id)+`/documents/${kind==='certificate'?'certificate':'combined'}`);if(!r.body)throw fail('DocuSign document is empty.');return r.body;},

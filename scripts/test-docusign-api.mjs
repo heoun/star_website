@@ -4,7 +4,7 @@ import {makeDocusign,boundedBytes,envelopeDefinition} from '../backend/adapters/
 let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
 const pair=generateKeyPairSync('rsa',{modulusLength:2048}),id=crypto.randomUUID();
 for(const format of ['pkcs1','pkcs8']) {
- const calls=[];let status='created',creationTimeout=false,bounced=false;
+ const calls=[];let status='created',creationTimeout=false,bounced=false,recipientCap=false;
  const config={environment:'demo',integrationKey:'integration',userId:'sender',accountId:'account',privateKey:pair.privateKey.export({type:format,format:'pem'}).replaceAll('\n','\\n'),hmacSecret:'secret',webhookUrl:'https://app.example.test/api/webhooks/docusign'};
  const mock=async(url,init={})=>{
   calls.push({url,method:init.method || 'GET',body:init.body});
@@ -18,6 +18,7 @@ for(const format of ['pkcs1','pkcs8']) {
   if(url.endsWith('/oauth/userinfo'))return Response.json({accounts:[{account_id:'account',base_uri:'https://demo.docusign.net'}]});
   if(url.endsWith('/envelopes') && init.method==='POST'){
    if(creationTimeout)throw new DOMException('Timed out','TimeoutError');
+   if(recipientCap)return Response.json({errorCode:'RECIPIENT_LIMIT_EXCEEDED',message:'You have reached the maximum number of recipients allowed for a single transaction.'},{status:400});
    const definition=JSON.parse(init.body);eq(definition.status,'created');
    eq(definition.eventNotification.deliveryMode,'SIM');
    eq(definition.eventNotification.includeHMAC,'true');
@@ -49,6 +50,9 @@ for(const format of ['pkcs1','pkcs8']) {
  eq(calls.some(c=>JSON.stringify(c).includes(config.privateKey)),false);
  creationTimeout=true;
  await assert.rejects(()=>api.createDraft({package:pkg,documents:[]}),/document preparation timed out.*existing request is retained/);checks++;
+ creationTimeout=false;recipientCap=true;
+ await assert.rejects(()=>api.createDraft({package:pkg,documents:[]}),/fewer recipients on one envelope.*No invitation was sent/);checks++;
+ recipientCap=false;
 }
 // Envelope-wide anchor scope: discard matches in other documents, then fail
 // closed when a field is missing, duplicated, or overlaps another.
@@ -74,7 +78,14 @@ for(const format of ['pkcs1','pkcs8']) {
   throw new Error('Unexpected mock endpoint');
  };
  const api=makeDocusign({environment:'demo',integrationKey:'integration',userId:'sender',accountId:'account',privateKey:pair.privateKey.export({type:'pkcs8',format:'pem'}),hmacSecret:'test',webhookUrl:'https://example.test/hook'},http);
- await api.send(id,pkg);eq(sent,1);eq(deleted,1);eq(tabs.signHereTabs.length,1);
+ {
+  // Locating anchored tabs renders every page of the package: the read gets
+  // the conversion budget, the send itself stays on the short one.
+  const timeout=AbortSignal.timeout,deadlines=[];AbortSignal.timeout=ms=>{deadlines.push(ms);return timeout(ms);};
+  try{await api.send(id,pkg);}finally{AbortSignal.timeout=timeout;}
+  eq(deadlines.filter(ms=>ms===120000).length,2);eq(deadlines.at(-1),30000);
+ }
+ eq(sent,1);eq(deleted,1);eq(tabs.signHereTabs.length,1);
  await api.send(id,pkg);eq(deleted,1);eq(sent,2);
  // Two of one signer's fields on the same page and spot.
  tabs.fullNameTabs[0].yPosition='220';
@@ -92,6 +103,40 @@ for(const format of ['pkcs1','pkcs8']) {
  tabs.fullNameTabs=[{tabId:'n',tabLabel:'star-lease-field-1-v3',documentId:'1',pageNumber:'1',xPosition:'100',yPosition:'240'}];
  tabs.signHereTabs.push({...tabs.signHereTabs[0],tabId:'duplicate'});
  await assert.rejects(()=>api.send(id,pkg),/does not match the reviewed signing fields/);checks++;eq(sent,3);
+}
+// A restart must reuse only our sender-scoped Sandbox subscription. Historical
+// recovery needs a named, authenticated configuration pointed at today's URL.
+{
+ const config={environment:'demo',integrationKey:'integration',userId:'sender',accountId:'account',privateKey:pair.privateKey.export({type:'pkcs8',format:'pem'}),hmacSecret:'test',webhookUrl:'https://current.example.test/api/webhooks/docusign'};
+ const name='Star local testing test.supabase.co',calls=[];let configurations=[];
+ const http=async(url,init={})=>{
+  if(url.endsWith('/oauth/token'))return Response.json({access_token:'fake'});
+  if(url.endsWith('/oauth/userinfo'))return Response.json({accounts:[{account_id:'account',base_uri:'https://demo.docusign.net'}]});
+  calls.push({url,method:init.method,body:init.body?JSON.parse(init.body):null});
+  if(url.endsWith('/connect') && init.method==='GET')return Response.json({configurations});
+  return Response.json({connectId:'testing-connect'});
+ };
+ const api=makeDocusign(config,http);
+ eq(await api.configureTestingWebhook(config.webhookUrl,name),'testing-connect');
+ eq(calls.at(-1).method,'POST');
+ eq(calls.at(-1).body.allUsers,'false');eq(calls.at(-1).body.userIds,['sender']);
+ eq(calls.at(-1).body.includeHMAC,'true');eq(calls.at(-1).body.includeDocuments,'false');
+ configurations=[{name:'Unrelated integration',connectId:'other'},{name,connectId:'testing-connect'}];
+ await api.configureTestingWebhook(config.webhookUrl,name);
+ eq(calls.at(-1).method,'PUT');eq(calls.at(-1).body.connectId,'testing-connect');
+ await api.replayTestingEnvelope(id);
+ const replay=calls.at(-1);eq(replay.url.endsWith('/connect/envelopes/publish/historical'),true);
+ eq(replay.method,'POST');eq(replay.body.envelopes,[id]);
+ eq(replay.body.config.name,'Star local testing recovery');eq(replay.body.config.urlToPublishTo,config.webhookUrl);
+ eq(replay.body.config.includeHMAC,'true');eq(replay.body.config.includeDocuments,'false');
+ eq(replay.body.config.eventData.includeData,['recipients']);
+ configurations.push({name,connectId:'duplicate'});
+ await assert.rejects(()=>api.configureTestingWebhook(config.webhookUrl,name),/Duplicate/);checks++;
+ const before=calls.length;
+ await assert.rejects(()=>makeDocusign({...config,environment:'production'},http).replayTestingEnvelope(id),/sandbox/);checks++;
+ await assert.rejects(()=>api.configureTestingWebhook('http://localhost/api/webhooks/docusign',name),/HTTPS/);checks++;
+ await assert.rejects(()=>api.configureTestingWebhook(config.webhookUrl,'Unrelated integration'),/sandbox/);checks++;
+ eq(calls.length,before);
 }
 await assert.rejects(()=>boundedBytes(new Response('12345').body,4));checks++;
 console.log(`PASS ${checks} DocuSign API checks: PKCS#1/PKCS#8 JWT, account discovery, draft/send, transaction recovery, downloads and void`);

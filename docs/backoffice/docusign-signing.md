@@ -24,6 +24,10 @@
 3. 审核界面可直接 **Send With DocuSign**。也可在 **Lease & Decision** 发送；未打开本次签署包审核时，必须再次确认跳过审核，弹窗列出收件人。后端仍验证版本、批准记录、签署人及幂等性。
    审核页的 **E-sign Recipients** 只显示一份签字顺序和收件人列表；发送统一位于底部。尚未打开待签版本时，底部另提供 **Review Signing Package**，打开成功后隐藏这个入口。直接点击发送会先准备签署包，再按审核状态决定是否显示确认框。
 4. 每个人分别显示等待、已送达、已签署、拒签；landlord 明确显示等待 tenants 签完。
+   面板顶部是六段进度条 Prepared / Uploaded / Sent / Tenants Sign / Landlord Signs / Completed，
+   当前段有流动动画，needs_attention 时当前段变琥珀色；条下一句说明当前步骤：上传中显示
+   文件数（服务端投影 `uploading`，即 creationAttemptedAt 已记录），租客签署中显示已签人数。
+   两个入口（Lease & Decision 和审核页 E-sign Recipients）共用同一段 markup。
 5. 全部签完且文件归档成功后显示 **Completed**，提供签署 PDF 与完成证书下载。
 
 Admin 对应当前代码里的 `manager`。Agent 必须是该申请组负责人或 collaborator；
@@ -60,6 +64,14 @@ Window Guards 的签字沿原线内缩 100pt；日期内缩 96pt，补偿 DocuSi
 预览与跨收件人重叠校验均使用可见签字框（包括头尾），排除透明控件底部的空白。
 旧 v5–v10 草稿禁止发送，需通过现有取消和审核流程生成 v11；不改变已经发出的信封。
 
+多租客签署包（4 租客 25 份文件）建好草稿后，首次带 include_anchor_tab_locations 回读某位收件人的 tab
+要 DocuSign 渲染全部页面，实测超过 30s；adapter 对这一类请求和建草稿一样放宽到 120s，其余仍 30s。
+同一草稿第二次回读只要几秒。
+
+Sandbox（demo / 免费）账号每个信封最多 5 个收件人，付费账号 99；超过时 DocuSign 在建草稿时
+返回 RECIPIENT_LIMIT_EXCEEDED，adapter 映射为明确提示并停在 needs_attention。所以沙盒里
+多租客最多只能测 4 租客 + 房东，八租客表的第二排只能靠本地投影检查。
+
 v8 曾用 Sandbox 的单租客草稿转换 PDF 和回读 tab 核查 59 个字段，均落在原线附近且无字段重叠。
 八租客主合同的 34 个字段使用已有供应商转换 PDF 和锚点坐标做本地投影检查；
 新尺寸尚未重新上传验证。实际签字风格仍需在签署界面最终核对。
@@ -87,8 +99,14 @@ Print Name 线到第二排签字线 18.9pt。`lease/tools/space-signature-tables
 于是 v11 起所有租客位和房东位共用一套几何：签名 .75、从签字线左端开始，Print Name
 一律比线高 1.5pt，第 47 条与 rider 一致；不再有房东内缩到右半段、第二排缩小之类的
 按位置例外。v10 只加高了标题行和房东标题段后距，第 47 条 Print Name 和第二排仍按
-旧位；v11 补上第一排 Print Name 行并统一。模板 hash 随之重钉；v11 的转换结果同样
-要在 sandbox 核查。
+旧位；v11 补上第一排 Print Name 行并统一。模板 hash 随之重钉。
+
+v11 已在 sandbox 用 4 租客 + 房东（25 份文件、171 个字段）核查：回读的 tab 位置与 DocuSign
+自己转换 PDF 里的 token 位置相差不超过 2.7pt（签名横向一律偏左约 2pt，姓名日期偏右约 2pt，
+属于供应商固定取整）；第 47 条与各 rider 的四个租客签名同线同尺寸，房东签名与租客左对齐，
+标题到签章净空 5–6pt；§38/§39 initials 逐人落在各自下划线上；Window Guards、Bedbug、DHCR、
+Allergen 均在原线上。全员用嵌入式签署签完后的 PDF 外观与上述一致。八租客表的第二排
+因 sandbox 收件人上限未能在线核查。
 
 - 主合同：第 38、39 条每位租客一处 Initials（第 i 位租客在第 i 段下划线）；
   第 47 条每位租客一组 Signature / Print Name，两排各四格；房东一组。超过八位
@@ -157,16 +175,14 @@ DocuSign 管理的合同禁止通过手工填写 receipt 或上传 PDF 提前标
 
 新增独立的 `POST /api/webhooks/docusign`。在解析 JSON 前对原始 body 验证 Connect HMAC，
 核对配置的 account ID；限制请求体大小。仅验签成功才进入 durable inbox。
-回调仅作为同步提示，后端从 DocuSign 读取已绑定 envelope 的当前状态和 recipient IDs，
-不能接受回调携带的任意文件 URL、rental ID 或邮箱来直接写签署结果。
+回调验签后，只保存 account/envelope、事件时间及规范化后的完整 recipient 状态。
+处理任务核对已绑定的信封和全部 recipient IDs，再直接应用此可信快照，不接受回调携带的
+文件 URL、rental ID 或任意邮箱。重复、乱序事件不回退签署进度。
 
-回调去重和待处理任务持久化成功后才返回 2xx；存储失败返回可重试错误。
-领取任务后按当前 provider 状态更新，重复/乱序事件不回退已完成状态。
-创建 draft 时抢先到达、尚未绑定 envelope ID 的事件保留待关联。
-cron 处理已保存任务和失败归档；provider 状态查询按官方限制安排，不在现有每分钟
-reconciliation 中对所有信封高频轮询。普通补偿查询间隔为 31 分钟；
-同一信封的状态读取预算持久化，回调提示触发的重复读取也至少相隔 16 分钟。
-因此短时间内连续签署时，页面状态可能延后最多约 16 分钟再同步，归档失败会继续重试。
+事件持久化成功后立即触发后台处理；没有完整快照的事件只提示补偿查询。
+直接推送不受 API 轮询预算限制，普通 API 补偿查询仍保持 31 分钟间隔和 16 分钟读取预算。
+页面在签署进行中每 5 秒读取本站状态。正常回调网络下的目标是签署后 60 秒内显示状态，
+归档下载并行，归档失败 15 秒后重试。DocuSign 自身投递延迟/断网不能承诺绝对时限。
 
 全部 signer 完成后，通过认证 API 下载 combined signed PDF 与 certificate，写入现有私有
 storage。大小、PDF 格式、文件 hash 验证通过后，原子更新每位 tenant receipt、

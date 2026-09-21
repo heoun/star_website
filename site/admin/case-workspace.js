@@ -380,37 +380,34 @@ export async function renderCaseDetail(host, { api, session, id }) {
     if (session.role === "landlord") return renderLandlordCase(host, { api, session, id, row });
 
     const allowed = row.allowed_actions || [], w = row.workspace || {};
-    let people = { team: [], landlords: [] };
-    if (allowed.includes("assign") || allowed.includes("recommend") || allowed.includes("review_and_recommend")) {
-      people = await api(`/cases/${encodeURIComponent(id)}/participants`);
-      if (!current()) return;
-    }
     // Whether the final lease could be produced right now, asked only when
     // that is the next thing to do. The answer names what is still short.
-    let readiness = null;
-    if (allowed.includes("prepare_lease") || allowed.includes("review_and_recommend")) {
-      try {
-        readiness = await api(`/lease/document/${encodeURIComponent(id)}`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ mode: "values" }) });
-      } catch (error) { readiness = { error: error.message }; }
-      if (!current()) return;
-    }
+    const [people,readiness,signing]=await Promise.all([
+      allowed.some(a=>['assign','recommend','review_and_recommend'].includes(a))?api(`/cases/${encodeURIComponent(id)}/participants`):{team:[],landlords:[]},
+      allowed.some(a=>['prepare_lease','review_and_recommend'].includes(a))?api(`/lease/document/${encodeURIComponent(id)}`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'values'})}).catch(error=>({error:error.message})):null,
+      row.household?api(`/cases/${encodeURIComponent(id)}/signing`).catch(error=>({configuration:{enabled:false,canSend:false,message:error.message}})):null
+    ]);
+    if(!current())return;
 
     const ctx = { row, w, allowed, people, session, types, readiness, id, api,
       docs: documentSummary(row, types), terms: { ...Object.fromEntries(TERM_IDS.filter(key => key !== "lease.effective_date" && readiness?.values?.[key] != null).map(key => [key, String(readiness.values[key])])), ...initialTerms(row) }, mail: drafts(row, session) };
     ctx.reviewing = allowed.includes("review_and_recommend");
     ctx.viewKey = JSON.stringify([session.role, session.email, id]);
     if(row.household) {
-      try{ctx.signing=await api(`/cases/${encodeURIComponent(id)}/signing`);}catch(error){ctx.signing={configuration:{enabled:false,canSend:false,message:error.message}};}
+      ctx.signing=signing;
       if(!current())return;
       host.innerHTML=rentalGroupMarkup(ctx,{panel,heading,primaryFor,documentSummary,checksForm,documentsPanel,termsPanel,teamPanel,assignForm,notesPanel,privateNotePanel,activityPanel});
       const reload=()=>renderCaseDetail(host,{api,session,id});
       bindCase(host,ctx,reload);
       await bindRentalGroup(host,ctx,reload,current);
+      let polling=false;
       const timer=setInterval(async()=>{
         if(!current()){clearInterval(timer);return;}
+        if(document.hidden || polling)return;
         if(host.contains(document.activeElement) && document.activeElement.matches('input,select,textarea'))return;
-        try{const next=await api(`/cases/${encodeURIComponent(id)}`);if(current() && next.case.workspace_version!==row.workspace_version && !host.dataset.rentalDirty){clearInterval(timer);reload();}}catch{}
-      },15000);
+        polling=true;
+        try{const next=await api(`/cases/${encodeURIComponent(id)}`);if(current() && next.case.workspace_version!==row.workspace_version && !host.dataset.rentalDirty){clearInterval(timer);reload();}}catch{}finally{polling=false;}
+      },signing?.signing && !['completed','voided','declined'].includes(signing.signing.phase)?5000:15000);
       host.addEventListener('input',()=>{host.dataset.rentalDirty='1';},{once:true});
       delete host.dataset.rentalDirty;
       return;
@@ -972,6 +969,7 @@ function bindCase(host, ctx, reload) {
         }
         if (command.action === "assign") command.collaborator_emails = data.getAll("collaborator_emails");
         if(command.action==='cancel_invite')command.confirmed=data.get('confirmed')==='on';
+        if(['split_member','remove_member'].includes(command.action))command.confirmed=data.get('confirmed')==='on';
         if(command.action==='merge'){command.source_version=Number(data.get('source_version'));command.confirmed=data.get('confirmed')==='on';}
         if(session.role==='landlord')command.revision=row.recommendation?.revision;
         if (command.action === "landlord_changes") {
@@ -994,6 +992,7 @@ function bindCase(host, ctx, reload) {
         host.innerHTML = heading(session.role, "Decision Recorded", "Your leasing team will take it from here.") + '<a class="desk-button" href="#/overview">Back to My Workspace</a>';
         return;
       }
+      if(result.case?.membership_change && result.case.id!==id){location.hash=`#/applications/${result.case.id}`;return;}
       await reload();
       const notice = document.createElement("p");
       notice.className = "cw-saved"; notice.setAttribute("role", "status");

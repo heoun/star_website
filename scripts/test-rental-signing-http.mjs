@@ -13,7 +13,7 @@ globalThis.fetch=async(url,init={})=>{
   if(init.method==='POST'){records.set(body.id,{...body});return Response.json([body]);}
   const id=u.searchParams.get('id')?.slice(3),rental=u.searchParams.get('rental_id')?.slice(3);
   // JSONB preserves values, not the insertion order of object keys.
-  const persisted=[...records.values()].filter(r=>(!id || r.id===id)&&(!rental || r.rental_id===rental)&&(!u.searchParams.has('reserved') || r.reserved));
+  const persisted=[...records.values()].filter(r=>(!id || r.id===id)&&(!rental || r.rental_id===rental)&&(!u.searchParams.has('reserved') || !!r.reserved===(u.searchParams.get('reserved')==='eq.true')));
   return Response.json(persisted.map(r=>({...r,record:{...r.record,package:{...r.record.package,signers:r.record.package.signers.map(s=>Object.fromEntries(Object.entries(s).sort(([a],[b])=>a.localeCompare(b))))}}})));
  }
  if(name==='reserve_rental_signing') {
@@ -40,6 +40,8 @@ try {
  delete row.workspace.test_run;
  eq((await post({action:'prepare',version:version-1})).status,409);
  const prepared=await post({action:'prepare',version},agent);eq(prepared.status,200);const p=await prepared.json();eq(p.preview,true);eq(p.signing.signers.length,3);eq(reserves,0);
+ const fileCount=Object.keys(fixture.state.files).length;
+ const reused=await post({action:'prepare',version},agent);eq(reused.status,200);eq((await reused.json()).signing.id,p.signing.id);eq(records.size,1);eq(Object.keys(fixture.state.files).length,fileCount);
  const file=await get(agent,`?package=${p.signing.id}&file=source`);eq(file.status,200);eq(file.headers.get('Cache-Control'),'no-store');eq(new Uint8Array(await file.arrayBuffer())[0],80);
  const notice=p.signing.documents.find(d=>d.layout==='bedbug');assert.ok(notice);checks++;
  const noticeUrl=`?package=${p.signing.id}&file=source&document=${notice.documentId}`;

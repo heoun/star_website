@@ -145,7 +145,7 @@ eq(await makeDocusign({...config,accountId:'wrong'}).verifyNotice(raw,{'x-docusi
 // Actual core state machine with an in-memory CAS repository and provider.
 let state,remote,creates,sends,downloads,retry,failCreate,failArchive;
 function reset(){state={package:structuredClone(pkg),phase:'preparing',version:0,envelope:null};remote=null;creates=sends=downloads=0;failCreate=failArchive=false;}
-const store={get:async()=>structuredClone(state),claimDue:async()=>[{packageId:pkg.id,claimToken:'claim'}],release:async(_id,_t,r)=>{retry=r;},save:async(record,v)=>{assert.equal(state.version,v);state={...structuredClone(record),version:v+1};}};
+const store={notices:async()=>[],get:async()=>structuredClone(state),claimDue:async()=>[{packageId:pkg.id,claimToken:'claim'}],release:async(_id,_t,r)=>{retry=r;},save:async(record,v)=>{assert.equal(state.version,v);state={...structuredClone(record),version:v+1};}};
 const fake={findByTransactionId:async()=>structuredClone(remote),createDraft:async()=>{creates++;remote={accountId:'account',envelopeId:'envelope',status:'created',recipients:signers.map(s=>({recipientId:s.recipientId,status:'pending'}))};if(failCreate){failCreate=false;throw new Error('Response lost');}return structuredClone(remote);},read:async()=>structuredClone(remote),send:async()=>{sends++;remote.status='sent';},void:async()=>{remote.status='voided';},download:async()=>{downloads++;if(failArchive){failArchive=false;throw new Error('Archive retry');}return new Response('%PDF-test').body;}};
 const files={read:async file=>new Response(document.documents[pkg.documents.findIndex(d=>d.file.sha256===file.sha256)]?.bytes || document.docx).body,put:async(_id,kind)=>({path:kind})};
 const flow=makeRentalSigning(store,fake,files);

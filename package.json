@@ -45,7 +45,8 @@
     "test:signing:ui": "node scripts/test-rental-signing-ui.mjs",
     "test:signing:webhook": "node scripts/test-docusign-webhook-forwarder.mjs",
     "test:rentals:ui": "npm run build && node scripts/test-rental-ui.mjs",
-    "test:membership": "node scripts/test-rental-membership.mjs"
+    "test:membership": "node scripts/test-rental-membership.mjs",
+    "test:signing:sync": "node scripts/test-signing-sync.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",

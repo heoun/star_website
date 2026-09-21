@@ -79,7 +79,7 @@ export async function mountDocument(container, { onSlotClick, templatePath = TEM
   sections = [];
   clauseMarks = [];
 
-  const response = await fetch(templatePath, { headers: { Accept: "*/*" } });
+  const [response,{renderAsync}]=await Promise.all([fetch(templatePath, { headers: { Accept: "*/*" } }),loadRenderer()]);
   if (!response.ok) {
     throw new Error(`The lease template could not be loaded (${response.status}).`);
   }
@@ -89,7 +89,6 @@ export async function mountDocument(container, { onSlotClick, templatePath = TEM
     if (hash !== expectedSha256) throw new Error('The saved signing document does not match this package. Prepare it again.');
   }
 
-  const { renderAsync } = await loadRenderer();
   await renderAsync(bytes, host, null, {
     className: "docx",
     inWrapper: true,

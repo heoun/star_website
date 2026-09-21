@@ -28,6 +28,16 @@ dialog.signing-confirm::backdrop{background:#102c3b80;backdrop-filter:blur(3px)}
 .signing-environment,.signing-status{font-size:11px;font-weight:500;color:var(--soft,#607584);white-space:nowrap}
 .signing-environment{border:1px solid var(--line,#dbe2e7);border-radius:6px;padding:2px 8px;background:var(--paper,#f7f9fa)}
 .signing-panel .signing-intro{font-size:13px;color:var(--soft,#607584);margin:0 0 20px}
+.signing-steps{display:flex;gap:4px;list-style:none;margin:8px 0 12px;padding:0}
+.signing-steps li{flex:1;min-width:0;font-size:11px;font-weight:600;line-height:1.35;color:var(--soft,#607584)}
+.signing-steps li::before{content:"";display:block;height:4px;margin-bottom:7px;border-radius:2px;background:var(--line,#dbe2e7)}
+.signing-steps li.is-done{color:var(--good,#2e7d32)}.signing-steps li.is-done::before{background:var(--good,#2e7d32)}
+.signing-steps li.is-now{color:var(--blue,#164e65)}.signing-steps li.is-now::before{background:linear-gradient(90deg,var(--blue,#164e65) 0 35%,#a9cbd8 50%,var(--blue,#164e65) 65% 100%);background-size:200% 100%;animation:signing-step-flow 1.8s linear infinite}
+.signing-steps li.is-issue{color:var(--warn,#b26a00)}.signing-steps li.is-issue::before{background:var(--warn,#b26a00)}
+@keyframes signing-step-flow{from{background-position:100% 0}to{background-position:-100% 0}}
+@media(prefers-reduced-motion:reduce){.signing-steps li.is-now::before{animation:none}}
+.signing-panel .signing-progress-detail{margin:0 0 4px}
+@media(max-width:480px){.signing-steps{gap:3px}.signing-steps li{font-size:10px}}
 .signing-package{margin-top:20px}
 .signing-package-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
 .signing-package-heading h4{font-size:12px;font-weight:600;color:var(--soft,#607584);margin:0}
