@@ -5,7 +5,8 @@ import { readSession } from "./portal.js";
 import { renderPage } from "./contact.js";
 import { rentalMode, rentalApplyOptions, submitRental, rentalWorkflow, runRentalAutomation, findOpenInvitation, groupHasRoom } from "./rentals.js";
 import { householdCapacity, capacityMessage } from "../backend/app/rentals.ts";
-import { submitTestApplication, markTestMembers, internalTestAccount, internalTestListing, invitedTestRun } from './internal-testing.js';
+import { submitTestApplication, markTestMembers, internalTestAccount, internalTestListing, internalTestRoommates, invitedTestRun } from './internal-testing.js';
+import { rentalDraft, saveRentalDraft, submitDraftApplication, recordDraftDelivery } from './rental-drafts.js';
 import { MAIL_FROM, mailPlace, invitationMail } from "./mail-layout.js";
 
 const CONTACT_EMAIL = "info@starreusa.com";
@@ -518,12 +519,20 @@ export async function handleRoommateInvites(request, env) {
     const link = new URL("/apply/", env.SITE_ORIGIN || request.url);
     link.searchParams.set("id", listingId);
     link.searchParams.set("invited", mate.email);
-    if (test) link.searchParams.set("group", test);
+    if (draft) {
+      link.searchParams.set("group", draft.id);
+      link.searchParams.set("invite", `${draft.id}.${draft.invitations.find(i=>i.email===mate.email.toLowerCase()).id}`);
+    }
     return link.toString();
   };
   const runId = String(body.test_run_id ?? "").trim();
   const test = UUID_PATTERN.test(runId) && internalTestAccount(env, request, session)
     && internalTestListing(env, listingId) ? runId : "";
+  let draft=null;
+  if(rentalMode(env)) {
+    try {draft=await saveRentalDraft(env,request,session,listingId,test || body.draft_group_id || crypto.randomUUID(),roommates,test);}
+    catch(error){return withSession(json({error:error.message},error.status || 503));}
+  }
   const greetName = (value) => (/^[\p{L}][\p{L}' .-]{0,39}$/u.test(value) ? value : "");
 
   const outcomes = await Promise.all(roommates.map(async (mate) => ({
@@ -542,6 +551,8 @@ export async function handleRoommateInvites(request, env) {
   // the answer says which are which, so nobody is mailed twice on a retry.
   const sent = outcomes.filter((outcome) => outcome.delivered).map((outcome) => outcome.email);
   const failedInvites = outcomes.filter((outcome) => !outcome.delivered).map((outcome) => outcome.email);
+
+  if(draft && sent.length) {try{await recordDraftDelivery(env,draft.id,sent);}catch{console.error('Invitation delivery status requires retry');}}
 
   if (sent.length === 0) {
     console.error("Roommate invitation delivery failed for", label);
@@ -775,10 +786,19 @@ async function processApplication(request, env, ctx, body, email, session) {
     let joining=automatic ? String(body.group_invite || '') : '';
     const groupRoot=String(body.group_root || '');
     if(groupRoot && (!automatic || !UUID_PATTERN.test(groupRoot) || (joining && joining.split('.')[0]!==groupRoot))) return json({error:'This invitation link is invalid. Reopen the invitation email.'},422);
-    if(automatic && !joining && !body.test_run_id) joining=await findOpenInvitation(env,request,listingId,email,groupRoot);
-    if(groupRoot && !joining) return json({error:'This case does not have an open invitation for your email yet. Ask the inviter to submit their application, then try again.'},409);
-    if(automatic && joining && roommates.length) return json({error:'Join this group first. Your agent can invite additional roommates.'},422);
-    if(automatic && joining && !(await groupHasRoom(env,request,joining,capacity,email))) return json({error:capacityMessage(listing)},422);
+    const draftId=String(body.draft_group_id || body.test_run_id || groupRoot || joining.split('.')[0] || '');
+    if((groupRoot && draftId!==groupRoot) || (body.test_run_id && draftId!==body.test_run_id))return json({error:'This invitation link does not match the application group.'},422);
+    let draft=automatic ? await rentalDraft(env,draftId) : null;
+    if(automatic && !draft && !joining && !body.test_run_id) joining=await findOpenInvitation(env,request,listingId,email,groupRoot);
+    if(automatic && !draft && joining)draft=await rentalDraft(env,joining.split('.')[0]);
+    if(body.test_run_id && (!internalTestAccount(env,request,session) || !internalTestListing(env,listingId)))return json({error:'Internal testing is unavailable for this account or listing.'},403);
+    if(body.test_run_id && roommates.some(m=>!internalTestRoommates(env).includes(m.email.toLowerCase())))return json({error:'Internal test roommates are limited to the configured test inboxes.'},422);
+    const ownsDraft=!!draft && draft.owner_id===session.subject && draft.owner_email===email;
+    if(draft && body.draft_group_id===draft.id && !ownsDraft)return json({error:'This application group belongs to another account.'},403);
+    if(draft && ownsDraft && roommates.length && !draft.invitations.some(i=>i.role==='inviter' && i.accepted)) draft=await saveRentalDraft(env,request,session,listingId,draft.id,roommates,body.test_run_id || (draft.test_run?.id ?? ''));
+    if(groupRoot && !joining && !draft) return json({error:'This invitation has not been saved. Ask the inviter to resend it from their application form.'},409);
+    if(automatic && joining && !ownsDraft && roommates.length) return json({error:'Join this group first. Your agent can invite additional roommates.'},422);
+    if(automatic && !draft && joining && !(await groupHasRoom(env,request,joining,capacity,email))) return json({error:capacityMessage(listing)},422);
     const agent=String(body.sales_person || '').trim().toLowerCase();
     if(automatic && agent && !(await rentalApplyOptions(env,listingId)).some(a=>a.email===agent)) return json({error:'Choose an active agent for this property.'},422);
     const parts=moveIn.split('/');
@@ -817,7 +837,11 @@ async function processApplication(request, env, ctx, body, email, session) {
       message: cleanMultiline(body.message, 2000) || null,
       ...(automatic ? {responsible_email:agent || null,workspace:{rental_flow:'automatic',invitations,terms:{'lease.commencement_date':start,'lease.end_date':end.toISOString().slice(0,10),'rent.monthly':String(listing.price_amount || ''),'deposit.amount':String(listing.price_amount || '')}}} : {})
     };
-    if(body.test_run_id) {
+    if(draft) {
+      if(!ownsDraft && roommates.length)return json({error:'Join this group first. Your agent can invite additional roommates.'},422);
+      const result=await submitDraftApplication(env,session,values,draft,joining);saved=result.application;
+      if(result.replayed)return json({ok:true,application_id:saved.id,...(saved.workspace?.test_run?{test_run_id:saved.id}:{})},200);
+    } else if(body.test_run_id) {
       if(!automatic || joining)return json({error:'Test runs require an independent application.'},422);
       const result=await submitTestApplication(request,env,session,values,body.test_run_id);saved=result.application;
       if(result.replayed)return json({ok:true,application_id:saved.id,test_run_id:saved.id},200);
@@ -837,7 +861,7 @@ async function processApplication(request, env, ctx, body, email, session) {
       // A lead adopts roommates who applied before them; a roommate joining
       // an internal run inherits it. Invitations that still wait go out with
       // the reconciliation once the lead's fee is paid.
-      try {if(rootId===saved.id) await rentalWorkflow(env,request).adoptInvited(rootId);await markTestMembers(env,request,rootId);}catch{console.error('Roommate group update requires retry');}
+      try {if(rootId===saved.id && !saved.workspace?.invitations?.some(i=>i.role==='inviter' && !i.accepted)) await rentalWorkflow(env,request).adoptInvited(rootId);await markTestMembers(env,request,rootId);}catch{console.error('Roommate group update requires retry');}
       await runRentalAutomation(env,request,rootId);
     })());
   }

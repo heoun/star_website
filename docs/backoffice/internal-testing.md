@@ -24,6 +24,8 @@ simulated HTTP provider. No real payment or credit inquiry is performed.
   (`brew install cloudflared` on macOS). The configured Sandbox sender needs
   account-admin permission for its dedicated Connect subscription. Production
   credentials, a mismatched database, or a nonlocal screening provider fail startup.
+- Apply `supabase/rental-drafts.sql` after the rental-flow and membership migrations
+  to enable invitations before the inviter submits. The launcher checks this table.
 - Startup verifies the database schema, simulator authorization, local HMAC
   rejection, and public HTTPS → authenticated durable inbox path. It creates or
   updates only `Star local testing <database-host>` in the Sandbox account,
@@ -51,12 +53,13 @@ it is never accepted as the landlord's emailed decision.
 
 Roommates must open the complete invitation email link, not the listing's
 ordinary `/apply/?id=…` URL. Invitations include `invited` plus `invite` (a
-saved invitation) or `group` (an early invitation for a specific test run).
+saved invitation) and `group` (the stable application group).
 An invitation opened in the lead's browser shows account creation for the
 invited email, with a sign-in option for an existing account. Once authenticated,
-the roommate returns to that invitation and fills their own details. If the
-lead has not submitted the run yet, the roommate can fill the form but must
-retry submission after the lead submits. Multiple open invitations for the
+the roommate returns to that invitation and fills their own details. The roommate may
+submit first and immediately complete their own simulated payment, documents and
+screening. The inviter joins the same case later; the group stays out of landlord
+review until every invited member has submitted and passed the required checks. Multiple open invitations for the
 same inbox require a case-specific link; a generic link cannot pick a case.
 Switching applicant accounts affects other tabs in that browser, so submission
 checks the account again and refuses to file answers under a different login.
@@ -69,11 +72,11 @@ sample-document upload, and credit-screening steps. The test marker is saved
 with the application so these pages work on the first portal visit, before any
 background reconciliation. Each roommate completes their own fee and screening.
 
-An early `group` invitation also offers sample answers before the lead's case
-exists. This is only permission to prefill the local form: the server still
-requires the saved, matching invitation before submission or simulated checks.
-The panel explains that the inviter must submit first. Production origins,
-unlisted inboxes and invalid/closed saved invitations do not receive this helper.
+An early invitation also offers sample answers before the first application
+exists. Its saved invitation authorizes submission into that specific group.
+Production origins, unlisted inboxes and invalid/closed invitations do not receive
+this helper. Old emails sent before `rental-drafts.sql` need to be resent once
+from the inviter's refreshed form; the inviter can still submit later.
 
 ## One full run
 

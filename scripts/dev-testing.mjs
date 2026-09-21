@@ -29,7 +29,7 @@ export async function main(){
  if(spawnSync('cloudflared',['--version'],{stdio:'ignore'}).status!==0)throw new Error('Install cloudflared once (macOS: brew install cloudflared), then rerun npm run dev:testing.');
  const headers={apikey:env.SUPABASE_SERVICE_ROLE_KEY,Authorization:`Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`};
  const database=async path=>{const r=await fetch(`${env.SUPABASE_URL}/rest/v1/${path}`,{headers,signal:AbortSignal.timeout(15000)});if(!r.ok)throw new Error('Star Dev database/signing schema is unavailable. Apply the SQL setup in docs/backoffice/internal-testing.md.');return r.json();};
- await Promise.all(['applications?select=id,rental_group_id,workspace_version&limit=1','rental_signing_jobs?select=package_id&limit=1','rental_signing_inbox?select=hash&limit=1'].map(database));
+ await Promise.all(['applications?select=id,rental_group_id,workspace_version&limit=1','rental_drafts?select=id&limit=1','rental_signing_jobs?select=package_id&limit=1','rental_signing_inbox?select=hash&limit=1'].map(database));
  console.log('✓ Star Dev database and signing schema');
  const children=[];let stopping=false,monitor;
  const forwarder=createWebhookForwarder(port);

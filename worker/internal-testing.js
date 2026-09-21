@@ -1,15 +1,20 @@
 import { internalTestAccount,internalTestListing,internalTestRoommates,internalTestParticipant } from '../backend/app/internal-testing.ts';
+import { rentalDraft } from './rental-drafts.js';
 import { requireConfig } from './supabase.js';
 import { rentalWorkflow } from './rentals.js';
 export { internalTestAccount,internalTestListing,internalTestRoommates,internalTestParticipant };
-// Sample answers may be filled before the lead submits an early invitation.
-// Only a saved, matching invitation supplies a run for actual submission.
+// A saved invitation exposes the same test controls before or after the first
+// application exists. Unknown browser group IDs never grant membership.
 export async function invitedTestContext(env,request,session,listingId,invitation='',rootId='') {
   if(!internalTestParticipant(env,request,session) || !internalTestListing(env,listingId))return null;
   const parts=String(invitation).split('.'),root=rootId || parts[0];
   if(!/^[0-9a-f-]{36}$/i.test(root || '') || (invitation && (parts.length!==2 || parts[0]!==root)))return null;
   const group=await rentalWorkflow(env,request).store.group(root);
-  if(!group) return !invitation && rootId && internalTestRoommates(env).includes(session.email.toLowerCase()) ? {pendingGroup:root} : null;
+  if(!group) {
+    const draft=await rentalDraft(env,root);
+    const match=draft?.test_run && draft.listing_id===listingId && !draft.activated && draft.owner_email!==session.email.toLowerCase() && draft.invitations.some(i=>i.email===session.email.toLowerCase() && Date.parse(i.expires)>=Date.now() && (!invitation || i.id===parts[1]));
+    return match ? {pendingGroup:root,run:{id:draft.test_run.id,created_at:draft.test_run.created_at,member_of:root}} : null;
+  }
   const run=group?.root.workspace?.test_run;
   if(!run || group.root.id!==root || group.root.listing_id!==listingId || ['sent_to_landlord','landlord_approved','lease_sent','lease_signed','declined'].includes(group.root.status))return null;
   const match=group.root.workspace.invitations?.some(i=>!i.accepted && i.email===session.email.toLowerCase() && Date.parse(i.expires)>=Date.now() && (!invitation || i.id===parts[1]));

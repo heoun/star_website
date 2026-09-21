@@ -1,3 +1,4 @@
+import { rentalDraftFixture } from './rental-draft-fixtures.mjs';
 import {reportFixture} from './screening-fixtures.mjs';
 import { administrationFixture } from "./administration-fixtures.mjs";
 // Synthetic records for isolated HTTP tests and the optional local role demo.
@@ -78,6 +79,8 @@ export function createWorkspaceFixtures(saved) {
       for(const member of group)if(member.id!==root.id && (member.responsible_email!==root.responsible_email || JSON.stringify(member.collaborator_emails)!==JSON.stringify(root.collaborator_emails))){member.responsible_email=root.responsible_email;member.collaborator_emails=[...root.collaborator_emails];member.workspace_version++;}
       return new Response(null,{status:204});
     }
+    const draftResponse=rentalDraftFixture(state,table,body,q,response);
+    if(draftResponse)return draftResponse;
     if(table==='submit_rental_application') {
       const root=state.applications.find(a=>a.id===body.p_root),invitation=root?.workspace?.invitations?.find(i=>i.id===body.p_invite);
       if(body.p_root && (!invitation || invitation.accepted || invitation.email!==body.p_application.email || Date.parse(invitation.expires)<Date.now() || root.listing_id!==body.p_application.listing_id))return response({error:'Invalid invitation'},409);

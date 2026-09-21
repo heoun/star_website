@@ -7,7 +7,7 @@ export function attachTestApplication(form,listingId,{groupId=null,pending=false
   const panel=document.createElement('aside');panel.className='internal-test-tools';
   panel.innerHTML='<strong>Internal Test Application</strong><p>Each new run creates a separate application. Payment and screening are simulated; landlord emails and DocuSign invitations are real test deliveries.</p><small data-run></small><div class="test-actions"><button type="button" data-fill>Fill With Sample Data</button> <button type="button" data-new>Start New Test Run</button></div><p role="status"></p>';
   if(groupId){panel.querySelector('strong').textContent='Internal Test Roommate Application';panel.querySelector('p').textContent='Your application joins the invited case. Fill your own sample answers, then continue to simulated payment and credit screening after submitting.';panel.querySelector('[data-new]').remove();}
-  if(groupId && pending)panel.querySelector('p').textContent='Fill your own sample answers now. The inviter has not submitted this case yet; they must submit before you can submit yours. Your application will join the same case, with simulated payment and credit screening.';
+  if(groupId && pending)panel.querySelector('p').textContent='Fill your own sample answers now. You can submit before the inviter. Everyone joins the same case and completes their own simulated payment and credit screening. The group waits for all applications before landlord review.';
   form.closest('.app-shell').before(panel);
   const paint=()=>panel.querySelector('[data-run]').textContent=`Run ${runId}`;paint();
   if(!groupId)panel.querySelector('[data-new]').onclick=()=>{sessionStorage.removeItem(key);location.reload();};

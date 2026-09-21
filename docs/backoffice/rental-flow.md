@@ -39,6 +39,7 @@ The landlord confirmation page is `/landlord-decision/`. New signed email links 
 
 1. Apply `supabase/rental-flow.sql` after `schema.sql`, `backoffice.sql` and `workspace.sql`. It is repeatable and adds the group relation plus service-only RPCs. Existing roommate entries become pending invitations rather than assumed applications. Existing confirmed/signed leases are preserved.
    Apply `supabase/rental-membership.sql` afterward to enable atomic applicant separation and removal.
+   Apply `supabase/rental-drafts.sql` to persist invitations before intake; either applicant can then submit first.
 2. Set `RENTAL_AUTOMATION=on` only after the migration. Configure `SITE_ORIGIN` if different from `https://starreusa.com`. The Worker has a one-minute scheduled reconciliation hook.
 3. Configure the existing outbound email credentials and verified sender for real delivery. Do not set `RENTAL_SCREENING=mock` in production; the adapter also rejects mock selection for non-loopback origins.
 4. Run `npm run test:rentals`, `npm run test:rentals:db`, `npm run test:rentals:ui` (requires Playwright), `npm run typecheck`, `npm run gate` and `npm run build`.
@@ -131,3 +132,23 @@ single-application delete route refuses grouped applications.
 
 Run `npm run test:membership` for domain and real PostgreSQL-compatible transaction
 coverage, including primary replacement, stale writes, cascade and signing locks.
+
+## Invitations before submission
+
+The first-step invite endpoint saves an account-owned draft group before sending
+email. Both ordinary and internal-test links carry the stable group and invitation
+IDs. No incomplete application or fabricated consent is inserted: the first person
+to submit creates the case, and later submissions join it atomically. The inviter
+is a reserved, pending member until their own form is submitted. Existing readiness
+checks block landlord review while any invitation is pending, even if the first
+applicant has completed payment, documents and screening.
+
+The draft ID is kept per listing and signed-in account in session storage. Repeated
+submissions return the saved application without overwriting answers or sending
+another receipt. The database checks the authenticated email, inviter identity,
+listing, expiry, capacity and current case membership. Revoked invitations and
+deleted/separated cases cannot be recreated from old draft records.
+
+Invitations emailed before this migration had no durable draft record. The inviter
+must refresh their form and resend them once; the inviter does not need to submit.
+Do not create invitation records based only on an unverified browser URL.

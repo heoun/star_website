@@ -286,16 +286,19 @@ import { endDateFor } from "../shared/lease-dates.js";
     emailInput.value = accountEmail;
     emailInput.readOnly = true;
 
-    wireForm(property);
+    wireForm(property, accountEmail);
   };
 
-  const wireForm = (property) => {
+  const wireForm = (property, accountEmail) => {
     const form = document.getElementById("apply-form");
     let automaticRental=false;
     let testApplication=null;
     const groupInvite=new URLSearchParams(location.search).get('invite') || '';
     const groupRoot=new URLSearchParams(location.search).get('group') || '';
     const joiningGroup=!!(groupInvite || groupRoot || invited);
+    const draftKey=`star-application-group:${id}:${accountEmail}`;
+    const draftId=sessionStorage.getItem(draftKey) || crypto.randomUUID();
+    if(!joiningGroup)sessionStorage.setItem(draftKey,draftId);
     const optionsQuery=new URLSearchParams({id,invite:groupInvite,group:groupRoot});
     fetch(`/api/apply/options?${optionsQuery}`).then(r=>r.json()).then(async options=>{
       automaticRental=options.automatic===true;
@@ -1099,6 +1102,7 @@ import { endDateFor } from "../shared/lease-dates.js";
     const invitedEmails = new Set();
     const failedInvites = new Set();
     const invitesInFlight = new Set();
+    const invitationRequests = new Set();
 
     const paintInviteStatus = () => {
       const status = document.getElementById("invite-status");
@@ -1153,11 +1157,11 @@ import { endDateFor } from "../shared/lease-dates.js";
           : "Some roommate invitations could not be sent. The Roommates step says which, and moving on from it tries again.");
       };
 
-      fetch("/api/apply/invite", {
+      const invitationRequest=fetch("/api/apply/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          listing_id: id, roommates: pending,
+          listing_id: id, roommates: pending, draft_group_id: testApplication?.id() || draftId,
           ...(testApplication ? { test_run_id: testApplication.id() } : {})
         })
       }).then(async (response) => {
@@ -1171,6 +1175,8 @@ import { endDateFor } from "../shared/lease-dates.js";
           settle([], pending.map((mate) => mate.email));
         }
       }).catch(() => settle([], pending.map((mate) => mate.email)));
+      invitationRequests.add(invitationRequest);
+      invitationRequest.finally(()=>invitationRequests.delete(invitationRequest));
     };
 
     // ------------------------------------------------------------- submitting
@@ -1181,6 +1187,7 @@ import { endDateFor } from "../shared/lease-dates.js";
       const payload = {
         listing_id: id,
         ...(testApplication?{test_run_id:testApplication.id()}:{}),
+        draft_group_id: joiningGroup ? undefined : (testApplication?.id() || draftId),
         sales_person: form.elements.sales_person?.value || "",
         group_invite: groupInvite,
         group_root: groupRoot,
@@ -1260,6 +1267,7 @@ import { endDateFor } from "../shared/lease-dates.js";
       nextButton.textContent = "Submitting…";
 
       try {
+        await Promise.all([...invitationRequests]);
         const response = await fetch("/api/apply", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -1282,6 +1290,7 @@ import { endDateFor } from "../shared/lease-dates.js";
 
         state.done = true;
         testApplication?.complete();
+        if(!joiningGroup)sessionStorage.removeItem(draftKey);
         state.dirty = false;
         progressFill.style.width = "100%";
         headerStep.textContent = "Rental Application · Submitted";
