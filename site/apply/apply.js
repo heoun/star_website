@@ -299,7 +299,7 @@ import { endDateFor } from "../shared/lease-dates.js";
     const optionsQuery=new URLSearchParams({id,invite:groupInvite,group:groupRoot});
     fetch(`/api/apply/options?${optionsQuery}`).then(r=>r.json()).then(async options=>{
       automaticRental=options.automatic===true;
-      if((options.internal_testing && !joiningGroup) || options.internal_test_group){const {attachTestApplication}=await import('./internal-test.js');testApplication=attachTestApplication(form,id,{groupId:options.internal_test_group});}
+      if((options.internal_testing && !joiningGroup) || options.internal_test_group){const {attachTestApplication}=await import('./internal-test.js');testApplication=attachTestApplication(form,id,{groupId:options.internal_test_group,pending:options.internal_test_pending});}
       if(!automaticRental)return;
       const section=document.createElement('div');section.className='field';
       const label=document.createElement('label');label.textContent='Agent you are working with';

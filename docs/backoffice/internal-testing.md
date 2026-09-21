@@ -69,6 +69,12 @@ sample-document upload, and credit-screening steps. The test marker is saved
 with the application so these pages work on the first portal visit, before any
 background reconciliation. Each roommate completes their own fee and screening.
 
+An early `group` invitation also offers sample answers before the lead's case
+exists. This is only permission to prefill the local form: the server still
+requires the saved, matching invitation before submission or simulated checks.
+The panel explains that the inviter must submit first. Production origins,
+unlisted inboxes and invalid/closed saved invitations do not receive this helper.
+
 ## One full run
 
 1. Open the listing, choose Apply, and sign in. The internal banner offers

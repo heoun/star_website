@@ -6,6 +6,7 @@ import {createIdentityFixture} from './identity-fixtures.mjs';
 import {completeDemoState,DEMO_ENCRYPTION_KEY} from './demo-data.mjs';
 import {ids} from '../backend/tools/workspace-fixtures.mjs';
 import {rentalWorkflow} from '../worker/rentals.js';
+import {invitedTestRun} from '../worker/internal-testing.js';
 const nativeFetch=globalThis.fetch;
 let providerState={},clock=Date.now()-60000;
 const server=http.createServer(simulatorHandler({token:'test-only-secret',read:()=>structuredClone(providerState),save:s=>{providerState=s;},now:()=>clock}));
@@ -93,6 +94,17 @@ try {
  const earlyMail=mailTo(mate.email).at(-1),earlyLink=new URL(earlyMail.text.match(/http[^\s]+\/apply\/\?[^\s]+/)[0]);
  eq(earlyLink.searchParams.get('group'),lead);eq(earlyLink.searchParams.get('invited'),mate.email);
  assert(earlyMail.html.includes(earlyLink.href.replaceAll('&','&amp;')));checks++;
+ // Early invitation: prefill is available before a case exists, but does
+ // not authorize a join or create a second test run.
+ const earlyOptions=async(c=mateCookie,extra=`group=${lead}`,host='http://127.0.0.1')=>(await call(`/api/apply/options?id=${ids.listing}&${extra}`,null,c,host)).json();
+ eq((await earlyOptions()).internal_test_group,lead);eq((await earlyOptions()).internal_test_pending,true);
+ eq((await earlyOptions()).internal_testing,false);
+ eq((await earlyOptions(wrong)).internal_test_group,null);
+ eq((await earlyOptions(cookie)).internal_test_group,null);
+ eq((await earlyOptions(mateCookie,'group=invalid')).internal_test_group,null);
+ eq((await earlyOptions(mateCookie,`invite=${lead}.${crypto.randomUUID()}`)).internal_test_group,null);
+ eq((await earlyOptions(mateCookie,`group=${lead}`,'https://example.com')).internal_test_group,null);
+ eq(await invitedTestRun(env,new Request('http://127.0.0.1'),{subject:mate.id,email:mate.email},ids.listing,'',lead),null);
  r=await call('/api/apply',{...payload,group_root:lead,invited_email:mate.email},mateCookie);eq(r.status,409);
  eq(fixture.state.applications.some(a=>a.email===mate.email),false);
  fixture.state.emails.splice(fixture.state.emails.indexOf(earlyMail),1);
@@ -103,6 +115,7 @@ try {
  const inviteOptions=(c=mateCookie,extra=`group=${lead}`,host='http://127.0.0.1')=>call(`/api/apply/options?id=${ids.listing}&${extra}`,null,c,host).then(r=>r.json());
  const inviteToken=`${lead}.${leadRow.workspace.invitations[0].id}`;
  eq((await inviteOptions()).internal_test_group,lead);
+ eq((await inviteOptions()).internal_test_pending,false);
  eq((await inviteOptions()).internal_testing,false);
  eq((await inviteOptions(mateCookie,`invite=${inviteToken}`)).internal_test_group,lead);
  eq((await inviteOptions(wrong)).internal_test_group,null);

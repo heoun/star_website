@@ -2,16 +2,21 @@ import { internalTestAccount,internalTestListing,internalTestRoommates,internalT
 import { requireConfig } from './supabase.js';
 import { rentalWorkflow } from './rentals.js';
 export { internalTestAccount,internalTestListing,internalTestRoommates,internalTestParticipant };
-// Resolve the run from a live invitation, never from a browser-supplied test ID.
-export async function invitedTestRun(env,request,session,listingId,invitation='',rootId='') {
+// Sample answers may be filled before the lead submits an early invitation.
+// Only a saved, matching invitation supplies a run for actual submission.
+export async function invitedTestContext(env,request,session,listingId,invitation='',rootId='') {
   if(!internalTestParticipant(env,request,session) || !internalTestListing(env,listingId))return null;
   const parts=String(invitation).split('.'),root=rootId || parts[0];
   if(!/^[0-9a-f-]{36}$/i.test(root || '') || (invitation && (parts.length!==2 || parts[0]!==root)))return null;
   const group=await rentalWorkflow(env,request).store.group(root);
+  if(!group) return !invitation && rootId && internalTestRoommates(env).includes(session.email.toLowerCase()) ? {pendingGroup:root} : null;
   const run=group?.root.workspace?.test_run;
   if(!run || group.root.id!==root || group.root.listing_id!==listingId || ['sent_to_landlord','landlord_approved','lease_sent','lease_signed','declined'].includes(group.root.status))return null;
   const match=group.root.workspace.invitations?.some(i=>!i.accepted && i.email===session.email.toLowerCase() && Date.parse(i.expires)>=Date.now() && (!invitation || i.id===parts[1]));
-  return match ? {id:run.id,created_at:run.created_at,member_of:root} : null;
+  return match ? {run:{id:run.id,created_at:run.created_at,member_of:root}} : null;
+}
+export async function invitedTestRun(env,request,session,listingId,invitation='',rootId='') {
+  return (await invitedTestContext(env,request,session,listingId,invitation,rootId))?.run || null;
 }
 export async function submitTestApplication(request,env,session,values,runId) {
   if(!internalTestAccount(env,request,session) || !internalTestListing(env,values.listing_id))throw Object.assign(new Error('Internal testing is unavailable for this account or listing.'),{status:403});
