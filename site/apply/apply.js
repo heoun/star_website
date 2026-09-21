@@ -82,9 +82,15 @@ import { endDateFor } from "../shared/lease-dates.js";
   // Applying requires an applicant account: the Worker takes the
   // application's email from the signed-in session, so the form has to have
   // one. Whoever arrives without it goes to the portal and comes back here.
+  // An invitation link names the address it was sent to. The portal prefills
+  // it, and the form refuses to run under any other account, because the
+  // application is filed under whoever is signed in.
+  const invitedRaw = (new URLSearchParams(window.location.search).get("invited") || "").trim().toLowerCase();
+  const invited = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invitedRaw) ? invitedRaw : "";
   const portalSignIn = () => {
     window.location.replace(
       `../portal/?next=${encodeURIComponent(window.location.pathname + window.location.search)}`
+      + (invited ? `&email=${encodeURIComponent(invited)}` : "")
     );
   };
 
@@ -288,9 +294,12 @@ import { endDateFor } from "../shared/lease-dates.js";
     let automaticRental=false;
     let testApplication=null;
     const groupInvite=new URLSearchParams(location.search).get('invite') || '';
-    fetch(`/api/apply/options?id=${encodeURIComponent(id)}`).then(r=>r.json()).then(async options=>{
+    const groupRoot=new URLSearchParams(location.search).get('group') || '';
+    const joiningGroup=!!(groupInvite || groupRoot || invited);
+    const optionsQuery=new URLSearchParams({id,invite:groupInvite,group:groupRoot});
+    fetch(`/api/apply/options?${optionsQuery}`).then(r=>r.json()).then(async options=>{
       automaticRental=options.automatic===true;
-      if(options.internal_testing && !groupInvite){const {attachTestApplication}=await import('./internal-test.js');testApplication=attachTestApplication(form,id);}
+      if((options.internal_testing && !joiningGroup) || options.internal_test_group){const {attachTestApplication}=await import('./internal-test.js');testApplication=attachTestApplication(form,id,{groupId:options.internal_test_group});}
       if(!automaticRental)return;
       const section=document.createElement('div');section.className='field';
       const label=document.createElement('label');label.textContent='Agent you are working with';
@@ -300,11 +309,9 @@ import { endDateFor } from "../shared/lease-dates.js";
       const referred=new URLSearchParams(location.search).get('agent');
       if((options.agents || []).some(a=>a.email===referred))select.value=referred;
       label.append(select);section.append(label);
-      const note=document.createElement('p');note.textContent=groupInvite ? 'You are joining an invited application group. Submit with the invited email to accept. The group shares one lease.' : 'Choose the agent who helped you. If you are unsure, our team will assign someone.';section.append(note);
-      if(groupInvite)select.disabled=true;
-      form.querySelector('.form-step')?.prepend(section);
-      const inviteBox=form.elements.invite_roommates;
-      if(inviteBox){inviteBox.checked=true;inviteBox.disabled=true;}
+      const note=document.createElement('p');note.textContent=joiningGroup ? 'You are joining an invited application group. Complete your own application using the invited email. Your application will join the same case once submitted.' : 'Choose the agent who helped you. If you are unsure, our team will assign someone.';section.append(note);
+      if(joiningGroup){select.disabled=true;label.hidden=true;}
+      form.querySelector(`.form-step[data-step="${joiningGroup ? 2 : 1}"]`)?.prepend(section);
     }).catch(()=>{});
     const panels = Array.from(form.querySelectorAll(".form-step"));
     const stepLinks = Array.from(document.querySelectorAll(".step-link"));
@@ -475,9 +482,10 @@ import { endDateFor } from "../shared/lease-dates.js";
       if (hasPets() === "yes" && pets.count() === 0) pets.add();
     };
 
-    // A studio or one-bedroom home has no lease line for a roommate, so the
-    // question is answered by the listing rather than asked.
-    if (roommateCap === 0) {
+    // Invitees join the existing household and fill only their own answers;
+    // asking them to invite the lead again would create a circular invitation.
+    if (roommateCap === 0 || joiningGroup) {
+      form.elements.has_roommates.value="no";
       form.querySelector('[data-group="has_roommates"]')?.closest("fieldset")?.setAttribute("hidden", "");
       form.querySelectorAll('input[name="has_roommates"]').forEach((radio) => radio.removeAttribute("required"));
       document.querySelector('.step-link[data-step="1"]').closest('li').hidden=true;
@@ -490,7 +498,7 @@ import { endDateFor } from "../shared/lease-dates.js";
         : `You can add up to ${roommateCap} ${roommateCap === 1 ? "roommate" : "roommates"} for this home.`;
     }
 
-    const firstStep=roommateCap===0?2:1;
+    const firstStep=roommateCap===0 || joiningGroup?2:1;
     const visibleSteps=TOTAL_STEPS-firstStep+1;
     const displayStep=step=>step-firstStep+1;
     progress.setAttribute('aria-valuemax',String(visibleSteps));
@@ -943,11 +951,20 @@ import { endDateFor } from "../shared/lease-dates.js";
         ? `${petCount} ${petCount === 1 ? "pet" : "pets"}`
         : hasPets() === "no" ? "no pets" : "";
 
+      // An invited roommate who has since been removed from the step would
+      // apply on their own without joining this application, so the review
+      // says so before the applicant confirms.
+      const listed = new Set(hasRoommates() === "yes"
+        ? roommates.entries().filter(({ filled }) => filled).map(({ values }) => values.email.toLowerCase()) : []);
+      const dropped = [...invitedEmails].filter((address) => !listed.has(address));
+
       const lines = [
         [1, [roommateLine,
           hasRoommates() === "yes" && invitedEmails.size > 0
             ? `${invitedEmails.size} ${invitedEmails.size === 1 ? "invitation" : "invitations"} sent` : "",
-          hasRoommates() === "yes" && failedInvites.size > 0 ? "some invitations not sent yet" : ""]],
+          hasRoommates() === "yes" && failedInvites.size > 0 ? "some invitations not sent yet" : "",
+          dropped.length > 0
+            ? `${dropped.join(", ")} already received an invitation but is no longer listed. Add them back on the Roommates step so their application joins yours.` : ""]],
         [2, [`${value("first_name")} ${value("last_name")}`.trim(), value("phone"),
           value("id_number") ? idLabel : "",
           value("move_in") ? `lease starting ${toUsDate(value("move_in"))}` : "",
@@ -1098,8 +1115,17 @@ import { endDateFor } from "../shared/lease-dates.js";
     };
 
     const maybeSendInvites = () => {
-      if(automaticRental){announce('Roommate invitations will be sent after you submit your application.');return;}
-      if (hasRoommates() !== "yes" || field("invite_roommates")?.checked !== true) return;
+      if (hasRoommates() !== "yes") return;
+      // Unticked, the invitations wait for the lead's application fee; the
+      // Worker sends them once it is paid.
+      if (field("invite_roommates")?.checked !== true) {
+        if (automaticRental && roommates.entries().some(({ filled }) => filled)) {
+          const status = document.getElementById("invite-status");
+          if (status) status.textContent = "Your roommates will be invited after you pay the application fee.";
+          announce("Roommate invitations will be sent after you pay the application fee.");
+        }
+        return;
+      }
       const pending = roommates.entries().filter(({ filled }) => filled)
         .map(({ values }) => ({
           first_name: values.first_name, last_name: values.last_name, email: values.email
@@ -1130,7 +1156,10 @@ import { endDateFor } from "../shared/lease-dates.js";
       fetch("/api/apply/invite", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ listing_id: id, roommates: pending })
+        body: JSON.stringify({
+          listing_id: id, roommates: pending,
+          ...(testApplication ? { test_run_id: testApplication.id() } : {})
+        })
       }).then(async (response) => {
         let data = null;
         try { data = await response.json(); } catch { data = null; }
@@ -1154,6 +1183,12 @@ import { endDateFor } from "../shared/lease-dates.js";
         ...(testApplication?{test_run_id:testApplication.id()}:{}),
         sales_person: form.elements.sales_person?.value || "",
         group_invite: groupInvite,
+        group_root: groupRoot,
+        invited_email: invited,
+        account_email: value("email"),
+        // Roommates already emailed from the first step, so the Worker does
+        // not invite them a second time.
+        invited_emails: [...invitedEmails],
         first_name: value("first_name"),
         last_name: value("last_name"),
         dob: toUsDate(value("dob")),
@@ -1419,6 +1454,10 @@ import { endDateFor } from "../shared/lease-dates.js";
   ])
     .then(([property, me]) => {
       if (!me) {
+        portalSignIn();
+        return;
+      }
+      if (invited && String(me.email || "").toLowerCase() !== invited) {
         portalSignIn();
         return;
       }

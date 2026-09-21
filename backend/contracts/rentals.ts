@@ -5,9 +5,12 @@ export interface RentalGroup { root: WorkspaceApplication; members: WorkspaceApp
 export interface RentalStore {
   group(id: string): Promise<RentalGroup | null>;
   save(group: RentalGroup, patches: Record<string, Record<string, unknown>>, actor: string, join?: WorkspaceApplication): Promise<void>;
+  separate(group: RentalGroup, memberId: string, remainingRoot: string, remove: boolean, patches: Record<string, Record<string, unknown>>, actor: string): Promise<void>;
   staff(): Promise<{ email: string; name?: string; role: string; active: boolean; property_ids?: string[] }[]>;
   pending(): Promise<string[]>;
   list(principal: RentalPrincipal): Promise<RentalGroup[]>;
+  // Every automatic-flow group for one listing, competing groups included.
+  listing(listingId: string): Promise<RentalGroup[]>;
 }
 export interface RentalScreening {
   // Idempotent per application and input version; returns pending when a vendor is not connected.

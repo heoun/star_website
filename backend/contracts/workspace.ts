@@ -12,7 +12,7 @@ export interface WorkspaceProperty {
 export type WorkspaceAction = "assign" | "checks" | "approve" | "request_info" | "decline"
   | "terms" | "review_and_recommend" | "recommend" | "landlord_accept" | "landlord_changes" | "landlord_decline"
   | "note" | "admin_note" | "prepare_lease" | "record_tenant_signature" | "record_landlord_signature" | "archive_lease"
-  | "invite_member" | "cancel_invite" | "merge_member" | "automatic_share" | "tenant_signed" | "refresh_draft";
+  | "invite_member" | "cancel_invite" | "merge_member" | "split_member" | "remove_member" | "automatic_share" | "tenant_signed" | "refresh_draft";
 export interface LeaseFile { path: string; name: string; size: number; uploaded_at: string }
 export interface WorkspaceTerms {
   "lease.effective_date"?: string;

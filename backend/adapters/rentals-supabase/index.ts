@@ -19,6 +19,12 @@ export function makeRentalStore(config: {url: string; key: string}): RentalStore
       for(let offset=0;;offset+=200) {q.set('offset',String(offset));q.set('limit','200');const page=await request(`applications?${q}`);rows.push(...page);if(page.length<200)break;}
       return rows.filter(r=>(r.rental_group_id || r.id)===r.id).map(root=>({root,members:rows.filter(m=>(m.rental_group_id || m.id)===root.id)}));
     },
+    async listing(listingId) {
+      const q=new URLSearchParams({select,listing_id:`eq.${listingId}`,'workspace->>rental_flow':'eq.automatic',order:'created_at.asc,id.asc'});
+      const rows:WorkspaceApplication[]=[];
+      for(let offset=0;;offset+=200) {q.set('offset',String(offset));q.set('limit','200');const page=await request(`applications?${q}`);rows.push(...page);if(page.length<200)break;}
+      return rows.filter(r=>(r.rental_group_id || r.id)===r.id).map(root=>({root,members:rows.filter(m=>(m.rental_group_id || m.id)===root.id)}));
+    },
     async group(id) {
       const [row] = await request(`applications?${new URLSearchParams({id:`eq.${id}`,select})}`);
       if (!row) return null;
@@ -30,6 +36,9 @@ export function makeRentalStore(config: {url: string; key: string}): RentalStore
     },
     async save(group,patches,actor,join) {
       await request('rpc/commit_rental_group', {p_root:group.root.id,p_versions:Object.fromEntries([...group.members,...(join ? [join] : [])].map(m=>[m.id,m.workspace_version || 0])),p_patches:patches,p_actor:actor,p_join:join?.id || null});
+    },
+    async separate(group,memberId,remainingRoot,remove,patches,actor) {
+      await request('rpc/separate_rental_member',{p_root:group.root.id,p_versions:Object.fromEntries(group.members.map(m=>[m.id,m.workspace_version || 0])),p_member:memberId,p_remaining_root:remainingRoot,p_delete:remove,p_patches:patches,p_actor:actor});
     },
     async staff() { return request('staff?select=email,name,role,active,property_ids'); },
     async pending() {

@@ -404,7 +404,7 @@ directly and never holds a token JavaScript can read — the session is an
 HttpOnly cookie carrying Supabase's access and refresh tokens, validated
 (and quietly refreshed) by the Worker on every request.
 
-Registration confirms the email with a 6-digit code before the account
+Registration confirms the email with a verification code before the account
 works, because everything the portal shows is claimed by email, and an
 unverified address would let anyone read a stranger's application by typing
 their email into a signup form. "Forgot your password" is the same proof
@@ -453,7 +453,7 @@ where noted):
    server-side; the portal answers 503 without it.
 4. In the Supabase dashboard, Authentication → Emails → Templates: edit
    **Confirm signup**, **Magic Link** and **Reset password** so the body shows
-   `{{ .Token }}` — the 6-digit code — instead of (or beside) the
+   `{{ .Token }}` — the email verification code — instead of (or beside) the
    confirmation link. The portal verifies codes; it has no page for the
    link to land on.
 5. Production only — Authentication → Emails → SMTP: configure custom SMTP

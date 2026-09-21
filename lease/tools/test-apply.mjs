@@ -489,6 +489,9 @@ check("naming the inviter's account", (sentEmails[0]?.text || "").includes(ACCOU
 check("and pointing at the apply page",
   (sentEmails[0]?.text || "").includes(`/apply/?id=${LISTING_ID}`),
   (sentEmails[0]?.text || "").slice(0, 200));
+check("naming the invited address in the link",
+  (sentEmails[0]?.text || "").includes("invited=roo%40example.invalid"),
+  (sentEmails[0]?.text || "").slice(0, 200));
 
 reset();
 bedroomsValue = "3";

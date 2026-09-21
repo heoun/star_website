@@ -57,6 +57,14 @@ export function createWorkspaceFixtures(saved) {
       Object.assign(row, body.p_patch); row.workspace_version++; row.updated_at = new Date().toISOString();
       return response([embed(row)]);
     }
+    if(table==='separate_rental_member') {
+      const group=state.applications.filter(a=>(a.rental_group_id || a.id)===body.p_root);
+      if(group.length<2 || group.length!==Object.keys(body.p_versions).length || group.some(a=>a.workspace_version!==body.p_versions[a.id]))return response({error:'Changed'},409);
+      if(!group.some(a=>a.id===body.p_member) || !group.some(a=>a.id===body.p_remaining_root) || body.p_member===body.p_remaining_root)return response({error:'Invalid membership'},409);
+      for(const member of group){Object.assign(member,structuredClone(body.p_patches[member.id]));member.rental_group_id=member.id===body.p_member?member.id:body.p_remaining_root;member.workspace_version++;}
+      if(body.p_delete){state.applications=state.applications.filter(a=>a.id!==body.p_member);state.documents=state.documents.filter(d=>d.application_id!==body.p_member);}
+      return new Response(null,{status:204});
+    }
     if(table==='commit_rental_group') {
       const root=state.applications.find(a=>a.id===body.p_root);
       const group=state.applications.filter(a=>(a.rental_group_id || a.id)===body.p_root);
@@ -79,7 +87,7 @@ export function createWorkspaceFixtures(saved) {
       state.applications.push(row);return response(row);
     }
     if (table === "applications") {
-      let rows = state.applications.filter(row => match(row, q, "id") && match(row, q, "workspace_version") && (!q.has("rental_group_id") || String(row.rental_group_id || row.id)===q.get("rental_group_id").replace(/^eq\./,"")));
+      let rows = state.applications.filter(row => match(row, q, "id") && match(row, q, "workspace_version") && (!q.has("rental_group_id") || String(row.rental_group_id || row.id)===q.get("rental_group_id").replace(/^eq\./,"")) && (!q.has("listing_id") || String(row.listing_id)===q.get("listing_id").replace(/^eq\./,"")));
       if (q.has("or")) { const person = /responsible_email\.eq\."((?:\\.|[^"])*)"/.exec(q.get("or"))?.[1]?.replace(/\\([\\"])/g, "$1"); rows = rows.filter(row => row.responsible_email === person || row.collaborator_emails.includes(person)); }
       if (q.has("listings.building_id")) rows = rows.filter(row => q.get("listings.building_id").includes(embed(row).listings?.building_id));
       if (q.has("workspace->recommendation->>landlord_email")) rows = rows.filter(row => [`eq."${row.workspace?.recommendation?.landlord_email}"`,`eq.${row.workspace?.recommendation?.landlord_email}`].includes(q.get("workspace->recommendation->>landlord_email")));

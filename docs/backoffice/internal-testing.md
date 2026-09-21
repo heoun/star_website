@@ -31,6 +31,26 @@ HttpOnly login cookie represents one identity per browser profile. The internal
 Admin preview is available only locally without a workspace session;
 it is never accepted as the landlord's emailed decision.
 
+Roommates must open the complete invitation email link, not the listing's
+ordinary `/apply/?id=…` URL. Invitations include `invited` plus `invite` (a
+saved invitation) or `group` (an early invitation for a specific test run).
+An invitation opened in the lead's browser shows account creation for the
+invited email, with a sign-in option for an existing account. Once authenticated,
+the roommate returns to that invitation and fills their own details. If the
+lead has not submitted the run yet, the roommate can fill the form but must
+retry submission after the lead submits. Multiple open invitations for the
+same inbox require a case-specific link; a generic link cannot pick a case.
+Switching applicant accounts affects other tabs in that browser, so submission
+checks the account again and refuses to file answers under a different login.
+
+For an allowlisted roommate, a live invitation to a saved internal test case also
+shows **Fill With Sample Data**. It preserves the invited email and case, offers
+no new-run button, and does not create a separate test root. After submission,
+**Continue to Payment & Documents** opens that roommate's own simulated fee,
+sample-document upload, and credit-screening steps. The test marker is saved
+with the application so these pages work on the first portal visit, before any
+background reconciliation. Each roommate completes their own fee and screening.
+
 ## One full run
 
 1. Open the listing, choose Apply, and sign in. The internal banner offers
@@ -81,9 +101,20 @@ Payment, screening, landlord revision and signing package belong to that specifi
 application. The portal's Application / Test Run selector retains prior attempts.
 No destructive reset or overwriting of an old approval/signature is needed.
 
-The default rehearsal is one tenant, matching the designated test inbox. It
-rejects roommate invitations in internal runs. Ordinary multi-applicant workflows
-remain separate and keep their existing duplicate-application and invitation rules.
+The lead tenant is the designated test inbox. Roommates are allowed when every
+roommate email is in `INTERNAL_TEST_ROOMMATE_EMAILS`; each roommate signs in as
+itself, submits its own application and uploads its own files, and its portal
+offers the same simulated payment and screening because the application inherits
+the lead's run. With real delivery on, mail leaves the machine only for the
+designated inbox, the landlord inbox and these roommate inboxes. Fill With
+Sample Data leaves an answered roommate step alone, so a roommate named before
+the fill stays on the case. The home's bedroom count caps the group (two people in a
+two-bedroom home), and a sandbox envelope holds the landlord plus at most four
+tenants. Invitations follow the ordinary rules: ticked on the roommate step they
+are emailed at once, otherwise after the lead's fee is paid; a roommate who
+applies from the plain link joins the group that named their email, and one who
+applied first is adopted when the lead submits. Ordinary multi-applicant
+workflows keep their existing duplicate-application rules.
 
 All helper entry points require loopback origin, explicit enablement, the pinned
 development database hostname, DocuSign demo mode, the verified user ID and email,

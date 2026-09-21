@@ -6,7 +6,7 @@ import type { RentalDependencies } from '../contracts/rentals.ts';
 import { internalTesting } from './internal-testing.ts';
 import { makeScreeningSimulator } from '../adapters/screening-simulator/index.ts';
 export { screeningIssue } from '../core/screening.ts';
-export { rentalMembers } from '../core/rentals.ts';
+export { rentalMembers, householdCapacity, capacityMessage } from '../core/rentals.ts';
 export function rentalsFor(config:{url:string;key:string}, env:Record<string,any>, request:Request,
   policy:Pick<RentalDependencies,'missingDocuments'|'lease'|'landlord'>) {
   const store=makeRentalStore(config);

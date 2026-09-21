@@ -4,7 +4,10 @@ import { WorkspaceError } from './workspace.ts';
 export function makeApplicantChecks(store:RentalStore,provider:ApplicantChecksProvider,missingDocuments:(row:any)=>string[]) {
   return {async execute(id:string,actor:{email:string;subject:string},action:string,body:Record<string,unknown>) {
     const group=await store.group(id),row=group?.members.find(m=>m.id===id);
-    if(!group || !row || row.email!==actor.email || row.workspace?.test_run?.account_id!==actor.subject)throw new WorkspaceError('Test application not found.',404);
+    // The lead's run is bound to the designated account; a roommate's copy is
+    // bound to the group it joined and to their own signed-in address.
+    const run=row?.workspace?.test_run;
+    if(!group || !row || !run || row.email!==actor.email || (run.member_of ? run.member_of!==group.root.id : run.account_id!==actor.subject))throw new WorkspaceError('Test application not found.',404);
     if(['sent_to_landlord','landlord_approved','lease_sent','lease_signed','declined'].includes(group.root.status) || group.root.workspace?.signing)throw new WorkspaceError('This application has already progressed. Start a new test run.',409);
     const w=structuredClone(row.workspace!);
     if(action==='payment') {

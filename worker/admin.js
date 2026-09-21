@@ -580,6 +580,11 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
     if (!isManager(identity)) {
       return json({ error: "Only a manager can delete an application." }, 403);
     }
+    if(rentalMode(env)) {
+      const group=await rentalWorkflow(env,request).load(identity,id);
+      if(group.members.length>1)return json({error:'Remove this applicant from Application group so the remaining members and invitations are updated together.'},409);
+      if(group.root.workspace?.signing || group.root.workspace?.signed_lease)return json({error:'Applications with signing history must be retained.'},409);
+    }
     await deleteApplication(env, id);
     // The database cascade removes the document rows; the bytes in R2 are
     // this Worker's to clean up.

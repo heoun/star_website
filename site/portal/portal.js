@@ -35,8 +35,13 @@
   const rawNext = new URLSearchParams(window.location.search).get("next") || "";
   const nextPath = /^\/(?!\/)/.test(rawNext) ? rawNext : "";
 
+  // An invitation link arrives with the address it was sent to, so the
+  // sign-in and account forms start with it filled in.
+  const invitedRaw = (new URLSearchParams(window.location.search).get("email") || "").trim().toLowerCase();
+  const invitedEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(invitedRaw) ? invitedRaw : "";
+
   const state = {
-    email: "",      // carried between the auth steps
+    email: invitedEmail,      // carried between the auth steps
     data: null      // the signed-in payload: email, document_types, applications
   };
   let testTools=null,selectedId=new URLSearchParams(location.search).get('application'),pollTimer;
@@ -76,10 +81,7 @@
     el.hidden = !message;
   };
 
-  const arrived = () => {
-    if (nextPath) window.location.replace(nextPath);
-    else load();
-  };
+  const arrived = () => load();
 
   const validEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
@@ -110,13 +112,15 @@
   function renderSignIn() {
     container.innerHTML = `
       <h1>Applicant Portal</h1>
-      <p class="lede">${nextPath.startsWith("/apply/")
-        ? "Sign in, or create your account, to continue your application. Your account is where you follow its progress and upload your documents afterwards."
-        : "Follow your rental application and upload your supporting documents. Sign in with your applicant account."}</p>
+      <p class="lede">${invitedEmail
+        ? `This invitation was sent to ${escapeHtml(invitedEmail)}. Sign in with that address, or create your account with it, to continue the application.`
+        : nextPath.startsWith("/apply/")
+          ? "Sign in, or create your account, to continue your application. Your account is where you follow its progress and upload your documents afterwards."
+          : "Follow your rental application and upload your supporting documents. Sign in with your applicant account."}</p>
       <form class="portal-login" id="signin-form" novalidate>
         <label for="login-email">Email</label>
         <input id="login-email" type="email" maxlength="180" autocomplete="email" required
-               value="${escapeHtml(state.email)}">
+               value="${escapeHtml(state.email)}" ${invitedEmail ? 'readonly' : ''}>
         <label for="login-password">Password</label>
         <input id="login-password" type="password" maxlength="200" autocomplete="current-password" required>
         <button type="submit" class="submit">Sign in</button>
@@ -143,11 +147,12 @@
       const email = document.getElementById("login-email").value.trim();
       const password = document.getElementById("login-password").value;
       if (!validEmail(email)) throw new Error("Please enter a valid email address.");
+      if (invitedEmail && email.toLowerCase() !== invitedEmail) throw new Error("Sign in with the email this invitation was sent to.");
       if (!password) throw new Error("Please enter your password.");
 
       state.email = email.toLowerCase();
       await postJson("/login", { email, password });
-      arrived();
+      await arrived();
     });
   }
 
@@ -156,12 +161,12 @@
   function renderRegister() {
     container.innerHTML = `
       <h1>Create your account</h1>
-      <p class="lede">Use the email address you want your application filed under.
+      <p class="lede">${invitedEmail ? `You’re invited to join a rental application. Create your own account with ${escapeHtml(invitedEmail)}, or sign in below if you already have one.` : 'Use the email address you want your application filed under.'}
         We will send a code to confirm it is yours.</p>
       <form class="portal-login" id="register-form" novalidate>
         <label for="reg-email">Email</label>
         <input id="reg-email" type="email" maxlength="180" autocomplete="email" required
-               value="${escapeHtml(state.email)}">
+               value="${escapeHtml(state.email)}" ${invitedEmail ? 'readonly' : ''}>
         <label for="reg-password">Password <span class="hint">(at least 8 characters)</span></label>
         <input id="reg-password" type="password" maxlength="200" autocomplete="new-password" required>
         <label for="reg-confirm">Password, again</label>
@@ -187,6 +192,7 @@
       const confirm = document.getElementById("reg-confirm").value;
 
       if (!validEmail(email)) throw new Error("Please enter a valid email address.");
+      if (invitedEmail && email.toLowerCase() !== invitedEmail) throw new Error("Create your account with the email this invitation was sent to.");
       if (password.length < 8) throw new Error("Please choose a password of at least 8 characters.");
       if (password !== confirm) throw new Error("The two passwords do not match.");
 
@@ -200,19 +206,19 @@
       // A project with email confirmation turned off signs the account in on
       // the spot; otherwise the code is on its way.
       if (result && result.confirm) renderRegisterCode();
-      else arrived();
+      else await arrived();
     });
   }
 
   function renderRegisterCode() {
     container.innerHTML = `
       <h1>Check your email</h1>
-      <p class="lede">We sent a 6-digit code to <b>${escapeHtml(state.email)}</b>.
+      <p class="lede">We sent a verification code to <b>${escapeHtml(state.email)}</b>.
         It is good for about an hour. If it is not in your inbox, check spam.</p>
       <form class="portal-login" id="code-form" novalidate>
         <label for="login-code">Code</label>
-        <input id="login-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
-               placeholder="••••••" required>
+        <input id="login-code" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="8"
+               placeholder="Email code" required>
         <button type="submit" class="submit">Create account</button>
         <p class="form-error" hidden></p>
       </form>
@@ -240,10 +246,10 @@
 
     wireForm("code-form", "Creating…", async () => {
       const code = document.getElementById("login-code").value.replace(/\D/g, "");
-      if (code.length !== 6) throw new Error("Please enter the 6-digit code from the email.");
+      if (!/^\d{6,8}$/.test(code)) throw new Error("Please enter the complete 6–8 digit code from the email.");
 
       await postJson("/verify-register", { email: state.email, code });
-      arrived();
+      await arrived();
     });
   }
 
@@ -252,12 +258,12 @@
   function renderResetRequest() {
     container.innerHTML = `
       <h1>Reset your password</h1>
-      <p class="lede">Enter your account email. If it has an account, a 6-digit code
+      <p class="lede">Enter your account email. If it has an account, a verification code
         is on its way to it.</p>
       <form class="portal-login" id="reset-form" novalidate>
         <label for="reset-email">Email</label>
         <input id="reset-email" type="email" maxlength="180" autocomplete="email" required
-               value="${escapeHtml(state.email)}">
+               value="${escapeHtml(state.email)}" ${invitedEmail ? 'readonly' : ''}>
         <button type="submit" class="submit">Email me a code</button>
         <p class="form-error" hidden></p>
       </form>
@@ -272,6 +278,7 @@
     wireForm("reset-form", "Sending…", async () => {
       const email = document.getElementById("reset-email").value.trim();
       if (!validEmail(email)) throw new Error("Please enter a valid email address.");
+      if (invitedEmail && email.toLowerCase() !== invitedEmail) throw new Error("Use the email this invitation was sent to.");
 
       await postJson("/request-reset", { email });
       state.email = email.toLowerCase();
@@ -282,12 +289,12 @@
   function renderResetCode() {
     container.innerHTML = `
       <h1>Check your email</h1>
-      <p class="lede">If <b>${escapeHtml(state.email)}</b> has an account, a 6-digit code
+      <p class="lede">If <b>${escapeHtml(state.email)}</b> has an account, a verification code
         was sent to it. Enter the code and choose a new password.</p>
       <form class="portal-login" id="reset-code-form" novalidate>
         <label for="login-code">Code</label>
-        <input id="login-code" inputmode="numeric" autocomplete="one-time-code" maxlength="6"
-               placeholder="••••••" required>
+        <input id="login-code" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="8"
+               placeholder="Email code" required>
         <label for="new-password">New password <span class="hint">(at least 8 characters)</span></label>
         <input id="new-password" type="password" maxlength="200" autocomplete="new-password" required>
         <label for="new-confirm">New password, again</label>
@@ -322,12 +329,12 @@
       const password = document.getElementById("new-password").value;
       const confirm = document.getElementById("new-confirm").value;
 
-      if (code.length !== 6) throw new Error("Please enter the 6-digit code from the email.");
+      if (!/^\d{6,8}$/.test(code)) throw new Error("Please enter the complete 6–8 digit code from the email.");
       if (password.length < 8) throw new Error("Please choose a password of at least 8 characters.");
       if (password !== confirm) throw new Error("The two passwords do not match.");
 
       await postJson("/verify-reset", { email: state.email, code, password });
-      arrived();
+      await arrived();
     });
   }
 
@@ -602,17 +609,26 @@
   async function load() {
     try {
       state.data = await api("/applications");
-      if(state.data.internal_testing && !testTools)testTools=await import('./internal-test.js');
+      // An invitation opened under another account starts invitee registration;
+      // existing applicants can sign in without losing the invitation URL.
+      if (invitedEmail && String(state.data.email || "").toLowerCase() !== invitedEmail) {
+        state.data = null;
+        state.email = invitedEmail;
+        renderRegister();
+        return;
+      }
       // Someone who arrived here mid-application and is already signed in
       // goes straight back to the form.
       if (nextPath) {
         window.location.replace(nextPath);
         return;
       }
+      if(state.data.internal_testing && !testTools)testTools=await import('./internal-test.js');
       renderDashboard();
     } catch (error) {
       if (error.status === 401) {
-        renderSignIn();
+        if (invitedEmail) renderRegister();
+        else renderSignIn();
       } else {
         container.innerHTML = `<p class="state">${escapeHtml(error.message)}</p>`;
       }

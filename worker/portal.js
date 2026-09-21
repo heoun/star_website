@@ -1,7 +1,7 @@
 import { storageBucket } from "./storage.js";
 import { runRentalAutomation } from "./rentals.js";
 import { applicantChecksFor } from '../backend/app/applicant-checks.ts';
-import { internalTestAccount,internalTestListing } from './internal-testing.js';
+import { internalTestParticipant,internalTestListing } from './internal-testing.js';
 // The applicant portal: /portal/ in the browser, /api/portal/* here.
 //
 // Applying for a home starts with an account, and the accounts are Supabase
@@ -42,7 +42,7 @@ import {
 import { requireConfig } from './supabase.js';
 
 const CONTACT_EMAIL = "info@starreusa.com";
-const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
+import { MAIL_FROM as FROM_ADDRESS } from './mail-layout.js';
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -265,7 +265,7 @@ export function toPortalApplication(row) {
 async function handleList(env, session,request) {
   const rows = await fetchApplicationsByEmail(env, session.email);
   const applications = rows.map(toPortalApplication);
-  return json({ email: session.email, internal_testing:internalTestAccount(env,request,session),document_types: DOCUMENT_TYPES, applications });
+  return json({ email: session.email, internal_testing:internalTestParticipant(env,request,session),document_types: DOCUMENT_TYPES, applications });
 }
 
 async function handleUpload(request, env, ctx, session, applicationId) {
@@ -278,7 +278,7 @@ async function handleUpload(request, env, ctx, session, applicationId) {
     return json({ error: "Application not found." }, 404);
   }
 
-  if(application.workspace?.test_run && (!internalTestAccount(env,request,session) || application.workspace.test_payment?.status!=='paid'))return json({error:'Complete the internal test payment before uploading materials.'},409);
+  if(application.workspace?.test_run && (!internalTestParticipant(env,request,session) || application.workspace.test_payment?.status!=='paid'))return json({error:'Complete the internal test payment before uploading materials.'},409);
 
   const form = await request.formData().catch(() => null);
   const file = form?.get("file");
@@ -406,9 +406,11 @@ export async function handlePortalRequest(request, env, ctx, pathname) {
     } else if (resource === "applications" && !id && request.method === "GET") {
       response = await handleList(env, session,request);
     } else if(resource==='applications' && UUID_PATTERN.test(id || '') && ['payment','screening','refresh'].includes(subresource) && request.method==='POST') {
-      if(!internalTestAccount(env,request,session))return json({error:'Test actions are unavailable.'},403);
-      const application=await fetchPortalApplication(env,id);
-      if(application?.email!==session.email || application.workspace?.test_run?.account_id!==session.subject || !internalTestListing(env,application.listing_id))return json({error:'Test application not found.'},404);
+      if(!internalTestParticipant(env,request,session))return json({error:'Test actions are unavailable.'},403);
+      const application=await fetchPortalApplication(env,id),run=application?.workspace?.test_run;
+      // The lead's run is bound to the designated account; a roommate's copy is
+      // bound to the group it joined and to their own signed-in address.
+      if(application?.email!==session.email || !run || (!run.member_of && run.account_id!==session.subject) || !internalTestListing(env,application.listing_id))return json({error:'Test application not found.'},404);
       if(subresource==='refresh'){await runRentalAutomation(env,request,id);response=json({ok:true});}
       else {
         const body=await request.json().catch(()=>null);if(!body)return json({error:'Send this form as JSON.'},422);

@@ -72,8 +72,9 @@ try {
  // A missing member document or unresolved roommate invitation also blocks a decision.
  reset();for(const a of members())a.workspace.screening_result=reportFixture(a.id);
  root().workspace.invitations=[{id:crypto.randomUUID(),name:'Invited applicant',email:'pending@example.test',expires:'2099-01-01'}];
- await flow.reconcile(ids.b);eq(fixture.state.emails.length,0);
- root().workspace.invitations=[];
+ // The open invitation goes out (the lead's fee is paid) while the landlord packet is held.
+ await flow.reconcile(ids.b);eq(fixture.state.emails.map(m=>m.to[0]),['pending@example.test']);eq(['sent','preview'].includes(root().workspace.invitations[0].delivery),true);
+ root().workspace.invitations=[];fixture.state.emails=[];
  const docs=fixture.state.documents;fixture.state.documents=docs.filter(d=>d.application_id!==mate().id);
  await flow.reconcile(ids.b);eq(fixture.state.emails.length,0);fixture.state.documents=docs;
  await flow.reconcile(ids.b);eq(fixture.state.emails.length,1);

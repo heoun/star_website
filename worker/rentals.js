@@ -44,6 +44,30 @@ export async function rentalApplyOptions(env,listingId) {
   if(!listing) return [];
   return (await fetchStaff(env)).filter(s=>s.active && s.role==='agent' && s.property_ids?.includes(listing.building_id)).map(s=>({email:s.email,name:s.name || s.email}));
 }
+// A roommate who applies without their invitation link still joins the group
+// that named their email for this home, while that invitation stands.
+export async function findOpenInvitation(env,request,listingId,email,rootId='') {
+  const address=String(email || '').toLowerCase();
+  const store=rentalWorkflow(env,request).store;
+  const groups=rootId ? [await store.group(rootId)].filter(Boolean) : await store.listing(listingId);
+  const matches=[];
+  for(const g of groups) {
+    if(rootId && g.root.id!==rootId) continue;
+    if(g.root.listing_id!==listingId) continue;
+    if(['sent_to_landlord','landlord_approved','lease_sent','lease_signed','declined'].includes(g.root.status)) continue;
+    const invitation=(g.root.workspace?.invitations || []).find(i=>!i.accepted && i.email===address && Date.parse(i.expires)>=Date.now());
+    if(invitation) matches.push(`${g.root.id}.${invitation.id}`);
+  }
+  if(matches.length>1) throw Object.assign(new Error('More than one case has invited this email. Ask your agent for the invitation link to the intended case.'),{status:409});
+  return matches[0] || '';
+}
+// Whether the group still has a seat for `email`. Someone already in the
+// group is not counted against themselves, so a repeat submission reaches
+// the database and is refused as the duplicate it is.
+export async function groupHasRoom(env,request,invitation,capacity,email) {
+  const g=await rentalWorkflow(env,request).store.group(String(invitation).split('.')[0]);
+  return !!g && g.members.filter(m=>String(m.email || '').toLowerCase()!==String(email || '').toLowerCase()).length<capacity;
+}
 export async function submitRental(env,values,invitation) {
   const {url,key}=requireConfig(env);
   const parts=String(invitation || '').split('.');

@@ -3,13 +3,13 @@
 import { fetchListings, fetchListing, toAdminListing, requireConfig, fetchStaff, fetchApplicationForLease, fetchBuilding, fetchBuildings, fetchLeaseLayers, fetchLeaseSettingsLayer } from "./supabase.js";
 import { dealValues, resolveValues, LEASE_REGISTRY } from "./lease.js";
 import { parseDate } from "../site/shared/lease-dates.js";
-import { DOCUMENT_TYPES, requireDocsBucket } from "./portal.js";
+import { DOCUMENT_TYPES, requireDocsBucket, deleteDocumentsByPrefix } from "./portal.js";
 import { documentSummary } from "../site/admin/application-view.js";
 import { sendEmail } from "./email.js";
 import { rentalMode, rentalWorkflow } from "./rentals.js";
 import { handleRentalSigning } from './signing.js';
 
-const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
+import { MAIL_FROM as FROM_ADDRESS } from './mail-layout.js';
 import { workspaceFor, projectCase, projectLandlordProperty } from "../backend/app/workspace.ts";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -43,7 +43,9 @@ export async function handleCaseWorkspace(request, env, identity, id, subresourc
         if(!command || typeof command!=='object' || Array.isArray(command)) return json({error:'Invalid action.'},422);
         delete command.lease_snapshot;
         if(command.action==='archive_lease') return json({error:'Upload the fully signed lease PDF.'},422);
-        return json({case:await flow.execute(identity,id,command)});
+        const result=await flow.execute(identity,id,command);
+        if(result.membership_change?.action==='remove_member')ctx.waitUntil(deleteDocumentsByPrefix(env,`${result.membership_change.member_id}/`).catch(()=>console.error('Removed applicant attachment cleanup requires retry')));
+        return json({case:result});
       }
     }
     if (!id && request.method === "GET") return json({ cases: await workspace.list(identity), document_types: types });

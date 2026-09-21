@@ -119,10 +119,13 @@ INTERNAL_TEST_DATABASE_HOST=
 INTERNAL_TEST_USER_ID=
 INTERNAL_TEST_EMAIL=
 INTERNAL_TEST_LANDLORD_EMAIL=
+# Roommate inboxes an internal run may invite, comma separated. Each signs in
+# as itself; a sandbox envelope holds the landlord plus at most four tenants.
+INTERNAL_TEST_ROOMMATE_EMAILS=
 INTERNAL_TEST_LISTING_IDS=
 SCREENING_SIMULATOR_URL=http://127.0.0.1:8794
 SCREENING_SIMULATOR_TOKEN=
 # For this profile: RENTAL_AUTOMATION=on, RENTAL_SCREENING=simulator,
 # SITE_ORIGIN=http://127.0.0.1:8787, DEV_REAL_EMAIL=true.
-# Real test email is restricted to the two configured inboxes.
+# Real test email is restricted to configured lead, landlord and roommate inboxes.
 # Start both services and the scheduler with npm run dev:journey.

@@ -13,6 +13,7 @@ import { handleDocusignWebhook, reconcileSigning } from './signing.js';
 import { readSession } from './auth.js';
 import { internalTesting,internalTestAccount,internalTestListing } from '../backend/app/internal-testing.ts';
 import { handleLandlordDecision } from './landlord-decision.js';
+import { invitedTestRun } from './internal-testing.js';
 
 export default {
   async scheduled(_event,env,ctx) {
@@ -27,7 +28,8 @@ export default {
     if(pathname==='/api/apply/options' && request.method==='GET') {
       try {
         const session=internalTesting(env,request)?await readSession(request,env):null;
-        const response=Response.json({automatic:rentalMode(env),internal_testing:internalTestAccount(env,request,session) && internalTestListing(env,url.searchParams.get('id')),agents:rentalMode(env) ? await rentalApplyOptions(env,url.searchParams.get('id')) : []},{headers:{'Cache-Control':'no-store'}});
+        const invitedRun=rentalMode(env) ? await invitedTestRun(env,request,session,url.searchParams.get('id'),url.searchParams.get('invite') || '',url.searchParams.get('group') || '') : null;
+        const response=Response.json({automatic:rentalMode(env),internal_testing:internalTestAccount(env,request,session) && internalTestListing(env,url.searchParams.get('id')),internal_test_group:invitedRun?.member_of || null,agents:rentalMode(env) ? await rentalApplyOptions(env,url.searchParams.get('id')) : []},{headers:{'Cache-Control':'no-store'}});
         if(session?.setCookie)response.headers.append('Set-Cookie',session.setCookie);return response;
       }
       catch {return Response.json({error:'Application options are unavailable.'},{status:503});}

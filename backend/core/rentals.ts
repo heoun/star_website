@@ -5,6 +5,17 @@ import { canAccessCase, projectCase, makeWorkspace, WorkspaceError, TERM_FIELDS 
 const address = (v: unknown) => String(v || '').trim().toLowerCase();
 const text = (v: unknown, max=2000) => String(v || '').trim().slice(0,max);
 const terminal = (g: RentalGroup) => ['lease_sent','lease_signed','declined'].includes(g.root.status);
+// One lease signer per bedroom, so a two-bedroom home takes the applicant and
+// one roommate and a studio takes one person. An unreadable bedroom count
+// allows one roommate, as the application form does.
+export function householdCapacity(listing?: unknown) {
+  const bedrooms=parseInt(String((listing as {bedrooms?: unknown} | null | undefined)?.bedrooms ?? '').trim(),10);
+  return Number.isFinite(bedrooms) ? Math.max(1,Math.min(5,bedrooms)) : 2;
+}
+export function capacityMessage(listing?: unknown) {
+  const n=householdCapacity(listing);
+  return n===1 ? 'This home takes one applicant on its lease.' : `This home takes up to ${n} applicants on one lease.`;
+}
 export function rentalMembers(g: RentalGroup, allowMock=false): RentalMemberSummary[] {
   return g.members.map(m => {
     const s=m.workspace?.screening_result, issue=screeningIssue(m,allowMock);
@@ -88,9 +99,36 @@ export function makeRentals(d: RentalDependencies) {
       if(!result.missing.length) {g.root.lease_snapshot=result.values;w.lease_preparation={by:'system',at:w.lease_draft.at};}
     } catch {w.lease_draft={values:{},missing:[],error:'Lease defaults could not be loaded. Retry draft generation.',at:new Date().toISOString(),revision:w.recommendation!.revision};}
   }
+  // An independent application for the same home joins this group; the
+  // destination keeps its terms and team.
+  async function join(g:RentalGroup,source:RentalGroup,actor:string,detail:string) {
+    const root=g.root;
+    if(source.root.id===root.id || source.members.length!==1 || source.root.listing_id!==root.listing_id || terminal(source) || ['sent_to_landlord','landlord_approved'].includes(source.root.status) || source.root.workspace?.invitations?.some(i=>!i.accepted)) throw new WorkspaceError('Choose an independent application for this same unit, before landlord review.');
+    if(g.members.length>=householdCapacity(root.listings)) throw new WorkspaceError(capacityMessage(root.listings));
+    if(g.members.some(m=>address(m.email)===address(source.root.email))) throw new WorkspaceError('This person is already in the group.');
+    root.workspace ||= {} as WorkspaceState;
+    reopen(root.workspace);
+    root.workspace.activity=[...(root.workspace.activity || []),{action:'merge_member',by:actor,at:new Date().toISOString(),detail}];
+    (root.workspace.invitations || []).forEach(i=>{if(i.email===address(source.root.email)) i.accepted=source.root.id;});
+    await d.store.save(g,{[root.id]:{workspace:root.workspace,status:'review',lease_snapshot:null}},actor,source.root);
+  }
+  // Invitations wait for the lead applicant's fee. Ones the form already
+  // emailed arrive marked sent; the admin's own invitations go out at once.
+  async function notifyInvitations(id:string) {
+    const g=await group(id),lead=g.members.find(m=>m.id===g.root.id);
+    if(!['paid','waived'].includes(lead?.workspace?.checks?.fee || '')) return;
+    let changed=false;
+    for(const i of g.root.workspace?.invitations || []) if(!i.accepted && !['sent','preview'].includes(i.delivery || '')) {
+      changed=true;
+      if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(i.email) || Date.parse(i.expires)<Date.now()){i.delivery='failed';continue;}
+      try{i.delivery=await d.mail.invite(g.root,i);}catch{i.delivery='failed';}
+    }
+    if(changed) await d.store.save(g,{[g.root.id]:{workspace:g.root.workspace}},'system');
+  }
   async function reconcile(id:string) {
     let g=await group(id);
     if(terminal(g) || g.root.status==='landlord_approved' || g.root.workspace?.rental_flow!=='automatic') return;
+    if((g.root.workspace?.invitations || []).some(i=>!i.accepted && !['sent','preview','failed'].includes(i.delivery || ''))) {await notifyInvitations(id);g=await group(id);}
     // Provider calls are idempotent; results are committed with the complete
     // household version set. A concurrent edit makes the whole save fail.
     const patches:Record<string,Record<string,unknown>>={};
@@ -141,13 +179,21 @@ export function makeRentals(d: RentalDependencies) {
   return {
     load,readiness,assertReady,reconcile,
     async list(p:RentalPrincipal) {return (await d.store.list(p)).filter(g=>canAccessCase(p,g.root)).map(g=>view(p,g));},
-    async notifyInvitations(id:string) {
-      const g=await group(id);
-      for(const i of g.root.workspace?.invitations || []) if(!i.accepted && !['sent','preview'].includes(i.delivery || '')) {
-        if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(i.email) || Date.parse(i.expires)<Date.now()){i.delivery='failed';continue;}
-        try{i.delivery=await d.mail.invite(g.root,i);}catch{i.delivery='failed';}
+    notifyInvitations,
+    // An invited roommate who applied on their own, before or without the
+    // invitation link, joins the group that named their email.
+    async adoptInvited(id:string) {
+      let g=await group(id);
+      if(g.root.workspace?.rental_flow!=='automatic' || terminal(g) || ['sent_to_landlord','landlord_approved'].includes(g.root.status)) return;
+      const open=(g.root.workspace?.invitations || []).filter(i=>!i.accepted && Date.parse(i.expires)>=Date.now());
+      if(!open.length || !g.root.listing_id) return;
+      const candidates=(await d.store.listing(g.root.listing_id)).filter(s=>s.root.id!==g.root.id && s.members.length===1 && !s.root.workspace?.invitations?.some(i=>!i.accepted) && !terminal(s) && !['sent_to_landlord','landlord_approved'].includes(s.root.status));
+      for(const invitation of open) {
+        const source=candidates.find(s=>address(s.root.email)===invitation.email);
+        if(!source) continue;
+        try {await join(g,source,'system',`${source.root.name} applied separately and was invited to this lease; joined automatically.`);} catch {continue;}
+        g=await group(id);
       }
-      await d.store.save(g,{[g.root.id]:{workspace:g.root.workspace}},'system');
     },
     async get(p:RentalPrincipal,id:string) {return view(p,await load(p,id));},
     async invite(p:RentalPrincipal,id:string,command:Record<string,any>) {
@@ -158,7 +204,7 @@ export function makeRentals(d: RentalDependencies) {
       if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || !name) throw new WorkspaceError('Enter the roommate name and email.');
       if(g.members.some(m=>address(m.email)===email)) throw new WorkspaceError('This applicant is already in the group.');
       const w=g.root.workspace!;
-      if((w.invitations || []).filter(i=>!i.accepted && i.email!==email).length+g.members.length>=10) throw new WorkspaceError('A group supports up to 10 applicants.');
+      if((w.invitations || []).filter(i=>!i.accepted && i.email!==email).length+g.members.length>=householdCapacity(g.root.listings)) throw new WorkspaceError(capacityMessage(g.root.listings));
       const invitation:RentalInvitation={id:crypto.randomUUID(),email,name,expires:new Date(Date.now()+14*86400000).toISOString()};
       w.invitations=[...(w.invitations || []).filter(i=>i.email!==email),invitation];reopen(w);
       w.activity=[...(w.activity || []),{action:'invite_member',by:p.email,at:new Date().toISOString(),detail:`Invited ${name}`}];
@@ -201,6 +247,31 @@ export function makeRentals(d: RentalDependencies) {
         return view(p,await group(id));
       }
       if(command.action==='retry_delivery') {if(p.role==='landlord') throw new WorkspaceError('Staff only.',403);await reconcile(id);return view(p,await group(id));}
+      if(command.action==='split_member' || command.action==='remove_member') {
+        const remove=command.action==='remove_member',member=g.members.find(m=>m.id===command.member_id);
+        if(!['manager','agent'].includes(p.role) || (remove && p.role!=='manager'))throw new WorkspaceError('Only a manager can delete an applicant; assigned staff can split applications.',403);
+        if(!member || g.members.length<2)throw new WorkspaceError('Choose a member of a combined application.',422);
+        if(command.confirmed!==true || !text(command.reason) || (remove && text(command.confirm_name)!==member.name))throw new WorkspaceError('Enter a reason and confirm the selected applicant. For deletion, type their full name.',422);
+        if(g.members.some(m=>['lease_sent','lease_signed','declined'].includes(m.status) || m.workspace?.signed_lease || m.workspace?.tenant_signature || m.workspace?.landlord_signature || Object.keys(m.workspace?.signature_receipts || {}).length || (m.workspace?.signing && !['voided','declined'].includes(m.workspace.signing.phase))))throw new WorkspaceError('Void any active signing request first. Signed or closed applications cannot be split or deleted.',409);
+        // Retain any signing history with its application, rather than deleting
+        // the audit record or moving an old envelope onto a different person.
+        if(remove && member.workspace?.signing)throw new WorkspaceError('This applicant has signing history. Split the application to retain that history instead of deleting it.',409);
+        const remaining=g.members.filter(m=>m.id!==member.id),nextRoot=member.id===root.id ? remaining[0] : root;
+        const now=new Date().toISOString(),detail=`${remove?'Deleted':'Split'} ${member.name} (${member.id}) from this group. Reason: ${text(command.reason)}. Previous group approval and lease draft invalidated.`;
+        const patches:Record<string,Record<string,unknown>>={};
+        const invitations=(root.workspace?.invitations || []).filter(i=>i.accepted!==member.id && address(i.email)!==address(member.email));
+        for(const m of g.members) {
+          const w=structuredClone(m.workspace || {});reopen(w);delete w.lease_overrides;delete w.review;delete w.automation_issue;
+          w.invitations=m.id===nextRoot.id ? invitations : [];
+          if(m.id===nextRoot.id)w.terms=structuredClone(root.workspace?.terms || {});
+          if(w.test_run)w.test_run={...w.test_run,member_of:m.id===member.id?m.id:nextRoot.id};
+          const history=m.id===nextRoot.id && nextRoot.id!==root.id ? [...(root.workspace?.activity || []),...(w.activity || [])] : w.activity || [];
+          w.activity=[...history,{action:command.action,by:p.email,at:now,detail}];
+          patches[m.id]={workspace:w,status:m.status==='needs_info'?'needs_info':'review',lease_snapshot:null};
+        }
+        await d.store.separate(g,member.id,nextRoot.id,remove,patches,p.email);
+        return {...view(p,await group(nextRoot.id)),membership_change:{action:command.action,member_id:member.id,remaining_root:nextRoot.id}};
+      }
       const patches:Record<string,Record<string,unknown>>={};
       if(terminal(g) && !['note','admin_note','assign','record_landlord_signature','archive_lease',...(root.status==='lease_sent' ? ['tenant_signed'] : [])].includes(command.action)) throw new WorkspaceError('This rental is locked for signing or closed.',403);
       if(command.action==='cancel_invite') {
@@ -215,15 +286,9 @@ export function makeRentals(d: RentalDependencies) {
       if(command.action==='merge') {
         if(p.role==='landlord' || terminal(g) || ['sent_to_landlord','landlord_approved'].includes(root.status)) throw new WorkspaceError('Change group membership before landlord review.',409);
         const source=await load(p,text(command.application_id));
-        if(source.root.id===root.id || source.members.length!==1 || source.root.listing_id!==root.listing_id || terminal(source) || ['sent_to_landlord','landlord_approved'].includes(source.root.status) || source.root.workspace?.invitations?.some(i=>!i.accepted)) throw new WorkspaceError('Choose an independent application for this same unit, before landlord review.');
         if(command.source_version!==source.root.workspace_version) throw new WorkspaceError('The other application changed. Review it again.',409);
-        if(g.members.length>=10) throw new WorkspaceError('A group supports up to 10 applicants.');
-        if(g.members.some(m=>address(m.email)===address(source.root.email))) throw new WorkspaceError('This person is already in the group.');
         if(command.confirmed!==true) throw new WorkspaceError('Confirm these applicants intend to share one lease.');
-        reopen(root.workspace!);
-        root.workspace!.activity=[...(root.workspace!.activity || []),{action:'merge_member',by:p.email,at:new Date().toISOString(),detail:`Joined ${source.root.name} to this lease group; retained the destination group’s terms and assignment.`}];
-        const invitations=root.workspace?.invitations || [];invitations.forEach(i=>{if(i.email===address(source.root.email)) i.accepted=source.root.id;});
-        await d.store.save(g,{[root.id]:{workspace:root.workspace,status:'review',lease_snapshot:null}},p.email,source.root);
+        await join(g,source,p.email,`Joined ${source.root.name} to this lease group; retained the destination group’s terms and assignment.`);
         await reconcile(root.id);return view(p,await group(root.id));
       }
       if(['approve','recommend','review_and_recommend','decline','landlord_changes','record_tenant_signature'].includes(command.action)) throw new WorkspaceError('This rental uses automatic group review.',403);

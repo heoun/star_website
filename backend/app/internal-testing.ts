@@ -9,6 +9,14 @@ export function internalTestAccount(env:Record<string,any>,request:Request,sessi
   return internalTesting(env,request) && !!session?.subject && session.subject===env.INTERNAL_TEST_USER_ID
     && session.email.toLowerCase()===String(env.INTERNAL_TEST_EMAIL || '').toLowerCase();
 }
+// Roommate inboxes an internal run may invite; each signs in as itself.
+export function internalTestRoommates(env:Record<string,any>) {
+  return String(env.INTERNAL_TEST_ROOMMATE_EMAILS || '').split(',').map(s=>s.trim().toLowerCase()).filter(Boolean);
+}
+// The designated account, or an allowlisted roommate signed in as itself.
+export function internalTestParticipant(env:Record<string,any>,request:Request,session:{email:string;subject:string}|null) {
+  return internalTestAccount(env,request,session) || (internalTesting(env,request) && !!session?.subject && internalTestRoommates(env).includes(String(session?.email || '').toLowerCase()));
+}
 export function internalTestListing(env:Record<string,any>,listingId:string) {
   return String(env.INTERNAL_TEST_LISTING_IDS || '').split(',').map(s=>s.trim()).includes(listingId);
 }

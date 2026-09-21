@@ -53,10 +53,10 @@ try {
  const payment=fixture.state.applications.find(a=>a.id===id).workspace.test_payment.id;
  eq((await action(id,'payment',{outcome:'paid'})).status,200);eq(fixture.state.applications.find(a=>a.id===id).workspace.test_payment.id,payment);
  eq((await action(id,'screening',{consent:true,scenario:'scored'})).status,409);
- const materials=async(id)=>{
+ const materials=async(id,applicantCookie=cookie)=>{
   for(const [type,count] of [['government_id_front',1],['government_id_back',1],['job_offer_letter',1],['bank_statement',2]])for(let i=0;i<count;i++){
    const form=new FormData();form.set('doc_type',type);form.set('file',new Blob(['%PDF-1.4 INTERNAL TEST ONLY'],{type:'application/pdf'}),`test-${type}-${i}.pdf`);
-   const r=await call(`/api/portal/applications/${id}/documents`,form,cookie);if(r.status!==201)console.error(await r.clone().text());eq(r.status,201);await flush();
+   const r=await call(`/api/portal/applications/${id}/documents`,form,applicantCookie);if(r.status!==201)console.error(await r.clone().text());eq(r.status,201);await flush();
   }
  };
  await materials(id);
@@ -80,7 +80,81 @@ try {
  }
  const portal=await(await call('/api/portal/applications',null,cookie)).json();eq(portal.internal_testing,true);eq(portal.applications.filter(a=>a.test_run).length,4);assert(!JSON.stringify(portal).includes('ssn_encrypted'));checks++;
  if(process.argv.includes('--ui')){const {runJourneyBrowser}=await import('./journey-browser-checks.mjs');await runJourneyBrowser({env,fixture,pending,advance:()=>{clock+=6000;}});}
+ // Roommates in internal runs: allowlisted inboxes only, the home's capacity,
+ // invitations that wait for the lead's fee, and joining without the link.
+ const mate=user('roommate@example.test'),early=user('early-roommate@example.test'),stranger=user('stranger@example.test');
+ env.INTERNAL_TEST_ROOMMATE_EMAILS=`${mate.email}, ${early.email}`;
+ const mateCookie=await login(mate.email),earlyCookie=await login(early.email);
+ const roommate=(email,name)=>({first_name:name,last_name:'Roommate',phone:'2125550199',email});
+ const mailTo=email=>fixture.state.emails.filter(m=>JSON.stringify(m.to || '').includes(email) && /invit/i.test(m.subject || ''));
+ const lead=crypto.randomUUID();
+ // The early email binds this test run even before the lead submits it.
+ r=await call('/api/apply/invite',{listing_id:ids.listing,test_run_id:lead,roommates:[roommate(mate.email,'Mate')]},cookie);eq(r.status,200);
+ const earlyMail=mailTo(mate.email).at(-1),earlyLink=new URL(earlyMail.text.match(/http[^\s]+\/apply\/\?[^\s]+/)[0]);
+ eq(earlyLink.searchParams.get('group'),lead);eq(earlyLink.searchParams.get('invited'),mate.email);
+ assert(earlyMail.html.includes(earlyLink.href.replaceAll('&','&amp;')));checks++;
+ r=await call('/api/apply',{...payload,group_root:lead,invited_email:mate.email},mateCookie);eq(r.status,409);
+ eq(fixture.state.applications.some(a=>a.email===mate.email),false);
+ fixture.state.emails.splice(fixture.state.emails.indexOf(earlyMail),1);
+ eq((await call('/api/apply',{...payload,test_run_id:lead,roommates:[roommate(stranger.email,'Stranger')]},cookie)).status,422);
+ eq((await call('/api/apply',{...payload,test_run_id:lead,roommates:[roommate(mate.email,'Mate'),roommate(early.email,'Early')]},cookie)).status,422);
+ r=await call('/api/apply',{...payload,test_run_id:lead,roommates:[roommate(mate.email,'Mate')]},cookie);await flush();eq(r.status,201);
+ let leadRow=fixture.state.applications.find(a=>a.id===lead);
+ const inviteOptions=(c=mateCookie,extra=`group=${lead}`,host='http://127.0.0.1')=>call(`/api/apply/options?id=${ids.listing}&${extra}`,null,c,host).then(r=>r.json());
+ const inviteToken=`${lead}.${leadRow.workspace.invitations[0].id}`;
+ eq((await inviteOptions()).internal_test_group,lead);
+ eq((await inviteOptions()).internal_testing,false);
+ eq((await inviteOptions(mateCookie,`invite=${inviteToken}`)).internal_test_group,lead);
+ eq((await inviteOptions(wrong)).internal_test_group,null);
+ eq((await inviteOptions(cookie)).internal_test_group,null);
+ eq((await inviteOptions(mateCookie,`invite=${lead}.${crypto.randomUUID()}`)).internal_test_group,null);
+ eq((await inviteOptions(mateCookie,`group=${lead}`,'https://example.com')).internal_test_group,null);
+ eq((await inviteOptions(mateCookie,'')).internal_test_group,null);
+ eq(leadRow.workspace.invitations.map(i=>[i.email,i.delivery]),[[mate.email,'pending']]);eq(mailTo(mate.email).length,0);
+ eq((await action(lead,'payment',{outcome:'paid'})).status,200);
+ leadRow=fixture.state.applications.find(a=>a.id===lead);eq(['sent','preview'].includes(leadRow.workspace.invitations[0].delivery),true);eq(mailTo(mate.email).length,1);
+ // Multiple test cases can invite the same inbox. A generic link must not
+ // silently pick the first one; the early email selects the exact run.
+ const competing=crypto.randomUUID();
+ r=await call('/api/apply',{...payload,test_run_id:competing,roommates:[roommate(mate.email,'Mate')]},cookie);await flush();eq(r.status,201);
+ const matePayload={...payload,roommates:[]};delete matePayload.test_run_id;
+ r=await call('/api/apply',matePayload,mateCookie);eq(r.status,409);
+ r=await call('/api/apply',{...matePayload,group_root:crypto.randomUUID()},mateCookie);eq(r.status,409);
+ r=await call('/api/apply',{...matePayload,group_root:earlyLink.searchParams.get('group'),invited_email:mate.email},mateCookie);eq(r.status,201);
+ const mateResult=await r.json();eq(mateResult.test_run_id,mateResult.application_id);
+ // The immediate portal read must expose the simulator, before waitUntil runs.
+ const immediatePortal=await(await call('/api/portal/applications',null,mateCookie)).json();
+ eq(immediatePortal.applications.find(a=>a.id===mateResult.application_id).test_run.id,lead);
+ await flush();
+ const mateRow=fixture.state.applications.find(a=>a.email===mate.email && a.listing_id===ids.listing);
+ eq(mateRow.rental_group_id,lead);eq(mateRow.workspace.test_run.member_of,lead);
+ eq(fixture.state.applications.find(a=>a.id===competing).workspace.invitations[0].accepted,undefined);
+ eq(fixture.state.applications.find(a=>a.id===lead).workspace.invitations[0].accepted,mateRow.id);
+ eq((await call(`/api/portal/applications/${mateRow.id}/payment`,{outcome:'paid'},mateCookie)).status,200);await flush();
+ eq(fixture.state.applications.find(a=>a.id===mateRow.id).workspace.checks.fee,'paid');
+ eq((await(await call('/api/portal/applications',null,mateCookie)).json()).internal_testing,true);
+ eq((await call(`/api/portal/applications/${mateRow.id}/payment`,{outcome:'paid'},wrong)).status,403);
+ eq((await inviteOptions()).internal_test_group,null);
+ eq((await call(`/api/portal/applications/${mateRow.id}/screening`,{consent:true,scenario:'scored'},mateCookie)).status,409);
+ await materials(mateRow.id,mateCookie);
+ eq((await call(`/api/portal/applications/${mateRow.id}/screening`,{consent:false,scenario:'scored'},mateCookie)).status,422);
+ eq((await call(`/api/portal/applications/${mateRow.id}/screening`,{consent:true,scenario:'scored'},mateCookie)).status,200);await flush();
+ clock+=6000;
+ eq((await call(`/api/portal/applications/${mateRow.id}/refresh`,{},mateCookie)).status,200);await flush();
+ eq(fixture.state.applications.find(a=>a.id===mateRow.id).workspace.screening_result.status,'complete');
+ eq(fixture.state.applications.find(a=>a.id===lead).workspace.test_screening,undefined);
+ // A roommate who applied first is adopted when the lead names them, and an
+ // invitation the form already emailed is not sent again.
+ r=await call('/api/apply',matePayload,earlyCookie);await flush();eq(r.status,201);
+ const earlyRow=()=>fixture.state.applications.find(a=>a.email===early.email && a.listing_id===ids.listing);
+ eq(earlyRow().rental_group_id,earlyRow().id);
+ const lead2=crypto.randomUUID();
+ r=await call('/api/apply',{...payload,test_run_id:lead2,roommates:[roommate(early.email,'Early')],invited_emails:[early.email]},cookie);await flush();eq(r.status,201);
+ eq(earlyRow().rental_group_id,lead2);eq(earlyRow().workspace.test_run.member_of,lead2);
+ const lead2Row=fixture.state.applications.find(a=>a.id===lead2);eq(lead2Row.workspace.invitations[0].accepted,earlyRow().id);eq(lead2Row.workspace.invitations[0].delivery,'sent');
+ eq((await action(lead2,'payment',{outcome:'paid'})).status,200);eq(mailTo(early.email).length,0);
  env.INTERNAL_TESTING='off';eq((await action(second,'payment',{outcome:'paid'})).status,403);
+ eq((await inviteOptions(earlyCookie,`group=${lead2}`)).internal_test_group,null);
  eq((await(await call('/api/apply/options?id='+ids.listing,null,cookie)).json()).internal_testing,false);
- console.log(`PASS ${checks} internal journey checks: authenticated repeat runs, idempotent intake/payment, HTTP provider processing, required materials/consent, real rental reconciliation, one landlord packet, approval/draft, no-score/failure holds, production and account isolation.`);
+ console.log(`PASS ${checks} internal journey checks: authenticated repeat runs, idempotent intake/payment, HTTP provider processing, required materials/consent, real rental reconciliation, one landlord packet, approval/draft, no-score/failure holds, roommate invitations and joining, production and account isolation.`);
 } finally {await Promise.allSettled(pending);restore();server.closeAllConnections();await new Promise(r=>server.close(r));}

@@ -221,8 +221,8 @@ async function handleVerifyRegister(request, env) {
   const body = await request.json().catch(() => ({}));
   const email = cleanEmail(body.email);
   const code = String(body.code ?? "").replace(/\D/g, "");
-  if (!EMAIL_PATTERN.test(email) || code.length !== 6) {
-    return json({ error: "Please enter the 6-digit code from the email." }, 422);
+  if (!EMAIL_PATTERN.test(email) || !/^\d{6,8}$/.test(code)) {
+    return json({ error: "Please enter the complete 6–8 digit code from the email." }, 422);
   }
 
   const result = await authRequest(env, "verify", { body: { type: "signup", email, token: code } });
@@ -273,8 +273,8 @@ async function handleVerifyReset(request, env) {
   const body = await request.json().catch(() => ({}));
   const email = cleanEmail(body.email);
   const code = String(body.code ?? "").replace(/\D/g, "");
-  if (!EMAIL_PATTERN.test(email) || code.length !== 6) {
-    return json({ error: "Please enter the 6-digit code from the email." }, 422);
+  if (!EMAIL_PATTERN.test(email) || !/^\d{6,8}$/.test(code)) {
+    return json({ error: "Please enter the complete 6–8 digit code from the email." }, 422);
   }
   if (!validPassword(body.password)) {
     return json({ error: `Please choose a password of at least ${PASSWORD_MIN} characters.` }, 422);

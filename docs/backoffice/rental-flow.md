@@ -7,7 +7,7 @@ The agreed flow is now implemented behind `RENTAL_AUTOMATION=on`. The isolated r
 - One property can have multiple agents. Published rental applications optionally select an active property agent; the agent’s referral link preselects them. No selection leaves assignment to Admin. Property access does not grant access to every application: an agent must own or collaborate on that application group.
 - Only Admin can change the responsible Agent. The assignee must be an active Agent; Admin may be a collaborator but cannot own the assignment. Collaborator choices appear as Agent, then Admin. Reviewing or recommending an unassigned application does not silently assign the reviewing Admin.
 - One unit can have competing application groups. A group has one lead, its own common lease terms, and one or more applicants. Each applicant retains their private application and uploads. Grouping in the queue never merges competing applications.
-- Roommate invitations are sent after the lead application is submitted. The invited person signs in with the exact invited email and submits through their invitation link. Insertion and joining are one transaction. Existing independent applications can be joined by authorized staff after explicit confirmation; the destination group’s terms and team apply. Both versions are checked.
+- A group holds one lease signer per bedroom (a studio holds one), enforced on the form, on submission, on admin invitations and on joins. Roommate invitations go out from the form's roommate step when the applicant ticks the invitation box, otherwise once the lead's application fee is paid or waived; the admin's own invitations are sent at once. The invited person signs in with the exact invited email and submits through the invitation link or from the plain application page, where an open invitation for that email and home joins them to the group. Every invitation link names the invited address; the portal starts with it filled in, and the form refuses to open under any other signed-in account and offers to switch. A roommate who applied independently before the lead is adopted into the group when the lead submits. Every invitation, whether sent from the form, after the fee or by staff, is the same branded card as the landlord decision request, from the same sender, with the home, the inviter, one button and the invited address. Insertion and joining are one transaction. Authorized staff can still join an existing independent application after explicit confirmation; the destination group’s terms and team apply. Both versions are checked.
 - Every group member must have the required uploads, fee payment or waiver, and a completed report before a decision package is created. This is completeness, not a favorable credit decision. Pending invitations block sharing. Scores, model/date and applicant-reported income appear separately for each person.
 - Payment precedes screening. Unpaid applications cannot trigger screening or record a completed report/score. A completed report cannot be edited back to payment pending. Contradictory imported payment/report records require evidence review and do not expose a usable credit score or allow sharing. Only the isolated demo repairs identified synthetic report/payment fixtures; real payments are never inferred from a score.
 - An active landlord associated with the property’s signer email is preferred. If there is exactly one eligible landlord, that account is used. Ambiguous or missing recipients require an Admin correction and are never guessed.
@@ -38,6 +38,7 @@ The landlord confirmation page is `/landlord-decision/`. New signed email links 
 ## Setup and validation
 
 1. Apply `supabase/rental-flow.sql` after `schema.sql`, `backoffice.sql` and `workspace.sql`. It is repeatable and adds the group relation plus service-only RPCs. Existing roommate entries become pending invitations rather than assumed applications. Existing confirmed/signed leases are preserved.
+   Apply `supabase/rental-membership.sql` afterward to enable atomic applicant separation and removal.
 2. Set `RENTAL_AUTOMATION=on` only after the migration. Configure `SITE_ORIGIN` if different from `https://starreusa.com`. The Worker has a one-minute scheduled reconciliation hook.
 3. Configure the existing outbound email credentials and verified sender for real delivery. Do not set `RENTAL_SCREENING=mock` in production; the adapter also rejects mock selection for non-loopback origins.
 4. Run `npm run test:rentals`, `npm run test:rentals:db`, `npm run test:rentals:ui` (requires Playwright), `npm run typecheck`, `npm run gate` and `npm run build`.
@@ -103,3 +104,30 @@ The rental queue expands each property/unit into a labelled application-group ta
 The selected applicant has one compact credit-score/income summary above the two five-section dossiers. Its name is not repeated in that summary. View Report opens an existing authorized HTTPS report URL, or a clearly labelled local mock preview using the selected applicant's saved screening result. Missing reports disable the control. The mock preview is not a full bureau report or a new provider integration.
 
 Only Admin assigns the responsible Agent; active Admin and Agent collaborators are grouped with Agent first. Agent navigation has one My Rentals destination. The sidebar has a persistent desktop collapse preference and a separate mobile menu; the content expands when it collapses. Dashboard, Rentals, Properties and Listings share the same outer width rule, so loading a route no longer applies a narrower content cap.
+
+## Applicants who leave a combined application
+
+In the rental's **Applicants → Manage applicants** section, assigned staff can
+split one member into a separate application; managers can permanently delete
+one withdrawing member after entering the reason, full name and confirmation.
+An invitation that has not been accepted can be cancelled without deleting an
+account. These actions never delete the person's Supabase login.
+
+Splitting retains each person's documents, fee receipt and screening evidence.
+Deletion removes only the selected application and its document rows, then cleans
+up that application's private storage prefix. It does not issue a fee refund.
+If the primary applicant leaves, the earliest remaining applicant becomes the
+remaining group's primary record. The team and group terms stay with that group.
+Accepted invitations for the departing member are removed; pending invitations
+for other people stay with the remaining group. Group approvals, signing drafts
+and lease overrides are invalidated and a reason is recorded in the activity log.
+The normal reconciliation process requires a fresh landlord decision.
+
+An active envelope must be voided first. Signed/closed applications cannot be
+changed this way; an applicant with signing history can be separated but cannot
+be permanently deleted. The service-only SQL function locks group membership and
+checks every member's version before changing or deleting anything. The legacy
+single-application delete route refuses grouped applications.
+
+Run `npm run test:membership` for domain and real PostgreSQL-compatible transaction
+coverage, including primary replacement, stale writes, cascade and signing locks.

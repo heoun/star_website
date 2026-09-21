@@ -93,6 +93,20 @@ try {
   eq((await real.resolve(new Request("https://workspace.example.test/api/v2/me",{headers:{Cookie:applicant}}))).kind,"applicant");
   const reset = await call("/api/auth/request-reset",{body:{email:fresh}});eq(reset.status,200);
   eq((await call("/api/auth/verify-reset",{body:{email:fresh,code:"123456",password:"reset-password"}})).status,200);
+  // Hosted Supabase defaults to 8 digits. Both registration and recovery
+  // must preserve the whole code, while existing 6-digit projects still work.
+  for(const resource of ['verify-register','verify-reset']) {
+    codes.set(fresh,'12345678');
+    const password=users.get(fresh).password;
+    eq((await call(`/api/auth/${resource}`,{body:{email:fresh,code:'123456',password:'eight-digit-password'}})).status,401);
+    eq(codes.get(fresh),'12345678');
+    eq(users.get(fresh).password,password);
+    eq((await call(`/api/auth/${resource}`,{body:{email:fresh,code:'12345',password:'eight-digit-password'}})).status,422);
+    eq((await call(`/api/auth/${resource}`,{body:{email:fresh,code:'123456789',password:'eight-digit-password'}})).status,422);
+    const verified=await call(`/api/auth/${resource}`,{body:{email:fresh,code:'12345678',password:'eight-digit-password'}});
+    eq(verified.status,200);eq(verified.body.email,fresh);
+    eq((await call(`/api/auth/${resource}`,{body:{email:fresh,code:'12345678',password:'eight-digit-password'}})).status,401);
+  }
   const logout = await call("/api/auth/workspace/sign-out",{cookie:admin,body:{}});eq(logout.status,200); assert(logout.cookie.includes("Max-Age=0"));checks++;
   await Promise.all(pending);eq((await call("/api/admin/me")).status,401);
   assert(logout.cookie.startsWith('star_workspace='));checks++;

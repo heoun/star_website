@@ -3,11 +3,12 @@ import { encryptionReady, encryptSsn } from "./ssn.js";
 import { sendEmail } from "./email.js";
 import { readSession } from "./portal.js";
 import { renderPage } from "./contact.js";
-import { rentalMode, rentalApplyOptions, submitRental, rentalWorkflow, runRentalAutomation } from "./rentals.js";
-import { submitTestApplication } from './internal-testing.js';
+import { rentalMode, rentalApplyOptions, submitRental, rentalWorkflow, runRentalAutomation, findOpenInvitation, groupHasRoom } from "./rentals.js";
+import { householdCapacity, capacityMessage } from "../backend/app/rentals.ts";
+import { submitTestApplication, markTestMembers, internalTestAccount, internalTestListing, invitedTestRun } from './internal-testing.js';
+import { MAIL_FROM, mailPlace, invitationMail } from "./mail-layout.js";
 
 const CONTACT_EMAIL = "info@starreusa.com";
-const FROM_ADDRESS = "Star Real Estate Website <no-reply@starreusa.com>";
 const TURNSTILE_ENDPOINT = "https://challenges.cloudflare.com/turnstile/v0/siteverify";
 const UUID_PATTERN = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -374,7 +375,7 @@ async function sendNotification(request, env, listing, name) {
   const label = home ? `${listing.title} (${home})` : listing.title;
 
   const sent = await sendEmail(request, env, {
-    from: FROM_ADDRESS,
+    from: MAIL_FROM,
     to: [CONTACT_EMAIL],
     subject: `New rental application: ${label}`,
     text: `${name} submitted an application for ${label}.\n\nReview it in the admin console: https://starreusa.com/admin/\n`
@@ -402,7 +403,7 @@ async function sendReceipt(request, env, listing, email, employmentStatus) {
     : "your job offer letter or your last two paystubs";
 
   const sent = await sendEmail(request, env, {
-    from: FROM_ADDRESS,
+    from: MAIL_FROM,
     to: [email],
     subject: `We received your application for ${label}`,
     text: `Thank you for applying for ${label}.\n\n`
@@ -436,7 +437,6 @@ function withoutRowValues(message) {
 // their name has not been asked yet.
 
 export async function handleRoommateInvites(request, env) {
-  if(rentalMode(env)) return json({ok:true,queued:true});
   const contentType = (request.headers.get("Content-Type") || "").trim();
   if (!/^application\/json\b/i.test(contentType)) {
     return json({ error: "Invitations could not be read. Please try again." }, 415);
@@ -478,11 +478,9 @@ export async function handleRoommateInvites(request, env) {
     return withSession(json({ error: "Unknown property." }, 404));
   }
 
-  // The form caps roommates at one per bedroom beyond the applicant, and a
-  // studio takes nobody. A listing whose bedroom count cannot be read gets
-  // the form's own fallback of one.
-  const bedrooms = parseInt(String(listing.bedrooms ?? "").trim(), 10);
-  const cap = Number.isFinite(bedrooms) ? Math.max(0, Math.min(4, bedrooms - 1)) : 1;
+  // One lease signer per bedroom: the applicant and one roommate in a
+  // two-bedroom home, nobody else in a studio.
+  const cap = householdCapacity(listing) - 1;
 
   const rawRoommates = Array.isArray(body.roommates) ? body.roommates : [];
   const roommates = [];
@@ -509,28 +507,34 @@ export async function handleRoommateInvites(request, env) {
     return withSession(json({ error: "This home does not have room for that many roommates." }, 422));
   }
 
-  const home = [listing.property_name, listing.unit].filter(Boolean).join(" ");
-  const label = home ? `${listing.title} (${home})` : listing.title;
-  const applyUrl = new URL(`/apply/?id=${encodeURIComponent(listingId)}`, request.url).toString();
-
-  // The greeting uses the typed first name only when it looks like a name:
-  // this mail goes to an address its owner never gave us directly, so free
-  // text has no business riding in it.
+  // The same card the lead's landlord will get later, addressed to the
+  // roommate; the greeting uses the typed name only when it looks like one,
+  // since this mail goes to an address its owner never gave us directly.
+  const place = mailPlace(listing, listing.title);
+  const label = place;
+  // The link names the invited address, so the form can tell an invitee
+  // from whoever else is signed in on that browser.
+  const linkFor = (mate) => {
+    const link = new URL("/apply/", env.SITE_ORIGIN || request.url);
+    link.searchParams.set("id", listingId);
+    link.searchParams.set("invited", mate.email);
+    if (test) link.searchParams.set("group", test);
+    return link.toString();
+  };
+  const runId = String(body.test_run_id ?? "").trim();
+  const test = UUID_PATTERN.test(runId) && internalTestAccount(env, request, session)
+    && internalTestListing(env, listingId) ? runId : "";
   const greetName = (value) => (/^[\p{L}][\p{L}' .-]{0,39}$/u.test(value) ? value : "");
 
   const outcomes = await Promise.all(roommates.map(async (mate) => ({
     email: mate.email,
     delivered: await sendEmail(request, env, {
-      from: FROM_ADDRESS,
+      from: MAIL_FROM,
       to: [mate.email],
-      subject: `You are invited to apply for ${label}`,
-      text: `${greetName(mate.first_name) ? `Hi ${greetName(mate.first_name)},\n\n` : ""}`
-        + `${session.email} is applying to rent ${label} with Star Real Estate and named you `
-        + "as a roommate. Everyone who signs the lease completes an application of their own.\n\n"
-        + `Start yours here\n\n    ${applyUrl}\n\n`
-        + "Sign in with this email address to create your applicant account, and your "
-        + "application will be filed alongside theirs.\n\n"
-        + "The Star Real Estate team\n"
+      ...invitationMail(env, {
+        place, inviter: session.email, link: linkFor(mate), test,
+        invitee: { name: greetName(mate.first_name), email: mate.email }
+      })
     })
   })));
 
@@ -611,6 +615,13 @@ export async function handleApplication(request, env, ctx) {
 }
 
 async function processApplication(request, env, ctx, body, email, session) {
+  // A second tab can replace the shared browser cookie while this form is
+  // open. Never file one person's completed answers under the new account.
+  for (const expected of [body.account_email, body.invited_email]) {
+    if (expected && String(expected).trim().toLowerCase() !== email) {
+      return json({ error: "Your signed-in account changed. Reopen the invitation and sign in with your own invited email before submitting." }, 409);
+    }
+  }
   const listingId = String(body.listing_id ?? "").trim();
   if (!UUID_PATTERN.test(listingId)) {
     return json({ error: "Unknown property." }, 400);
@@ -756,15 +767,27 @@ async function processApplication(request, env, ctx, body, email, session) {
   const fullName = `${firstName} ${lastName}`.trim();
   let saved;
   try {
-    const automatic=rentalMode(env);
-    if(automatic && (roommates.length>9 || new Set(roommates.map(m=>m.email.toLowerCase())).size!==roommates.length || roommates.some(m=>m.email.toLowerCase()===email))) return json({error:'List each roommate once, using their own email. A group supports up to 10 applicants.'},422);
-    if(automatic && body.group_invite && roommates.length) return json({error:'Join this group first. Your agent can invite additional roommates.'},422);
+    const automatic=rentalMode(env),capacity=householdCapacity(listing);
+    if(automatic && (new Set(roommates.map(m=>m.email.toLowerCase())).size!==roommates.length || roommates.some(m=>m.email.toLowerCase()===email))) return json({error:'List each roommate once, using their own email.'},422);
+    if(automatic && roommates.length+1>capacity) return json({error:capacityMessage(listing)},422);
+    // A roommate answering an invitation joins the lead's group: by the link
+    // they were sent, or by the address the lead named if they came without it.
+    let joining=automatic ? String(body.group_invite || '') : '';
+    const groupRoot=String(body.group_root || '');
+    if(groupRoot && (!automatic || !UUID_PATTERN.test(groupRoot) || (joining && joining.split('.')[0]!==groupRoot))) return json({error:'This invitation link is invalid. Reopen the invitation email.'},422);
+    if(automatic && !joining && !body.test_run_id) joining=await findOpenInvitation(env,request,listingId,email,groupRoot);
+    if(groupRoot && !joining) return json({error:'This case does not have an open invitation for your email yet. Ask the inviter to submit their application, then try again.'},409);
+    if(automatic && joining && roommates.length) return json({error:'Join this group first. Your agent can invite additional roommates.'},422);
+    if(automatic && joining && !(await groupHasRoom(env,request,joining,capacity,email))) return json({error:capacityMessage(listing)},422);
     const agent=String(body.sales_person || '').trim().toLowerCase();
     if(automatic && agent && !(await rentalApplyOptions(env,listingId)).some(a=>a.email===agent)) return json({error:'Choose an active agent for this property.'},422);
     const parts=moveIn.split('/');
     const start=parts.length===3 ? `${parts[2]}-${parts[0].padStart(2,'0')}-${parts[1].padStart(2,'0')}` : moveIn;
     const end=new Date(`${start}T12:00:00Z`);end.setUTCMonth(end.getUTCMonth()+leaseTermMonths);end.setUTCDate(end.getUTCDate()-1);
-    const invitations=automatic && !body.group_invite ? roommates.map(m=>({id:crypto.randomUUID(),email:m.email.toLowerCase(),name:`${m.first_name} ${m.last_name}`,expires:new Date(Date.now()+14*86400000).toISOString()})) : [];
+    // Roommates the form already emailed from its first step arrive marked
+    // sent; the rest wait for the lead applicant's fee.
+    const invited=new Set((Array.isArray(body.invited_emails) ? body.invited_emails : []).map(e=>String(e).toLowerCase()));
+    const invitations=automatic && !joining ? roommates.map(m=>({id:crypto.randomUUID(),email:m.email.toLowerCase(),name:`${m.first_name} ${m.last_name}`,expires:new Date(Date.now()+14*86400000).toISOString(),delivery:invited.has(m.email.toLowerCase()) ? 'sent' : 'pending'})) : [];
     const values={
       listing_id: listingId,
       name: fullName,
@@ -795,19 +818,27 @@ async function processApplication(request, env, ctx, body, email, session) {
       ...(automatic ? {responsible_email:agent || null,workspace:{rental_flow:'automatic',invitations,terms:{'lease.commencement_date':start,'lease.end_date':end.toISOString().slice(0,10),'rent.monthly':String(listing.price_amount || ''),'deposit.amount':String(listing.price_amount || '')}}} : {})
     };
     if(body.test_run_id) {
-      if(!automatic || body.group_invite)return json({error:'Test runs require an independent application.'},422);
+      if(!automatic || joining)return json({error:'Test runs require an independent application.'},422);
       const result=await submitTestApplication(request,env,session,values,body.test_run_id);saved=result.application;
       if(result.replayed)return json({ok:true,application_id:saved.id,test_run_id:saved.id},200);
-    } else saved=automatic ? await submitRental(env,values,body.group_invite) : await insertApplication(env,values);
+    } else {
+      const run=joining ? await invitedTestRun(env,request,session,listingId,joining) : null;
+      if(run)values.workspace.test_run=run;
+      saved=automatic ? await submitRental(env,values,joining) : await insertApplication(env,values);
+    }
   } catch (error) {
     console.error("Application insert failed:", withoutRowValues(error?.message));
     return json({ error: error.status ? error.message : "The application could not be saved. Please try again." }, error.status || 500);
   }
 
   if(rentalMode(env)) {
+    const rootId=saved.rental_group_id || saved.id;
     ctx.waitUntil((async()=>{
-      try {await rentalWorkflow(env,request).notifyInvitations(saved.rental_group_id || saved.id);}catch{console.error('Roommate invitations require retry');}
-      await runRentalAutomation(env,request,saved.rental_group_id || saved.id);
+      // A lead adopts roommates who applied before them; a roommate joining
+      // an internal run inherits it. Invitations that still wait go out with
+      // the reconciliation once the lead's fee is paid.
+      try {if(rootId===saved.id) await rentalWorkflow(env,request).adoptInvited(rootId);await markTestMembers(env,request,rootId);}catch{console.error('Roommate group update requires retry');}
+      await runRentalAutomation(env,request,rootId);
     })());
   }
   if(!saved.workspace?.test_run)ctx.waitUntil(sendNotification(request, env, listing, fullName));

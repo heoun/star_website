@@ -37,8 +37,8 @@ the role. Codes follow the expiry and rate limits configured in Supabase.
    - `supabase/identity.sql`
    - `supabase/storage.sql`
    - `supabase/property-create.sql` (atomic New Property creation with initial defaults)
-2. Enable email/password Auth and **Confirm email**. Keep the email OTP length at
-   **6 digits** for compatibility with the applicant registration/reset screens.
+2. Enable email/password Auth and **Confirm email**. Use **8-digit** email OTPs; the applicant and workspace screens accept
+   6–8 digits, including existing projects configured with 6-digit codes.
 3. Set Auth Site URL to the website origin, e.g. `https://starreusa.com`.
 4. Configure custom SMTP in Supabase for real deliveries. The built-in sender is
    suitable for limited project testing, not sending to arbitrary customers.
@@ -52,6 +52,26 @@ the role. Codes follow the expiry and rate limits configured in Supabase.
    if another permissive Storage policy exists. Do not add public document URLs.
 
 Example code-email body (use an appropriate subject for each template):
+
+The ready-to-paste HTML is in [`supabase/email-templates/`](../../supabase/email-templates/).
+Use the file matching each dashboard template (for example, `reset-password.html`);
+`auth-code.html` remains a generic code-only fallback. These files are generated
+from the same `worker/mail-layout.js` shell as application and landlord emails.
+Regenerate with `EMAIL_LOGO_URL=<the Worker's public HTTPS logo URL> node scripts/build-auth-email-templates.mjs`,
+then paste each generated body into Supabase. Set the SMTP sender name to
+`Star Realty` and address to `no-reply@starreusa.com`, matching `MAIL_FROM`.
+Paste it into **Confirm signup**, **Magic Link**, and **Reset password** in
+Authentication → Emails → Templates, and save each template. This is a cloud
+Auth setting: changing this repository or rebuilding the Worker does not update
+the Supabase templates. Use **8-digit** email OTPs. The UI and Worker both accept 6–8 digits.
+
+For a dedicated local test project, set Auth Site URL to
+`http://127.0.0.1:8787`; keep the production project's public Site URL unchanged.
+Changing Site URL alone does not fix recovery: this application verifies email
+codes and does not consume Supabase's link callback or URL-fragment session.
+After saving the templates, request a fresh code from the original portal tab;
+an already-delivered link email will not change. Do not create a replacement
+account or delete an existing identity to repair an email-template mismatch.
 
 ```html
 <h2>Star Real Estate</h2>

@@ -19,7 +19,14 @@ export async function runJourneyBrowser({env,fixture,pending,advance}) {
     await login(env.INTERNAL_TEST_EMAIL);
     await page.goto(`${base}/property/?id=${ids.listing}`);
     await page.locator(`a[href*="apply/?id=${ids.listing}"]`).first().click();
+    // Sample data never overrides a roommate answer already given: an
+    // invitation may have gone out from that step.
+    await page.locator('input[name="has_roommates"][value="yes"]').check();
+    await page.locator('#rep-roommates .repeat-card [data-field="email"]').first().fill('roommate@example.test');
     await page.getByRole('button',{name:'Fill With Sample Data'}).click();
+    eq(await page.locator('input[name="has_roommates"]:checked').inputValue(),'yes');
+    eq(await page.locator('#rep-roommates .repeat-card [data-field="email"]').first().inputValue(),'roommate@example.test');
+    await page.locator('input[name="has_roommates"][value="no"]').check();
     eq(await page.locator('[name=email]').inputValue(),env.INTERNAL_TEST_EMAIL);
     eq(await page.locator('#consent').isChecked(),false);
     await page.screenshot({path:out+'/sample-application.png',fullPage:true});
@@ -95,6 +102,17 @@ export async function runJourneyBrowser({env,fixture,pending,advance}) {
     await login('admin@example.test');await page.goto(`${base}/admin/#/applications/${id}`);
     await page.getByRole('button',{name:'Lease & Decision',exact:false}).click();
     await page.getByRole('button',{name:'Review Signing Package',exact:true}).waitFor();checks++;
+    // An invitation opened under the lead's session starts invitee account
+    // creation directly and preserves the complete return URL.
+    await login(env.INTERNAL_TEST_EMAIL);
+    await page.goto(`${base}/apply/?id=${ids.listing}&invited=roommate@example.test`);
+    await page.getByRole('heading',{name:'Create your account'}).waitFor();checks++;
+    await page.screenshot({path:out+'/invitation-other-account.png',fullPage:true});
+    eq(await page.locator('#reg-email').inputValue(),'roommate@example.test');
+    eq(await page.locator('#reg-email').getAttribute('readonly'),'');
+    eq(new URL(page.url()).searchParams.get('next'),`/apply/?id=${ids.listing}&invited=roommate@example.test`);
+    await page.getByRole('link',{name:'Sign in',exact:true}).click();
+    eq(await page.locator('#login-email').inputValue(),'roommate@example.test');
     eq(errors,[]);console.log(`PASS ${checks} journey browser checks; screenshots: ${out}`);
   } catch(error){await page.screenshot({path:out+'/failure.png',fullPage:true});console.error((await page.locator('body').innerText()).slice(-5000));throw error;}
   finally {globalThis.caches=previousCaches;await context.close();await browser.close();await Promise.allSettled(pending.splice(0));server.closeAllConnections();await new Promise(r=>server.close(r));}
