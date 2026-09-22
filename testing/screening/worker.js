@@ -7,7 +7,8 @@ export default {
     const path=new URL(request.url).pathname;
     if(path==='/health' && request.method==='GET') {
       await env.DB.prepare('SELECT 1 FROM simulations LIMIT 1').all();
-      return json({ok:true});
+      const migrations=await env.DB.prepare('SELECT name FROM d1_migrations ORDER BY name').all();
+      return json({ok:true,migrations:migrations.results.map(row=>row.name)});
     }
     const match=/^\/(payments|screenings)\/([0-9a-f-]{36})$/.exec(path);
     if(!match)return json({error:'Not found'},404);

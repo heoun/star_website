@@ -78,7 +78,15 @@ For changes that cannot coexist with the prior version, use a separately reviewe
 migration plan instead of the additive bundle.
 
 The private simulator has its own versioned D1 migrations in
-`testing/screening/migrations/`; these run only for staging releases.
+`testing/screening/migrations/`. Apply reviewed changes with:
+
+```sh
+npx --no-install wrangler d1 migrations apply star-screening-staging --remote --config testing/screening/wrangler.jsonc
+```
+
+CI checks the applied migration list through Dev health. The existing CI token
+cannot execute D1 migrations, so these use the operator's Cloudflare login before
+a release; normal code releases do not need a broader CI token.
 
 ## One-time online Dev setup
 

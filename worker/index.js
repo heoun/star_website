@@ -141,8 +141,9 @@ export default {
         const result=await fetch(env.SUPABASE_URL+'/rest/v1/star_schema_release?select=revision&limit=1',{headers:{apikey:env.SUPABASE_SERVICE_ROLE_KEY,Authorization:`Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`},signal:AbortSignal.timeout(5000)});
         if(!result.ok)throw new Error('Database unavailable');
         const schema=(await result.json())[0]?.revision;if(!schema)throw new Error('Schema not initialized');
-        if(env.APP_ENV==='staging') {const simulator=await env.SCREENING_SIMULATOR.fetch('https://screening.internal/health');if(!simulator.ok)throw new Error('Simulator unavailable');await simulator.body?.cancel();}
-        return Response.json({ok:true,environment:env.APP_ENV || 'production',schema},{headers:{'Cache-Control':'no-store'}});
+        let simulatorMigrations;
+        if(env.APP_ENV==='staging') {const simulator=await env.SCREENING_SIMULATOR.fetch('https://screening.internal/health');if(!simulator.ok)throw new Error('Simulator unavailable');simulatorMigrations=(await simulator.json()).migrations;}
+        return Response.json({ok:true,environment:env.APP_ENV || 'production',schema,simulatorMigrations},{headers:{'Cache-Control':'no-store'}});
       }catch{return Response.json({ok:false},{status:503,headers:{'Cache-Control':'no-store'}});}
     }
     if(new URL(request.url).pathname==='/api/release' && request.method==='GET')return Response.json({environment:env.APP_ENV || 'production',revision:env.RELEASE_SHA || 'local'},{headers:{'Cache-Control':'no-store'}});

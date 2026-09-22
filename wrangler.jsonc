@@ -30,6 +30,13 @@
       "preview_urls": false,
       "routes": [{"pattern":"dev.starreusa.com","custom_domain":true}],
       "r2_buckets": [],
+      "assets": {
+        "directory":"./dist",
+        "binding":"ASSETS",
+        "html_handling":"auto-trailing-slash",
+        "not_found_handling":"404-page",
+        "run_worker_first":true
+      },
       "services": [{"binding":"SCREENING_SIMULATOR","service":"star-screening-staging"}],
       "vars": {
         "APP_ENV":"staging",
