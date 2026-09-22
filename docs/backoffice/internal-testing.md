@@ -151,7 +151,10 @@ offers the same simulated payment and screening because the application inherits
 the lead's run. With real delivery on, mail leaves the machine only for the
 designated inbox, the landlord inbox and these roommate inboxes. Fill With
 Sample Data leaves an answered roommate step alone, so a roommate named before
-the fill stays on the case. The home's bedroom count caps the group (two people in a
+the fill stays on the case. Each allowlisted inbox may also start an independent
+test application of its own, with the same tools and simulated checks, so two
+independent cases can be joined from the workspace with Join an existing
+application; the joined member keeps its simulated payment and screening. The home's bedroom count caps the group (two people in a
 two-bedroom home), and a sandbox envelope holds the landlord plus at most four
 tenants. Invitations follow the ordinary rules: ticked on the roommate step they
 are emailed at once, otherwise after the lead's fee is paid; a roommate who

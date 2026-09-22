@@ -11,7 +11,7 @@ import { handleBackendRequest } from "../backend/app/index.ts";
 import { rentalMode, rentalApplyOptions, reconcileRentals } from "./rentals.js";
 import { handleDocusignWebhook, reconcileSigning } from './signing.js';
 import { readSession } from './auth.js';
-import { internalTesting,internalTestAccount,internalTestListing } from '../backend/app/internal-testing.ts';
+import { internalTesting,internalTestParticipant,internalTestListing } from '../backend/app/internal-testing.ts';
 import { handleLandlordDecision } from './landlord-decision.js';
 import { invitedTestContext } from './internal-testing.js';
 
@@ -29,7 +29,7 @@ export default {
       try {
         const session=internalTesting(env,request)?await readSession(request,env):null;
         const invitation=rentalMode(env) ? await invitedTestContext(env,request,session,url.searchParams.get('id'),url.searchParams.get('invite') || '',url.searchParams.get('group') || '') : null;
-        const response=Response.json({automatic:rentalMode(env),internal_testing:internalTestAccount(env,request,session) && internalTestListing(env,url.searchParams.get('id')),internal_test_group:invitation?.run?.member_of || invitation?.pendingGroup || null,internal_test_pending:!!invitation?.pendingGroup,agents:rentalMode(env) ? await rentalApplyOptions(env,url.searchParams.get('id')) : []},{headers:{'Cache-Control':'no-store'}});
+        const response=Response.json({automatic:rentalMode(env),internal_testing:internalTestParticipant(env,request,session) && internalTestListing(env,url.searchParams.get('id')),internal_test_group:invitation?.run?.member_of || invitation?.pendingGroup || null,internal_test_pending:!!invitation?.pendingGroup,agents:rentalMode(env) ? await rentalApplyOptions(env,url.searchParams.get('id')) : []},{headers:{'Cache-Control':'no-store'}});
         if(session?.setCookie)response.headers.append('Set-Cookie',session.setCookie);return response;
       }
       catch {return Response.json({error:'Application options are unavailable.'},{status:503});}

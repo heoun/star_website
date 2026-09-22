@@ -1,5 +1,6 @@
 import { requireConfig } from './supabase.js';
-import { internalTestAccount, internalTestListing, internalTestRoommates } from '../backend/app/internal-testing.ts';
+import { internalTestParticipant, internalTestListing } from '../backend/app/internal-testing.ts';
+import { internalTestInboxes } from './internal-testing.js';
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const fail=(message,status=409)=>Object.assign(new Error(message),{status});
 async function database(env,path,body) {
@@ -46,8 +47,8 @@ export async function saveRentalDraft(env,request,session,listingId,id,roommates
  if(!uuid.test(id || ''))throw fail('Start a new application before inviting roommates.',422);
  let test=null;
  if(testId){
-  if(testId!==id || !internalTestAccount(env,request,session) || !internalTestListing(env,listingId))throw fail('Internal testing is unavailable for this account or listing.',403);
-  if(roommates.some(m=>!internalTestRoommates(env).includes(m.email.toLowerCase())))throw fail('Internal test roommates are limited to the configured test inboxes.',422);
+  if(testId!==id || !internalTestParticipant(env,request,session) || !internalTestListing(env,listingId))throw fail('Internal testing is unavailable for this account or listing.',403);
+  if(roommates.some(m=>!internalTestInboxes(env).includes(m.email.toLowerCase())))throw fail('Internal test roommates are limited to the configured test inboxes.',422);
   test={id,account_id:session.subject,created_at:new Date().toISOString()};
  }
  return database(env,'rpc/save_rental_draft',{p_id:id,p_listing:listingId,p_owner:session.subject,p_email:session.email,p_roommates:roommates.map(m=>({email:m.email.toLowerCase(),name:`${m.first_name} ${m.last_name}`.trim()})),p_test:test});

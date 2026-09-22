@@ -23,10 +23,15 @@ export async function invitedTestContext(env,request,session,listingId,invitatio
 export async function invitedTestRun(env,request,session,listingId,invitation='',rootId='') {
   return (await invitedTestContext(env,request,session,listingId,invitation,rootId))?.run || null;
 }
+// Every allowlisted inbox may run an independent test application of its
+// own, so two independent cases can be joined from the back office.
+export function internalTestInboxes(env) {
+  return [String(env.INTERNAL_TEST_EMAIL || '').toLowerCase(),...internalTestRoommates(env)].filter(Boolean);
+}
 export async function submitTestApplication(request,env,session,values,runId) {
-  if(!internalTestAccount(env,request,session) || !internalTestListing(env,values.listing_id))throw Object.assign(new Error('Internal testing is unavailable for this account or listing.'),{status:403});
+  if(!internalTestParticipant(env,request,session) || !internalTestListing(env,values.listing_id))throw Object.assign(new Error('Internal testing is unavailable for this account or listing.'),{status:403});
   if(!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(runId))throw Object.assign(new Error('Start a new test run from the application form.'),{status:422});
-  const inboxes=internalTestRoommates(env);
+  const inboxes=internalTestInboxes(env);
   if((values.roommates || []).some(m=>!inboxes.includes(String(m.email || '').toLowerCase())))throw Object.assign(new Error('Internal test roommates are limited to the configured test inboxes.'),{status:422});
   const {url,key}=requireConfig(env),headers={apikey:key,Authorization:`Bearer ${key}`,'Content-Type':'application/json'};
   // A retried submit has the same primary key; each new run has a fresh one.
@@ -44,7 +49,7 @@ export async function submitTestApplication(request,env,session,values,runId) {
 export async function markTestMembers(env,request,rootId) {
   const g=await rentalWorkflow(env,request).store.group(rootId);
   const run=g?.root.workspace?.test_run;if(!run)return;
-  const inboxes=internalTestRoommates(env),{url,key}=requireConfig(env),headers={apikey:key,Authorization:`Bearer ${key}`,'Content-Type':'application/json'};
+  const inboxes=internalTestInboxes(env),{url,key}=requireConfig(env),headers={apikey:key,Authorization:`Bearer ${key}`,'Content-Type':'application/json'};
   for(const m of g.members)if(m.id!==g.root.id && !m.workspace?.test_run && inboxes.includes(String(m.email || '').toLowerCase())){
     const response=await fetch(`${url}/rest/v1/applications?id=eq.${m.id}`,{method:'PATCH',headers,body:JSON.stringify({workspace:{...m.workspace,test_run:{id:run.id,created_at:run.created_at,member_of:g.root.id}}}),signal:AbortSignal.timeout(10000)});
     if(!response.ok)console.error('Test member marking requires retry',m.id);

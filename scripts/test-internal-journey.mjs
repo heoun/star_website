@@ -106,7 +106,7 @@ try {
  // The early invitation is durable and authorizes this specific account.
  const earlyOptions=async(c=mateCookie,extra=`group=${lead}`,host='http://127.0.0.1')=>(await call(`/api/apply/options?id=${ids.listing}&${extra}`,null,c,host)).json();
  eq((await earlyOptions()).internal_test_group,lead);eq((await earlyOptions()).internal_test_pending,true);
- eq((await earlyOptions()).internal_testing,false);
+ eq((await earlyOptions()).internal_testing,true);
  eq((await earlyOptions(wrong)).internal_test_group,null);
  eq((await earlyOptions(cookie)).internal_test_group,lead);
  eq((await earlyOptions(mateCookie,'group=invalid')).internal_test_group,null);
@@ -124,7 +124,7 @@ try {
  const inviteToken=`${lead}.${leadRow.workspace.invitations.find(i=>i.email===mate.email).id}`;
  eq((await inviteOptions()).internal_test_group,lead);
  eq((await inviteOptions()).internal_test_pending,false);
- eq((await inviteOptions()).internal_testing,false);
+ eq((await inviteOptions()).internal_testing,true);
  eq((await inviteOptions(mateCookie,`invite=${inviteToken}`)).internal_test_group,lead);
  eq((await inviteOptions(wrong)).internal_test_group,null);
  eq((await inviteOptions(cookie)).internal_test_group,null);
@@ -200,6 +200,30 @@ try {
  eq(aheadRoot().workspace.invitations.every(i=>!!i.accepted),true);
  eq(fixture.state.applications.filter(a=>a.rental_group_id===aheadGroup).length,2);
  eq((await call(`/api/portal/applications/${laterId}/payment`,{outcome:'paid'},cookie)).status,200);await flush();
+ // An allowlisted inbox may run an independent test application of its own,
+ // and the back office joins two independent cases into one lease group. The
+ // joined member keeps its simulated payment and screening.
+ const solo=user('solo@example.test');env.INTERNAL_TEST_ROOMMATE_EMAILS+=`,${solo.email}`;
+ const soloCookie=await login(solo.email),soloRun=crypto.randomUUID(),hostRun=crypto.randomUUID();
+ eq((await(await call('/api/apply/options?id='+ids.listing,null,soloCookie)).json()).internal_testing,true);
+ r=await call('/api/apply',{...matePayload,test_run_id:soloRun},soloCookie);await flush();eq(r.status,201);eq((await r.json()).test_run_id,soloRun);
+ const soloRow=()=>fixture.state.applications.find(a=>a.id===soloRun);
+ eq(soloRow().rental_group_id,soloRun);eq(soloRow().workspace.test_run.account_id,solo.id);
+ eq((await call(`/api/portal/applications/${soloRun}/payment`,{outcome:'paid'},soloCookie)).status,200);await flush();
+ eq((await submit(hostRun)).status,201);
+ const hostRow=()=>fixture.state.applications.find(a=>a.id===hostRun),admin={role:'manager',email:'admin@example.test'};
+ const packetsBefore=landlordMail().length;
+ await assert.rejects(()=>flow.execute(admin,hostRun,{action:'merge',version:hostRow().workspace_version,application_id:soloRun,source_version:soloRow().workspace_version,confirmed:false}),e=>e.status===422);checks++;
+ const joinedView=await flow.execute(admin,hostRun,{action:'merge',version:hostRow().workspace_version,application_id:soloRun,source_version:soloRow().workspace_version,confirmed:true});
+ eq(joinedView.household.members.length,2);eq(soloRow().rental_group_id,hostRun);
+ eq((await call(`/api/portal/applications/${soloRun}/payment`,{outcome:'paid'},soloCookie)).status,200);await flush();
+ await materials(soloRun,soloCookie);
+ eq((await call(`/api/portal/applications/${soloRun}/screening`,{consent:true,scenario:'scored'},soloCookie)).status,200);await flush();clock+=6000;
+ eq((await call(`/api/portal/applications/${soloRun}/refresh`,{},soloCookie)).status,200);await flush();
+ eq(soloRow().workspace.screening_result.status,'complete');eq(landlordMail().length,packetsBefore);
+ eq((await action(hostRun,'payment',{outcome:'paid'})).status,200);await materials(hostRun);
+ eq((await action(hostRun,'screening',{consent:true,scenario:'scored'})).status,200);clock+=6000;eq((await action(hostRun,'refresh')).status,200);
+ eq(hostRow().status,'sent_to_landlord');eq(hostRow().workspace.recommendation.members.length,2);eq(landlordMail().length,packetsBefore+1);
  env.INTERNAL_TESTING='off';eq((await action(second,'payment',{outcome:'paid'})).status,403);
  eq((await inviteOptions(earlyCookie,`group=${lead2}`)).internal_test_group,null);
  eq((await(await call('/api/apply/options?id='+ids.listing,null,cookie)).json()).internal_testing,false);

@@ -5,7 +5,7 @@ import { readSession } from "./portal.js";
 import { renderPage } from "./contact.js";
 import { rentalMode, rentalApplyOptions, submitRental, rentalWorkflow, runRentalAutomation, findOpenInvitation, groupHasRoom } from "./rentals.js";
 import { householdCapacity, capacityMessage } from "../backend/app/rentals.ts";
-import { submitTestApplication, markTestMembers, internalTestAccount, internalTestListing, internalTestRoommates, invitedTestRun } from './internal-testing.js';
+import { submitTestApplication, markTestMembers, internalTestParticipant, internalTestListing, internalTestInboxes, invitedTestRun } from './internal-testing.js';
 import { rentalDraft, saveRentalDraft, submitDraftApplication, recordDraftDelivery } from './rental-drafts.js';
 import { MAIL_FROM, mailPlace, invitationMail } from "./mail-layout.js";
 
@@ -492,7 +492,7 @@ export async function handleRoommateInvites(request, env) {
     return link.toString();
   };
   const runId = String(body.test_run_id ?? "").trim();
-  const test = UUID_PATTERN.test(runId) && internalTestAccount(env, request, session)
+  const test = UUID_PATTERN.test(runId) && internalTestParticipant(env, request, session)
     && internalTestListing(env, listingId) ? runId : "";
   let draft=null;
   if(rentalMode(env)) {
@@ -757,8 +757,8 @@ async function processApplication(request, env, ctx, body, email, session) {
     let draft=automatic ? await rentalDraft(env,draftId) : null;
     if(automatic && !draft && !joining && !body.test_run_id) joining=await findOpenInvitation(env,request,listingId,email,groupRoot);
     if(automatic && !draft && joining)draft=await rentalDraft(env,joining.split('.')[0]);
-    if(body.test_run_id && (!internalTestAccount(env,request,session) || !internalTestListing(env,listingId)))return json({error:'Internal testing is unavailable for this account or listing.'},403);
-    if(body.test_run_id && roommates.some(m=>!internalTestRoommates(env).includes(m.email.toLowerCase())))return json({error:'Internal test roommates are limited to the configured test inboxes.'},422);
+    if(body.test_run_id && (!internalTestParticipant(env,request,session) || !internalTestListing(env,listingId)))return json({error:'Internal testing is unavailable for this account or listing.'},403);
+    if(body.test_run_id && roommates.some(m=>!internalTestInboxes(env).includes(m.email.toLowerCase())))return json({error:'Internal test roommates are limited to the configured test inboxes.'},422);
     const ownsDraft=!!draft && draft.owner_id===session.subject && draft.owner_email===email;
     if(draft && body.draft_group_id===draft.id && !ownsDraft)return json({error:'This application group belongs to another account.'},403);
     if(draft && ownsDraft && roommates.length && !draft.invitations.some(i=>i.role==='inviter' && i.accepted)) draft=await saveRentalDraft(env,request,session,listingId,draft.id,roommates,body.test_run_id || (draft.test_run?.id ?? ''));
