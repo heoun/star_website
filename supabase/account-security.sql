@@ -5,6 +5,19 @@ create table if not exists public.app_users (
   active boolean not null default true,
   created_at timestamptz not null default now()
 );
+-- A mailbox can independently belong to a workspace account and an applicant.
+alter table public.app_users add column if not exists realm text not null default 'workspace'
+  check(realm in ('workspace','applicant'));
+alter table public.app_users drop constraint if exists app_users_email_key;
+create unique index if not exists app_users_realm_email on public.app_users(realm,email);
+create table if not exists public.applicant_auth_config (
+  singleton boolean primary key default true check(singleton),
+  issuer text not null unique check(issuer ~ '^https://[^/]+/auth/v1$'),
+  enabled boolean not null default false
+);
+alter table public.applicant_auth_config enable row level security;
+revoke all on public.applicant_auth_config from public,anon,authenticated;
+grant select,insert,update on public.applicant_auth_config to service_role;
 create table if not exists public.auth_bindings (
   provider text not null, subject text not null,
   user_id uuid not null references public.app_users(id),
@@ -55,12 +68,12 @@ begin
   perform pg_catalog.pg_advisory_xact_lock(pg_catalog.hashtextextended(lower(p_email),7));
   select user_id into uid from public.auth_bindings where provider='supabase' and subject=p_subject::text;
   if uid is null then
-    select id into reserved from public.app_users where email=lower(p_email);
+    select id into reserved from public.app_users where realm='workspace' and email=lower(p_email);
     if reserved is not null then raise exception 'Identity binding requires operator review'; end if;
     insert into public.app_users(email) values(lower(p_email)) returning id into uid;
     insert into public.auth_bindings(provider,subject,user_id) values('supabase',p_subject::text,uid);
   end if;
-  if not exists(select 1 from public.app_users where id=uid and active and email=lower(p_email)) then raise exception 'Account unavailable'; end if;
+  if not exists(select 1 from public.app_users where id=uid and realm='workspace' and active and email=lower(p_email)) then raise exception 'Account unavailable'; end if;
   return uid;
 end $$;
 
@@ -134,13 +147,14 @@ end $$;
 
 -- Never inherit old application records merely by registering a reused email.
 create or replace function public.attach_application_identity() returns trigger language plpgsql security definer set search_path='' as $$
-declare uid uuid;
+declare uid uuid; expected_realm text;
 begin
   if tg_op='UPDATE' and old.user_id is not null then
     if new.user_id is distinct from old.user_id then raise exception 'Application identity cannot be reassigned'; end if;
     return new;
   end if;
-  select a.id into uid from public.app_users a where a.email=lower(new.email);
+  expected_realm:=case when exists(select 1 from public.applicant_auth_config where enabled) then 'applicant' else 'workspace' end;
+  select a.id into uid from public.app_users a where a.realm=expected_realm and a.email=lower(new.email);
   if new.user_id is not null and new.user_id is distinct from uid then raise exception 'Application identity mismatch'; end if;
   new.user_id:=uid;
   return new;
@@ -152,7 +166,9 @@ do $$ declare u record; uid uuid; begin
   for u in select id,email from auth.users where email_confirmed_at is not null and not coalesce(is_anonymous,false) and email is not null loop
     uid:=public.resolve_business_identity(u.id,u.email);
     update public.staff set user_id=uid,auth_user_id=u.id where email=lower(u.email) and (auth_user_id is null or auth_user_id=u.id) and user_id is null;
-    update public.applications set user_id=uid where lower(email)=lower(u.email) and user_id is null;
+    if not exists(select 1 from public.applicant_auth_config where enabled) then
+      update public.applications set user_id=uid where lower(email)=lower(u.email) and user_id is null;
+    end if;
   end loop;
 end $$;
 
@@ -200,7 +216,7 @@ begin
     if exists(select 1 from public.auth_bindings where provider='supabase' and subject=p_subject::text and user_id=existing) then return existing; end if;
     raise exception 'An Owner already exists';
   end if;
-  if exists(select 1 from public.app_users where email='info@starreusa.com') then raise exception 'Review existing identity before reservation'; end if;
+  if exists(select 1 from public.app_users where realm='workspace' and email='info@starreusa.com') then raise exception 'Review existing identity before reservation'; end if;
   insert into public.app_users(email,password_setup_required) values('info@starreusa.com',true) returning id into uid;
   insert into public.auth_bindings(provider,subject,user_id) values('supabase',p_subject::text,uid);
   insert into public.platform_owner(user_id) values(uid);
