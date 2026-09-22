@@ -6,17 +6,24 @@ const unavailable=()=>Object.assign(new Error('Account setup is temporarily unav
 // Google issues short-lived credentials for the four-permission runtime role.
 export function createGipAdmin(env,scope,{fetcher=fetch}={}) {
   const config=gipConfig(env,scope);
+  function failure(stage,status,code){
+    // Diagnostics identify the failed hop, never Google's raw body, tokens,
+    // signing material, email addresses or submitted request values.
+    if(env.APP_ENV==='staging')console.warn('gip_admin_unavailable',{stage,status,code:/^[A-Za-z_]{1,64}$/.test(code||'')?code:'unavailable'});
+    return unavailable();
+  }
   let credential;
-  try {credential=JSON.parse(env.GIP_WORKLOAD_IDENTITY);} catch {throw unavailable();}
+  try {credential=JSON.parse(env.GIP_WORKLOAD_IDENTITY);} catch {throw failure('credential_parse');}
   if(credential.serviceAccount!==`star-dev-auth-runtime@${config.projectId}.iam.gserviceaccount.com` ||
     credential.subject!=='star-website-staging' || credential.issuer!=='https://dev.starreusa.com/workload-identity' ||
     config.projectId!=='starreusa-dev-auth' || credential.audience!=='//iam.googleapis.com/projects/54640971372/locations/global/workloadIdentityPools/star-dev-auth/providers/cloudflare-worker' ||
-    !credential.kid || !credential.privateKey)throw unavailable();
+    !credential.kid || !credential.privateKey)throw failure('credential_target');
   // Per-request client cache only; no user or credential state is shared globally.
   let accessToken;
   async function request(url,body,authorization){
+    const stage=url.includes('sts.googleapis.com')?'federation':url.includes('iamcredentials.googleapis.com')?'impersonation':url.split(':').at(-1);
     let r;
-    try {r=await fetcher(url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json',...(authorization?{Authorization:'Bearer '+authorization}:{})},body:JSON.stringify(body)});}catch{throw unavailable();}
+    try {r=await fetcher(url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json',...(authorization?{Authorization:'Bearer '+authorization}:{})},body:JSON.stringify(body)});}catch{throw failure(stage,0,'network');}
     const reader=r.body?.getReader();if(!reader)throw unavailable();
     const decoder=new TextDecoder();let text='',length=0;
     for(;;){const {done,value}=await reader.read();if(done)break;length+=value.length;if(length>131072){await reader.cancel();throw unavailable();}text+=decoder.decode(value,{stream:true});}
@@ -25,7 +32,7 @@ export function createGipAdmin(env,scope,{fetcher=fetch}={}) {
       const raw=String(data?.error?.message||'').split(' : ')[0];
       if(raw==='EMAIL_EXISTS')throw Object.assign(new Error('This workspace account already exists.'),{status:409,code:'already_registered'});
       if(raw==='EMAIL_NOT_FOUND'||raw==='USER_NOT_FOUND')throw Object.assign(new Error('Account unavailable.'),{status:404,code:'account_missing'});
-      throw unavailable();
+      throw failure(stage,r.status,typeof data.error==='string'?data.error:raw);
     }
     return data;
   }
