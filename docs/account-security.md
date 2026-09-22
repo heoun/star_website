@@ -4,6 +4,8 @@ Status: Dev implementation and automated verification complete; Owner activation
 
 ## Identity and roles
 
+Applicant/workspace isolation is implemented behind an inactive rollout flag; it is **not yet enabled on hosted Dev or production**. See [the applicant authentication cutover](applicant-authentication.md) for prerequisites, migration and acceptance. With isolation enabled, mailbox uniqueness is scoped to the account realm and each realm uses a separate Auth project. Existing shared identities are split under operator control; workspace IDs, credentials, MFA and grants stay unchanged.
+
 `app_users.id` is the permanent business identity. `auth_bindings` maps a provider and subject to that identity. No email-only automatic rebind is allowed after an identity exists. Supabase currently verifies credentials; `resolve_business_identity` verifies the confirmed Auth record before resolving its business ID. Applications retain this ID and private applicant documents require it when `ACCOUNT_SECURITY=on`.
 
 Each database has one `platform_owner` singleton. Its email is `info@starreusa.com`. Dev and production have separate identities. Provision through `scripts/owner-identity.mjs`, never public role claims or Auth user metadata. A fresh operator-provisioned identity may be reserved before verification; access still requires verified email, password setup and MFA. Existing confirmed identities are pinned, not recreated.
