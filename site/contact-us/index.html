@@ -353,7 +353,6 @@
       box-shadow: 0 12px 24px rgba(13, 59, 82, 0.07);
     }
 
-    .team-card,
     .focus-card {
       border: 1px solid var(--line);
       border-radius: var(--radius-md);
@@ -379,7 +378,6 @@
       line-height: 1.2;
     }
 
-    .team-card h4,
     .focus-card h4 {
       margin: 0;
       font-family: "Sora", sans-serif;
@@ -504,7 +502,6 @@
       overflow: hidden;
     }
 
-    .team-card p,
     .focus-card p {
       margin: 0;
       color: var(--text);
@@ -512,21 +509,52 @@
       line-height: 1.45;
     }
 
-    .agent-photo {
-      height: 150px;
-      border: 1px dashed rgba(13, 59, 82, 0.35);
-      border-radius: var(--radius-sm);
-      background:
-        linear-gradient(145deg, #dde8ee, #f3e7dc),
-        repeating-linear-gradient(90deg, rgba(18, 65, 88, 0.1) 0 14px, transparent 14px 24px);
-      display: flex;
+    .advisor-profile {
+      display: grid;
+      grid-template-columns: 280px minmax(0, 1fr);
+      gap: 28px;
       align-items: center;
-      justify-content: center;
-      text-align: center;
-      color: #36515f;
-      font-size: 12px;
-      font-weight: 700;
-      padding: 10px;
+    }
+
+    .advisor-photo {
+      display: block;
+      width: 100%;
+      height: auto;
+      aspect-ratio: 4 / 5;
+      object-fit: cover;
+      border: 1px solid var(--line);
+      border-radius: var(--radius-md);
+      background: #dde8ee;
+    }
+
+    .advisor-copy {
+      display: grid;
+      gap: 18px;
+    }
+
+    .advisor-copy .section-head {
+      margin-bottom: 0;
+    }
+
+    .advisor-bio {
+      display: grid;
+      gap: 8px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line);
+    }
+
+    .advisor-bio h4 {
+      margin: 0;
+      font-family: "Sora", sans-serif;
+      font-size: 20px;
+      line-height: 1.2;
+    }
+
+    .advisor-bio p {
+      margin: 0;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.5;
     }
 
     .agent-role,
@@ -539,10 +567,8 @@
     }
 
     .agent-history {
-      border-top: 1px solid var(--line);
-      padding-top: 8px;
       color: #143848;
-      font-size: 12px;
+      font-size: 13px;
     }
 
     .btn {
@@ -593,6 +619,16 @@
         display: inline-flex;
         align-items: center;
         justify-content: center;
+      }
+    }
+
+    @media (max-width: 720px) {
+      .advisor-profile {
+        grid-template-columns: 1fr;
+      }
+
+      .advisor-photo {
+        max-width: 300px;
       }
     }
 
@@ -697,27 +733,20 @@
     </section>
 
     <section class="content-section">
-      <div class="section-head">
-        <h3>Meet the advisors</h3>
-        <p>Our team supports pricing, tours, negotiations, marketing, and closing coordination from first conversation through final handoff.</p>
-      </div>
-
-      <div class="card-grid">
-        <article class="team-card">
-          <div class="agent-photo" role="img" aria-label="Xiao profile picture placeholder">Team Photo Placeholder</div>
-          <h4>Xiao</h4>
-          <div class="agent-role">Senior Realtor</div>
-          <p>Leads listing strategy, pricing, and client representation across active properties.</p>
-          <p class="agent-history">Background: Over 9 years in NYC residential and mixed-use sales, with early experience in property marketing and neighborhood pricing analysis across Manhattan and Queens.</p>
-        </article>
-
-        <article class="team-card">
-          <div class="agent-photo" role="img" aria-label="Wendy profile picture placeholder">Team Photo Placeholder</div>
-          <h4>Wendy</h4>
-          <div class="agent-role">Realtor</div>
-          <p>Handles tours, client communication, and leasing support for available listings.</p>
-          <p class="agent-history">Background: Began in NYC rental operations and client services, then transitioned into full-time brokerage, focusing on tenant placement, negotiations, and smooth move-in coordination.</p>
-        </article>
+      <div class="advisor-profile">
+        <img class="advisor-photo" src="../jpg/team-xiao-hu.jpeg" alt="Xiao Hu, Senior Realtor at Star Real Estate" width="700" height="875" loading="lazy" decoding="async">
+        <div class="advisor-copy">
+          <div class="section-head">
+            <h3>Meet the advisors</h3>
+            <p>Our team supports pricing, tours, negotiations, marketing, and closing coordination from first conversation through final handoff.</p>
+          </div>
+          <div class="advisor-bio">
+            <h4>Xiao</h4>
+            <div class="agent-role">Senior Realtor</div>
+            <p>Leads listing strategy, pricing, and client representation across active properties.</p>
+            <p class="agent-history">Background: Over 9 years in NYC residential and mixed-use sales, with early experience in property marketing and neighborhood pricing analysis across Manhattan and Queens.</p>
+          </div>
+        </div>
       </div>
     </section>
 
