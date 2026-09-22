@@ -44,7 +44,8 @@ export const SIGNING_DOCUMENTS=[
  {id:'keys',document:'keys',name:'Key Rider',tables:{tenant:1,landlord:2},place:standardCell},
  {id:'insurance',document:'insurance',name:'New York Renters Insurance Rider',tables:{tenant:0,landlord:1},place:standardCell},
  {id:'rules',document:'rules',name:'Community Rules Rider',tables:{tenant:0,landlord:1},place:standardCell},
- {id:'fines',document:'rules',name:'Fine Schedule',tables:{tenant:1,landlord:2},place:standardCell},
+ // `starts` is where worker/signing-documents.js cuts the rules rider into its second copy.
+ {id:'fines',document:'rules',name:'Fine Schedule',starts:'Fine Schedule',tables:{tenant:1,landlord:2},place:standardCell},
  // DocuSign resolves Date Signed 4pt to the right of Sign Here at the same
  // anchor x. Compensate so their visible left edges align on these two lines.
  {id:'window_guards',document:'window_guards',name:'Window Guards Required Lease Notice to Tenant',individual:true,tenantOnly:true,

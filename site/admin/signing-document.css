@@ -4,6 +4,9 @@
 body{margin:0;padding:14px;background:#f1efe8}
 .signing-located{outline:2px solid #d29b35!important;outline-offset:4px;background:#fff2c6!important;border-radius:2px}
 .signing-located.is-current-match{outline:3px solid #a96d08!important;background:#ffe49a!important}
+/* A value the lease filled in. Background and ring only: nothing that could move the text. */
+mark.signing-value{background:#fde68a;color:inherit;border-radius:2px;box-shadow:0 0 0 1px #e6c25a}
+.signing-located mark.signing-value{box-shadow:0 0 0 1px #b8811a}
 #status{font:14px system-ui}
 #lease-doc .docx-wrapper{background:transparent;padding:0;font-family:"Times New Roman",Times,serif}
 #lease-doc .docx-wrapper>section.docx{margin:0 auto 14px;box-shadow:0 1px 6px #0c1f2829}

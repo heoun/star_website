@@ -20,7 +20,8 @@ import * as doc from "./lease-doc.js";
 import * as workspace from "./lease-workspace.js";
 import { signingMarkup, bindSigning, signingPreview, prepareSigningPackage, sendSigningPackage, invalidateSigningReview, signingPhaseLabel } from './rental-signing.js';
 import {signingFields,SIGNING_DOCUMENTS,signingFieldLabel} from '../shared/lease-signing-layout.js';
-import { mapDocuments, verifyDocuments } from "../shared/lease-documents.js";
+import {copyParagraphs,valueMarks} from './signing-value-highlight.js';
+import { DOCUMENTS, mapDocuments, verifyDocuments } from "../shared/lease-documents.js";
 import { ADDRESS_FIELD, ADDRESS_PARTS, composeAddress } from "../shared/lease-address.js";
 import { applicationWrite } from "../shared/lease-application.js";
 import { agentMayWriteField } from "../shared/lease-permissions.js";
@@ -961,7 +962,7 @@ function renderSigningPanel() {
 // per approved revision (the same package Review Signing Package opens) and
 // only the selected copy is mounted, so a switch costs one fetch. Preview
 // only: nothing here creates an envelope or sends anything.
-const docPreview={layout:'',tenant:'',status:'idle',message:'',selected:'',part:null,fields:[],signers:[],token:0,busy:false};
+const docPreview={layout:'',tenant:'',status:'idle',message:'',selected:'',part:null,fields:[],signers:[],values:null,token:0,busy:false};
 function previewBlocker(){
   const record=state.signing?.signing,active=record && !['voided','declined'].includes(record.phase);
   if(active)return 'Signing is in progress. Review its status under E-sign Recipients.';
@@ -995,12 +996,14 @@ function renderDocumentPreview(){
   const parts=layouts.length>1?`<div class="ws-doc-parts" role="group" aria-label="Part">${layouts.map(d=>`<button type="button" data-preview-layout="${escapeHtml(d.id)}" aria-pressed="${d.id===layout.id}">${escapeHtml(d.name)}</button>`).join('')}</div>`:'';
   const copies=layout.individual && tenants.length>1?`<div class="ws-doc-parts" role="group" aria-label="Tenant Copy"><span class="ws-doc-parts-label">Tenant Copy</span>${tenants.map(s=>`<button type="button" data-preview-tenant="${escapeHtml(s.recipientId)}" aria-pressed="${s.recipientId===tenant}">${escapeHtml(s.name)}</button>`).join('')}</div>`:'';
   const note=layout.individual?'<p class="ws-hint">Each tenant signs a separate copy on the original signature line.</p>':'';
-  const legend='<ul class="ws-field-legend" aria-label="Legend"><li><i class="tenant"></i>Tenants</li><li><i class="landlord"></i>Landlord</li><li><i class="date"></i>Date Signed, entered when that person signs</li></ul>';
+  const legend='<ul class="ws-field-legend" aria-label="Legend"><li><i class="tenant"></i>Tenants</li><li><i class="landlord"></i>Landlord</li><li><i class="date"></i>Date Signed, entered when that person signs</li><li><i class="value"></i>Filled Values</li></ul>';
+  const counted=['ready','empty'].includes(docPreview.status) && docPreview.values;
+  const values=counted?`<p class="ws-hint ws-preview-values${counted.unmatched?' is-error':''}" data-preview-values="${counted.marked}" data-preview-unmatched="${counted.unmatched}">${counted.marked===1?'1 filled value is':`${counted.marked} filled values are`} highlighted on this document.${counted.unmatched?` ${counted.unmatched} could not be highlighted.`:''}</p>`:'';
   const text={loading:'Loading signing fields…',ready:'Signing field preview only. Nothing has been sent.',empty:docPreview.message,unavailable:docPreview.message,error:docPreview.message,idle:''}[docPreview.status];
   const action=docPreview.status==='error'?'<button type="button" data-preview-retry>Try Again</button>':docPreview.status==='idle'?'<button type="button" data-preview-retry>Show Signing Fields</button>':'';
   const fields=['ready','loading'].includes(docPreview.status)?docPreview.fields:[];
   const targets=signers.filter(s=>fields.some(f=>f.recipientId===s.recipientId)).map(s=>`<div class="ws-signing-targets"><span class="ws-signing-who">${escapeHtml(s.role==='tenant'?`T${tenants.findIndex(t=>t.recipientId===s.recipientId)+1} · ${s.name}`:`Landlord · ${s.name}`)}</span>${fields.filter(f=>f.recipientId===s.recipientId).map(f=>`<button type="button" data-preview-signing-fields="${escapeHtml(f.id)}" aria-pressed="${f.id===docPreview.selected}">${f.section?`§${f.section} · `:''}${signingFieldLabel(f.kind)}</button>`).join('')}</div>`).join('');
-  host.innerHTML=`<h4>Signing Fields</h4>${parts}${copies}${note}${legend}<p class="ws-hint ws-preview-status${docPreview.status==='error'?' is-error':''}" role="status" data-preview-status="${docPreview.status}">${escapeHtml(text)}${action}</p>${targets}`;
+  host.innerHTML=`<h4>Signing Fields</h4>${parts}${copies}${note}${legend}<p class="ws-hint ws-preview-status${docPreview.status==='error'?' is-error':''}" role="status" data-preview-status="${docPreview.status}">${escapeHtml(text)}${action}</p>${values}${targets}`;
 }
 // Drops whatever preview is in flight. The busy flag guards the send buttons
 // while the package is being prepared; the run that owns it is the one that
@@ -1013,20 +1016,38 @@ function cancelDocumentPreview(){
 // was asked for, or Locate moved the frame to the merged file.
 function resetDocumentPreview(){
   cancelDocumentPreview();
-  docPreview.status='idle';docPreview.part=null;docPreview.fields=[];docPreview.selected='';
+  docPreview.status='idle';docPreview.part=null;docPreview.fields=[];docPreview.selected='';docPreview.values=null;
 }
 function postFieldPreview(){
   const entry=signingEntry,part=docPreview.part;
   if(!entry || !signingFrame || !part)return;
   requestAnimationFrame(()=>{
     if(signingEntry!==entry || !signingFrame || docPreview.part!==part)return;
-    signingFrame.contentWindow.postMessage({type:'signing-fields-preview',packageId:entry.preview.id,signers:docPreview.signers,selected:docPreview.selected,layout:part.layout,document:part,values:entry.preview.values},location.origin);
+    signingFrame.contentWindow.postMessage({type:'signing-fields-preview',packageId:entry.preview.id,signers:docPreview.signers,selected:docPreview.selected,layout:part.layout,document:part,values:entry.preview.values,marks:previewMarks(entry,part)},location.origin);
   });
+}
+// Where the copy's filled values print, read off the template this screen
+// rendered. A tenant's own notice carries that tenant's details in place of
+// the household's, exactly as the Worker filled it (signing-documents.js).
+function previewMarks(entry,part){
+  const layout=SIGNING_DOCUMENTS.find(d=>d.id===part.layout);
+  if(!layout || !docHost)return null;
+  // The copies the package cuts: one per document, plus the fine schedule cut
+  // out of the rules rider (worker/signing-documents.js uses the same words).
+  const markers=[...DOCUMENTS,...SIGNING_DOCUMENTS.filter(d=>d.starts)].map(d=>({id:d.id,starts:d.starts}));
+  const paragraphs=copyParagraphs(docHost,markers,layout.starts?layout.id:layout.document);
+  const overrides={};
+  if(part.tenantRecipientId){
+    const signer=entry.preview.signers.find(s=>s.recipientId===part.tenantRecipientId);
+    const member=state.caseRow?.household?.members?.find(m=>m.id===signer?.memberId);
+    if(signer)Object.assign(overrides,{'tenant.names':signer.name,'tenant.email':signer.email,'tenant.mailing_address':member?.current_address || ''});
+  }
+  return valueMarks(paragraphs,{overrides,labelOf:id=>state.byId.get(id)?.label || id});
 }
 async function previewDocumentFields(){
   cancelDocumentPreview();
   const token=docPreview.token,id=state.activeDocument,opened=state;
-  docPreview.part=null;docPreview.fields=[];
+  docPreview.part=null;docPreview.fields=[];docPreview.values=null;
   if(!id || !formHost?.querySelector('[data-workspace-document-preview]'))return;
   if(!previewLayouts().length){docPreview.status='idle';renderDocumentPreview();return;}
   const blocker=previewBlocker();
@@ -1052,12 +1073,12 @@ async function previewDocumentFields(){
     const people=layout.individual?entry.preview.signers.filter(s=>s.role==='landlord' || s.recipientId===tenant):entry.preview.signers;
     const fields=signingFields(people,layout.id,entry.preview.values);
     docPreview.signers=entry.preview.signers;
-    if(!fields.length){
-      docPreview.status='empty';docPreview.message=layout.id==='concession'?'No rent concession is specified. This rider does not require signatures.':'This document has no signing fields.';
-      showDocument(id);renderDocumentPreview();setStatus(docPreview.message);return;
-    }
+    // A copy with no signing box (the concession rider when none is agreed)
+    // is still mounted for its filled values; its note stands in for the
+    // ready text once the frame has marked them.
+    if(!fields.length)docPreview.message=layout.id==='concession'?'No rent concession is specified. This rider does not require signatures.':'This document has no signing fields.';
     docPreview.part=part;docPreview.fields=fields;
-    if(!fields.some(f=>f.id===docPreview.selected))docPreview.selected=fields[0].id;
+    if(!fields.some(f=>f.id===docPreview.selected))docPreview.selected=fields[0]?.id || '';
     screen.querySelector('#lease-doc-name').textContent=part.name || layout.name;
     renderDocumentPreview();postFieldPreview();
   }catch(error){
@@ -1080,8 +1101,9 @@ window.addEventListener('message',event=>{
   }
   if(event.data.type==='signing-fields-ready'){
     if(!docPreview.part || event.data.documentId!==docPreview.part.documentId)return;
-    docPreview.status='ready';if(event.data.selected)docPreview.selected=event.data.selected;renderDocumentPreview();
-    setStatus(`${SIGNING_DOCUMENTS.find(d=>d.id===docPreview.part.layout)?.name} · Signing field preview only. Nothing has been sent.`);return;
+    const empty=!docPreview.fields.length;
+    docPreview.status=empty?'empty':'ready';if(event.data.selected)docPreview.selected=event.data.selected;docPreview.values=event.data.values || null;renderDocumentPreview();
+    setStatus(empty?docPreview.message:`${SIGNING_DOCUMENTS.find(d=>d.id===docPreview.part.layout)?.name} · Signing field preview only. Nothing has been sent.`);return;
   }
   if(event.data.type!=='signing-document-located')return;
   const field=state.byId.get(event.data.fieldId);

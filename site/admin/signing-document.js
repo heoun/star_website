@@ -4,6 +4,7 @@ import * as doc from './lease-doc.js';
 import {SIGNING_DOCUMENTS} from '../shared/lease-signing-layout.js';
 import {mapDocuments} from '../shared/lease-documents.js';
 import {showSigningFields,clearSigningFields} from './signing-field-preview.js';
+import {showValueMarks,clearValueMarks} from './signing-value-highlight.js';
 const params=new URLSearchParams(location.search),id=params.get('rental'),packageId=params.get('package'),hash=params.get('sha');
 const host=document.querySelector('#lease-doc'),status=document.querySelector('#status');
 let documents=[],currentDocument=null;
@@ -18,7 +19,7 @@ async function mountSaved(part=null){
 }
 function clearLocation(){host.querySelectorAll('.signing-located').forEach(p=>p.classList.remove('signing-located','is-current-match'));}
 let fieldPreview=null;
-function show(id){fieldPreview=null;clearSigningFields();clearLocation();const item=documents.find(d=>d.id===id);doc.showSections(item?.from??null,item?.to);window.scrollTo(0,0);}
+function show(id){fieldPreview=null;clearSigningFields();clearValueMarks(host);clearLocation();const item=documents.find(d=>d.id===id);doc.showSections(item?.from??null,item?.to);window.scrollTo(0,0);}
 function locate(fieldId,contexts,index=0){
  clearLocation();
  const targets=new Set((Array.isArray(contexts)?contexts:[]).filter(t=>typeof t==='string').map(t=>t.replace(/\s+/g,' ').trim()).filter(Boolean));
@@ -55,8 +56,11 @@ window.addEventListener('message',event=>{
    await mountSaved(part);doc.showSections(null);clearLocation();
    const signers=part.tenantRecipientId?event.data.signers.filter(s=>s.role==='landlord' || s.recipientId===part.tenantRecipientId):event.data.signers;
    fieldPreview={signers,selected:event.data.selected,layout:layout.id,options:{standalone:true,values:event.data.values,tenantOrder:event.data.signers.filter(s=>s.role==='tenant').map(s=>s.recipientId)}};
+   // The values the lease filled in are marked first, on the text itself; the
+   // boxes are then measured on the final layout. See signing-value-highlight.js.
+   const values=showValueMarks(host,event.data.marks);
    const result=showSigningFields(host,fieldPreview.signers,fieldPreview.selected,fieldPreview.layout,fieldPreview.options);
-   parent.postMessage({type:'signing-fields-ready',packageId,layout:layout.id,documentId:part.documentId,...result},location.origin);
+   parent.postMessage({type:'signing-fields-ready',packageId,layout:layout.id,documentId:part.documentId,...result,values},location.origin);
   }catch(error){parent.postMessage({type:'signing-fields-error',packageId,layout:event.data.layout,documentId:event.data.document?.documentId,message:error.message},location.origin);}
  }
  if(event.data.type==='signing-document-zoom')host.style.zoom=String(Math.max(.5,Math.min(1.5,Number(event.data.zoom)||1)));

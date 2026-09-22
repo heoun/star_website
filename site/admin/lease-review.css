@@ -20,6 +20,7 @@
 .ws-doc-parts{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:0 0 8px}.ws-doc-parts-label{font-size:11px;color:var(--soft);margin-right:2px}
 .ws-doc-parts button{font-size:12px;padding:5px 10px;border-radius:999px}.ws-doc-parts button[aria-pressed=true]{background:#e5f1f6;border-color:#205570;color:#205570}
 .ws-field-legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin:0 0 8px;padding:0;list-style:none;font-size:11.5px;color:#5c6d79}.ws-field-legend li{display:flex;align-items:center;gap:6px}
-.ws-field-legend i{display:inline-block;width:14px;height:10px;border:1px solid #236f91;background:#d8eef9;border-radius:2px}.ws-field-legend i.landlord{border-color:#8056ac;background:#efe2ff}.ws-field-legend i.date{border-style:dashed;background:#fff}
+.ws-field-legend i{display:inline-block;width:14px;height:10px;border:1px solid #236f91;background:#d8eef9;border-radius:2px}.ws-field-legend i.landlord{border-color:#8056ac;background:#efe2ff}.ws-field-legend i.date{border-style:dashed;background:#fff}.ws-field-legend i.value{border-color:#e6c25a;background:#fde68a}
+.ws-preview-values{margin:0 0 8px;line-height:1.6;max-width:none}.ws-preview-values.is-error{color:#a1251b}
 .ws-preview-status{margin:0;line-height:1.6;max-width:none}.ws-preview-status.is-error{color:#a1251b}.ws-preview-status button{font-size:12px;padding:5px 10px;margin-left:8px}
 .ws-signing-targets{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:10px}.ws-signing-who{flex-basis:100%;font-size:11.5px;font-weight:600;color:#203744}.ws-signing-targets button{font-size:12px;padding:6px 10px}.ws-signing-targets button[aria-pressed=true]{background:#e5f1f6;border-color:#205570;color:#205570}

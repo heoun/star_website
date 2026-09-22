@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import http from 'node:http';
 import {readFile,mkdir,writeFile} from 'node:fs/promises';
+import {createHash} from 'node:crypto';
 import {resolve,extname} from 'node:path';
 import worker from '../worker/index.js';
 import {createIdentityFixture} from './identity-fixtures.mjs';
@@ -191,11 +192,85 @@ try{
  eq(await detail.count(),1);
  eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),'lease');
  eq(await detail.locator('[data-preview-status]').getAttribute('data-preview-status'),'ready');
- eq(await detail.locator('.ws-field-legend li').allTextContents(),['Tenants','Landlord','Date Signed, entered when that person signs']);
+ eq(await detail.locator('.ws-field-legend li').allTextContents(),['Tenants','Landlord','Date Signed, entered when that person signs','Filled Values']);
  eq(await detail.locator('[data-preview-signing-fields][aria-pressed="true"]').getAttribute('data-preview-signing-fields'),'lease-38-1-initial');
  eq(await savedFrame.locator('.signing-field-box').count(),10);
  eq(await savedFrame.locator('.signing-field-box[data-kind="initial"]').count(),4);
  eq(await savedFrame.locator('.signing-field-box[data-kind="full_name"]').count(),3);
+ // Every value the lease filled into this copy is marked on it, in the order
+ // it prints, and nothing else is: the same words and numbers set as fixed
+ // text stay plain, and an empty value leaves no mark. The expectation is read
+ // off the template the screen renders, slot by slot.
+ // The copy's paragraphs are cut the way the Worker cuts the filled document:
+ // from the body node whose words open the copy to the node opening the next.
+ const expectedValues=(id,{overrides={}}={})=>page.evaluate(async([id,overrides])=>{
+  const {DOCUMENTS}=await import('/shared/lease-documents.js');
+  const fold=t=>String(t).replace(/\s+/g,' ').trim();
+  const nodes=[...document.querySelectorAll('#lease-doc section.docx > article > *')];
+  const starts=[...DOCUMENTS,{id:'fines',starts:'Fine Schedule'}].map(d=>({id:d.id,index:nodes.findIndex(n=>fold(n.textContent).startsWith(fold(d.starts)))})).sort((a,b)=>a.index-b.index);
+  const at=starts.findIndex(s=>s.id===id);
+  const paragraphs=nodes.slice(starts[at].index,starts[at+1]?.index??nodes.length).flatMap(n=>n.matches('p')?[n]:[...n.querySelectorAll('p')]);
+  const slots=paragraphs.flatMap(p=>[...p.querySelectorAll('[data-lease-slot]')]);
+  const values=slots.map(s=>[s.dataset.leaseSlot,fold(Object.hasOwn(overrides,s.dataset.leaseSlot)?overrides[s.dataset.leaseSlot]:s.textContent)]);
+  return {values:values.filter(([,v])=>v),empty:values.filter(([,v])=>!v).length};
+ },[id,overrides]);
+ const markedValues=()=>savedFrame.locator('#lease-doc').evaluate(host=>{
+  const groups=new Map();
+  for(const m of host.querySelectorAll('mark.signing-value')){const key=m.dataset.signingValue;if(!groups.has(key))groups.set(key,[m.dataset.field,'']);groups.get(key)[1]+=m.textContent;}
+  return [...groups.values()].map(([id,v])=>[id,v.replace(/\s+/g,' ').trim()]);
+ });
+ // Fixed text that repeats a marked value word for word ("New York" in the
+ // Good Cause notice, a date, a fee) and carries no mark of its own.
+ const plainTwins=()=>savedFrame.locator('#lease-doc').evaluate(host=>{
+  const fold=t=>t.replace(/\s+/g,' ').trim();
+  const marked=[...new Set([...host.querySelectorAll('mark.signing-value')].map(m=>fold(m.textContent)))].filter(v=>v.length>=4);
+  const plain=p=>{const walker=document.createTreeWalker(p,NodeFilter.SHOW_TEXT);let text='';for(let n=walker.nextNode();n;n=walker.nextNode())if(!n.parentElement.closest('mark.signing-value'))text+=n.nodeValue;return fold(text);};
+  return [...host.querySelectorAll('section.docx > article p')].filter(p=>{const t=plain(p);return marked.some(v=>t.includes(v));}).length;
+ });
+ const valueCounts=()=>Promise.all([detail.locator('[data-preview-values]').getAttribute('data-preview-values'),detail.locator('[data-preview-values]').getAttribute('data-preview-unmatched')]);
+ const leaseValues=await expectedValues('lease');
+ eq(await markedValues(),leaseValues.values);
+ assert.ok(leaseValues.values.length>=30);checks++;
+ assert.ok(leaseValues.values.filter(([id])=>id==='tenant.names').length>=2);checks++;
+ eq(leaseValues.values.some(([id,v])=>id==='rent.monthly' && /3,?100/.test(v)),true);
+ eq(await valueCounts(),[String(leaseValues.values.length),'0']);
+ assert.match(await detail.locator('[data-preview-values]').innerText(),/filled values are highlighted on this document\.$/);checks++;
+ const rentTitle=await savedFrame.locator('mark.signing-value[data-field="rent.monthly"]').first().getAttribute('title');
+ assert.ok(rentTitle && rentTitle!=='rent.monthly');checks++; // the field's own label, for the tooltip
+ // Marks are paint only: no box that could move a word or an anchor.
+ eq(await savedFrame.locator('#lease-doc').evaluate(host=>[...host.querySelectorAll('mark.signing-value')].every(m=>{const s=getComputedStyle(m);return s.paddingLeft==='0px' && s.paddingRight==='0px' && s.borderLeftWidth==='0px' && s.display==='inline';})),true);
+ const leaseMarks=await savedFrame.locator('mark.signing-value').count();
+ await page.locator('[data-lease-zoom="1"]').click();
+ await page.locator('#lease-zoom-label').filter({hasText:'110%'}).waitFor();
+ await savedFrame.locator('[data-signing-field="lease-38-1-initial"].current').waitFor();
+ eq(await savedFrame.locator('mark.signing-value').count(),leaseMarks);
+ eq(await savedFrame.locator('.signing-field-box').count(),10);
+ await page.locator('[data-lease-zoom="-1"]').click();
+ await page.locator('#lease-zoom-label').filter({hasText:'100%'}).waitFor();
+ await page.screenshot({path:`${out}/filled-values-lease.png`,fullPage:true});
+ // The marking itself, on a copy built by hand: a value the document set in
+ // two runs gets one mark per run, fixed twins of a value stay plain, clearing
+ // restores the text nodes, and a copy with a different paragraph count marks
+ // nothing rather than guessing.
+ const synthetic=await savedFrame.locator('#lease-doc').evaluate(async()=>{
+  const {copyParagraphs,valueMarks,showValueMarks,clearValueMarks}=await import('/admin/signing-value-highlight.js');
+  const host=document.createElement('div'),template=document.createElement('div');
+  host.innerHTML='<section class="docx"><header><p>Page 1</p></header><article><p>Monthly rent is <span><b>$2,</b></span><span>500</span>  due on the 1st.</p><p>Tenant</p><p><span>Payable to </span><span>Tenant</span></p><p>$2,500</p><p>Deposit <span style="color:#fff">\\LEASE-R1-SIG\\</span>$2,500</p></article><footer><p>1</p></footer></section>';
+  template.innerHTML='<section class="docx"><header><p>Page 1</p></header><article><p>Monthly rent is <span class="lease-slot" data-lease-slot="rent.monthly">$2,500</span> due on the 1st.</p><p>Tenant</p><p><span>Payable to </span><span class="lease-slot" data-lease-slot="utility.gas">Tenant</span></p><p><span class="lease-slot" data-lease-slot="deposit.amount">$2,500</span></p><p>Deposit <span class="lease-slot" data-lease-slot="deposit.amount">$2,500</span><span class="lease-slot is-empty" data-lease-slot="deposit.bank_name"></span></p></article><footer><p>1</p></footer></section>';
+  const plan=valueMarks(copyParagraphs(template,[{id:'lease',starts:'Monthly rent'}],'lease'),{labelOf:id=>id.toUpperCase()});
+  const before=host.textContent,result=showValueMarks(host,plan);
+  const marks=[...host.querySelectorAll('mark.signing-value')].map(m=>[m.dataset.field,m.dataset.signingValue,m.textContent,m.title]);
+  const plain=[...host.querySelectorAll('p')].filter(p=>!p.querySelector('mark')).map(p=>p.textContent);
+  const same=host.textContent===before;
+  clearValueMarks(host);
+  const restored=host.textContent===before && !host.querySelector('mark') && host.querySelector('article p').childNodes.length===4;
+  host.querySelector('article').append(document.createElement('p'));
+  return {count:plan.count,contexts:plan.marks.map(m=>m.context),result,marks,plain,same,restored,refused:showValueMarks(host,plan)};
+ });
+ eq(synthetic,{count:5,contexts:['Monthly rent is $2,500 due on the 1st.','Payable to Tenant','$2,500','Deposit $2,500'],result:{marked:4,unmatched:0},
+  marks:[['rent.monthly','1','$2,','RENT.MONTHLY'],['rent.monthly','1','500','RENT.MONTHLY'],['utility.gas','2','Tenant','UTILITY.GAS'],['deposit.amount','3','$2,500','DEPOSIT.AMOUNT'],['deposit.amount','4','$2,500','DEPOSIT.AMOUNT']],
+  plain:['Page 1','Tenant','1'],same:true,restored:true,refused:{marked:0,unmatched:4}});
+ let twins=0,empties=0;
  await page.screenshot({path:`${out}/signing-fields-38.png`,fullPage:true});
  await detail.locator('[data-preview-signing-fields="lease-39-1-initial"]').click();
  await savedFrame.locator('[data-signing-field="lease-39-1-initial"].current').waitFor();
@@ -211,6 +286,10 @@ try{
   await savedFrame.locator(`[data-signing-field="${layout}-1-signature"].current`).waitFor();
   eq(await savedFrame.locator('.signing-field-box').count(),6);
   eq(await savedFrame.locator('.signing-field-box[data-kind="initial"]').count(),0);
+  const riderValues=await expectedValues(layout);
+  eq(await markedValues(),riderValues.values);eq(await valueCounts(),[String(riderValues.values.length),'0']);
+  twins+=await plainTwins();empties+=riderValues.empty;
+  if(layout==='utilities')await page.screenshot({path:`${out}/filled-values-utilities.png`,fullPage:true});
   eq(await savedFrame.locator(`[data-signing-field="${layout}-3-full_name"]`).innerText(),owner.name);
   eq(await savedFrame.locator('.signing-field-box.current').evaluate(el=>{const r=el.getBoundingClientRect();return r.width>80 && r.top>=0 && r.bottom<innerHeight;}),true);
   eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),layout==='fines'?'rules':layout);
@@ -226,6 +305,8 @@ try{
  await savedFrame.locator('[data-signing-field="packages-1-signature"].current').waitFor();
  await page.getByText('Packages Rider · Signing field preview only. Nothing has been sent.',{exact:true}).waitFor();
  eq(await savedFrame.locator('[data-signing-field^="utilities-"]').count(),0);
+ eq(await markedValues(),(await expectedValues('packages')).values);
+ eq(await savedFrame.locator('mark.signing-value[data-field^="utility."]').count(),0);
  eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),'packages');
  eq(await page.locator('#lease-doc-name').innerText(),'Packages Rider');
  // Fields are drawn on the anchor tokens the saved document carries, so a
@@ -244,10 +325,16 @@ try{
   clearSigningFields();return [refused.includes('anchors'),tokens.length,tiny];
  });
  eq(slotCheck,[true,6,true]);
+ // A tenant's own notice carries that tenant's details where the household's print.
+ const copyOverrides=recipientId=>{const s=savedPackage.record.package.signers.find(x=>x.recipientId===recipientId),r=fixture.state.applications.find(a=>a.id===s.memberId);return {'tenant.names':s.name,'tenant.email':s.email,'tenant.mailing_address':r?.current_address || ''};};
  for(const layout of ['window_guards','bedbug','sprinkler','allergen','alarms','smoking','concession','dhcr','good_cause']){
   await panel.locator(`[data-ws-doc="${layout}"]`).click();
   const recipient=layout==='allergen'?'3':'1';
   await savedFrame.locator(`[data-signing-field="${layout}-${recipient}-signature"].current`).waitFor();
+  const individual=['window_guards','bedbug','dhcr'].includes(layout);
+  const noticeValues=await expectedValues(layout,{overrides:individual?copyOverrides('1'):{}});
+  eq(await markedValues(),noticeValues.values);eq(await valueCounts(),[String(noticeValues.values.length),'0']);
+  twins+=await plainTwins();empties+=noticeValues.empty;
   eq(await savedFrame.locator('.signing-field-box').count(),({window_guards:2,bedbug:4,allergen:3,dhcr:4})[layout] || 6);
   eq(await savedFrame.locator('.signing-field-box[data-kind="date_signed"]').count(),({window_guards:1,bedbug:2,allergen:1,dhcr:2})[layout] || 0);
   if(layout==='bedbug')eq(await savedFrame.locator('.signing-field-box[data-kind="date_signed"]').first().evaluate(el=>getComputedStyle(el).borderTopStyle),'dashed');
@@ -271,10 +358,17 @@ try{
    eq(await savedFrame.locator('.signing-field-box[data-recipient="1"]').count(),0);
    eq(await savedFrame.locator(`[data-signing-field="${layout}-2-signature"]`).innerText(),'T2 · Signature');
    assert.match(await savedFrame.locator('#lease-doc').innerText(),/Applicant E/);checks++;
+   const twinValues=await expectedValues(layout,{overrides:copyOverrides('2')});
+   eq(await markedValues(),twinValues.values);eq(await valueCounts(),[String(twinValues.values.length),'0']);
+   eq(twinValues.values.some(([id,v])=>id==='tenant.names' && v==='Applicant E'),true);
+   if(layout==='dhcr')await page.screenshot({path:`${out}/filled-values-dhcr-tenant-2.png`,fullPage:true});
    await detail.locator('[data-preview-tenant="1"]').click();
    await savedFrame.locator(`[data-signing-field="${layout}-1-signature"].current`).waitFor();
+   eq(await markedValues(),noticeValues.values);
   }
  }
+ assert.ok(twins>0);checks++; // fixed twins of a marked value exist and stay plain
+ assert.ok(empties>0);checks++; // some fields print nothing, and got no mark
  // E-sign Recipients keeps the signing order and DocuSign status only.
  await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();
  eq(await panel.locator('.ws-signer').count(),3);
@@ -283,6 +377,7 @@ try{
  await panel.getByRole('tab',{name:'Documents',exact:true}).click();
  await detail.locator('[data-preview-status="ready"]').waitFor();
  eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),'good_cause');
+ eq(await markedValues(),(await expectedValues('good_cause')).values);
  // A copy that fails to load says so under the document and can be retried.
  const partPattern='**/api/admin/cases/*/signing?package=*&file=source&document=*';
  await page.route(partPattern,route=>route.fulfill({status:503,contentType:'text/plain',body:'unavailable'}));
@@ -297,10 +392,13 @@ try{
  for(const part of savedPackage.record.package.documents){
   if(part.tenantRecipientId && part.tenantRecipientId!=='1')continue;
   const response=await page.request.get(`${base}/api/admin/cases/${ids.b}/signing?package=${savedPackage.id}&file=source&document=${part.documentId}`);
-  await writeFile(`${out}/signing-${part.layout}.docx`,await response.body());
+  const bytes=await response.body();await writeFile(`${out}/signing-${part.layout}.docx`,bytes);
+  // Marking is paint on the screen only: the saved copy's bytes are what they were.
+  eq(createHash('sha256').update(bytes).digest('hex'),part.file.sha256);
  }
  await page.getByRole('button',{name:'View All Documents',exact:true}).click();
  await savedFrame.locator('#lease-doc').filter({hasText:'LEASE ONLY CORRECTION'}).waitFor();
+ eq(await savedFrame.locator('mark.signing-value').count(),0);
  await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  assert.match(await savedFrame.locator('#lease-doc').textContent(),/LEASE ONLY CORRECTION/);checks++;
  // Locate must navigate the visible saved package, including from another rider.
@@ -391,6 +489,10 @@ try{
  eq(await savedFrame.locator('.signing-field-box').count(),0);
  eq(await detail.locator('[data-preview-signing-fields]').count(),0);
  eq(await page.locator('#lease-doc-name').innerText(),'Rent Concession Rider');
+ // Its own copy is mounted and its filled values are still marked, with no box to draw.
+ const concessionValues=await expectedValues('concession');
+ eq(await markedValues(),concessionValues.values);eq(concessionValues.values.map(([id])=>id),['concession.terms']);
+ eq(await valueCounts(),['1','0']);eq(await detail.locator('[data-preview-status]').getAttribute('data-preview-status'),'empty');
  await page.unroute(signingPattern);
  await page.screenshot({path:`${out}/documents-no-fields.png`,fullPage:true});
  // No send here: the isolated signing tests cover dispatch and confirmation.
