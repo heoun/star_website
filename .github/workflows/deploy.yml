@@ -1,36 +1,13 @@
-name: Deploy To Cloudflare
-
+# Production is explicitly promoted through release.yml after Dev acceptance.
+# A push to main validates code; it no longer bypasses the release gate.
+name: Production release instructions
 on:
   push:
-    branches:
-      - main
-  workflow_dispatch:
-
+    branches: [main]
 permissions:
   contents: read
-
-concurrency:
-  group: deploy-cloudflare
-  cancel-in-progress: false
-
 jobs:
-  deploy:
+  instructions:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Setup Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "20"
-
-      - name: Build
-        run: npm run build
-
-      - name: Deploy
-        env:
-          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npm run deploy
+      - run: echo 'Use Release a verified revision to deploy this commit to staging, then promote the same SHA to production.'

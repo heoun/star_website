@@ -6,9 +6,9 @@ Static real-estate website for Star Realty, hosted on Cloudflare Workers at http
 
 Requirements:
 
-- Node.js 18 or newer
+- Node.js 24 or newer
 
-Run `npm ci` to install the locked development dependencies for type checking and architecture checks. The development server and build use Node.js built-in modules; Cloudflare's wrangler CLI is fetched on demand through npx. CI uses Node.js 24.
+Run `npm ci` to install the locked development dependencies for type checking and architecture checks. The development server and build use Node.js built-in modules; Releases use the locked Wrangler dependency. CI uses Node.js 24.
 
 ```bash
 npm ci
@@ -22,11 +22,15 @@ npm run dev
 # Rebuild the dist/ output
 npm run build
 
-# Manual deploy to Cloudflare (normally not needed; pushing to main auto-deploys)
+# Release an accepted revision (requires target database credentials and Dev acceptance)
 npm run deploy
 ```
 
 ## Development
+
+See [development and release environments](docs/environments.md) for the persistent
+Dev site, database version checks and explicit production promotion. A push to
+`main` no longer deploys directly to production.
 
 `npm run dev` runs `worker/index.js` under `wrangler dev`, exactly as Cloudflare
 runs it, and watches `site/` so a saved edit appears on the next reload without

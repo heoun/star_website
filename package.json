@@ -14,7 +14,7 @@
     "dev:agent": "node scripts/dev.js --var DEV_ADMIN_ROLE:agent",
     "preview": "node server.js",
     "seed:dev": "node scripts/seed-dev.js",
-    "deploy": "npx --yes wrangler@4 deploy",
+    "deploy": "node scripts/release.mjs production",
     "gate": "depcruise backend worker --config backend/tools/arch-gate/dependency-cruiser.cjs",
     "typecheck": "tsc -p backend/tsconfig.json",
     "smoke": "node backend/tools/smoke.mjs",
@@ -50,7 +50,11 @@
     "test:signing:webhook": "node scripts/test-docusign-webhook-forwarder.mjs",
     "test:rentals:ui": "npm run build && node scripts/test-rental-ui.mjs",
     "test:signing:sync": "node scripts/test-signing-sync.mjs",
-    "test:testing": "node scripts/test-testing-launcher.mjs"
+    "test:testing": "node scripts/test-testing-launcher.mjs",
+    "deploy:dev": "node scripts/release.mjs staging",
+    "db:bundle": "node scripts/release-schema.mjs",
+    "test:release": "npm run typecheck && npm run gate && npm run test:environments && npm run test:identity && npm run test:email && npm run test:rentals && npm run test:rentals:db && npm run test:signing && npm run test:signing:db && npm run test:journey",
+    "test:environments": "node scripts/test-environments.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
