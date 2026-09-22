@@ -386,9 +386,11 @@ import { endDateFor } from "../shared/lease-dates.js";
       input.placeholder = passport ? "Passport number" : "###-##-####";
       input.inputMode = passport ? "text" : "numeric";
       input.maxLength = passport ? 20 : 11;
-      document.getElementById("id-number-help").textContent = passport
-        ? "Letters and digits only, as printed on your passport."
+      const help = document.getElementById("id-number-help");
+      help.textContent = passport
+        ? ""
         : "If you do not have an SSN yet, you can use your passport number instead.";
+      help.hidden = passport;
     };
 
     // ---------------------------------------------------------- the lease dates
@@ -494,13 +496,6 @@ import { endDateFor } from "../shared/lease-dates.js";
       form.querySelector('[data-group="has_roommates"]')?.closest("fieldset")?.setAttribute("hidden", "");
       form.querySelectorAll('input[name="has_roommates"]').forEach((radio) => radio.removeAttribute("required"));
       document.querySelector('.step-link[data-step="1"]').closest('li').hidden=true;
-    } else {
-      const capNote = document.getElementById("roommate-cap-note");
-      capNote.hidden = false;
-      capNote.textContent = Number.isFinite(bedroomCount)
-        ? `With ${bedroomCount} bedrooms, this home takes you and up to ${roommateCap} `
-          + `${roommateCap === 1 ? "roommate" : "roommates"}.`
-        : `You can add up to ${roommateCap} ${roommateCap === 1 ? "roommate" : "roommates"} for this home.`;
     }
 
     const firstStep=roommateCap===0 || joiningGroup?2:1;
