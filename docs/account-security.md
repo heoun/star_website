@@ -1,6 +1,6 @@
 # Account identity, access and recovery
 
-Status: Dev implementation and automated verification complete; human activation/acceptance pending. Production remains unchanged until an accepted Dev revision is released.
+Status: Dev implementation and automated verification complete; Owner activation and an existing Admin invitation tested by the user. Full role acceptance is still pending. Production remains unchanged until an accepted Dev revision is released.
 
 ## Identity and roles
 
@@ -16,7 +16,7 @@ The Owner governs accounts only. Its optional Admin grant is independent; role c
 
 Workspace invitations are hashed, bound to email and role, expire in seven days and are accepted atomically once. Landlord onboarding invitations expire in fourteen days. Resending replaces the token; revoking invalidates pending acceptance. Suspending the directory account blocks access even with an existing cookie. Revoking an invitation does not suspend an already active account.
 
-An existing user signs in or verifies an email code and accepts the invitation without changing their password. A new or previously unverified account verifies email before setting its first password. First-time setup is explicit state; provider-generated password hashes do not count as a user-set password. Password reset is a separate explicit flow. Owner/Admin must enroll and verify a TOTP authenticator before business or account-management APIs become accessible. Provider access and refresh tokens remain in HttpOnly, Secure, host-only cookies on deployed sites; refresh rotation must propagate to the browser.
+An existing user signs in or verifies an email code and accepts the invitation without changing their password. A new or previously unverified account verifies email before setting its first password. First-time setup is explicit state; provider-generated password hashes do not count as a user-set password. Completed accounts cannot use the activation endpoint to sign in again; they use password login or password recovery. A valid invitation opens activation directly, while incomplete first-password setup can be resumed. Password reset is a separate explicit flow: verify the recovery email code, verify any existing TOTP factor, then save the new password and sign in with it. A ten-minute HttpOnly recovery receipt is signed and bound to the exact provider session, user, environment and site; it survives MFA token rotation, but not switching sessions. Successful reset and logout clear the receipt. Owner/Admin must enroll and verify a TOTP authenticator before business or account-management APIs become accessible. Provider access and refresh tokens remain in HttpOnly, Secure, host-only cookies on deployed sites; refresh rotation must propagate to the browser.
 
 ## Operator bootstrap
 
@@ -46,6 +46,6 @@ A backup is accepted only after a restore rehearsal in an isolated database. No 
 
 ## Acceptance
 
-`npm run test:account-security` uses isolated PostgreSQL and a simulated Auth provider: Owner singleton, identity reuse refusal, MFA gates, role grants/revocation, forged sessions, invitation replay, and preservation of existing passwords. `npm run test:release` covers the existing rental and signing flows.
+`npm run test:account-security` uses isolated PostgreSQL and a simulated Auth provider: Owner singleton, identity reuse refusal, MFA gates, role grants/revocation, forged sessions, invitation replay, preservation of existing passwords, login with newly saved passwords, and MFA-gated password reset. Run `node scripts/test-account-security.mjs --ui` with Playwright available for the complete browser registration/logout/login/reset regression. `npm run test:release` covers the existing rental and signing flows.
 
 Human acceptance on Dev is still required: Owner email verification/password/authenticator enrollment, a new and existing Admin invite, Agent scope, landlord registration/draft/approval/property access, sign-out, password reset, expired/revoked invitations, suspension and denied cross-account/private-file access. Only after this acceptance should the same revision and schema be promoted to production.

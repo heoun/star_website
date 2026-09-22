@@ -4,13 +4,13 @@ import {schemaBundle} from './release-schema.mjs';
 import {createIdentityFixture} from './identity-fixtures.mjs';
 import worker from '../worker/index.js';
 import {devIdentity} from '../worker/env.js';
-import {hashInvitation} from '../worker/account-security.js';
+import {hashInvitation,verifiedSessionClaims} from '../worker/account-security.js';
 const db=new PGlite(),f=createIdentityFixture();let checks=0;
 const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
 const ownerEmail='info@starreusa.com',ownerId=crypto.randomUUID();f.user(ownerEmail,ownerId);
-const env={...f.env,ACCOUNT_SECURITY:'on',OWNER_EMAIL:ownerEmail};
+const env={...f.env,ACCOUNT_SECURITY:'on',OWNER_EMAIL:ownerEmail,AUTH_LINK_SECRET:'isolated-recovery-signing-key-for-tests-only'};
 const baseFetch=globalThis.fetch,issued=new Map();
-const jwt=(user,aal='aal1')=>{const token=[Buffer.from('{}').toString('base64url'),Buffer.from(JSON.stringify({sub:user.id,aal,amr:aal==='aal2'?[{method:'totp',timestamp:Math.floor(Date.now()/1000)}]:[]})).toString('base64url'),crypto.randomUUID()].join('.');issued.set(token,user);return token;};
+const jwt=(user,aal='aal1',session_id=crypto.randomUUID())=>{const token=[Buffer.from('{}').toString('base64url'),Buffer.from(JSON.stringify({sub:user.id,session_id,aal,amr:aal==='aal2'?[{method:'totp',timestamp:Math.floor(Date.now()/1000)}]:[]})).toString('base64url'),crypto.randomUUID()].join('.');issued.set(token,user);return token;};
 const reply=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json'}});
 const rpc=async(name,body)=>{
   const keys=Object.keys(body),q=`select public.${name}(${keys.map((k,i)=>`${k}=>$${i+1}`).join(',')}) result`;
@@ -48,7 +48,7 @@ try{
   globalThis.fetch=async(input,init={})=>{
     const url=new URL(typeof input==='string'?input:input.url),body=init.body?JSON.parse(init.body):{},token=new Headers(init.headers).get('Authorization')?.replace('Bearer ','');
     if(url.pathname==='/auth/v1/user'&&issued.has(token)){
-      const u=issued.get(token);if(init.method==='PUT'){u.password=body.password;await db.query('update auth.users set encrypted_password=$1 where id=$2',[body.password,u.id]);}return reply(u);
+      const u=issued.get(token);if(init.method==='PUT'){if(u.factors?.some(f=>f.status==='verified')&&verifiedSessionClaims(token).aal!=='aal2')return reply({code:'insufficient_aal',message:'AAL2 session is required'},401);u.password=body.password;f.users.get(u.email).password=body.password;await db.query('update auth.users set encrypted_password=$1 where id=$2',[body.password,u.id]);}return reply(u);
     }
     if(url.pathname==='/auth/v1/factors'){
       const u=issued.get(token);if(!u)return reply({},401);const id=crypto.randomUUID();u.factors=(u.factors||[]).concat({id,status:'unverified',factor_type:'totp'});f.users.get(u.email).factors=u.factors;return reply({id,totp:{secret:'TEST-ONLY-SECRET',uri:'otpauth://totp/test'}});
@@ -56,7 +56,7 @@ try{
     if(/^\/auth\/v1\/factors\/[^/]+\/challenge$/.test(url.pathname))return issued.has(token)?reply({id:crypto.randomUUID()}):reply({},401);
     if(/^\/auth\/v1\/factors\/[^/]+\/verify$/.test(url.pathname)){
       const u=issued.get(token),id=url.pathname.split('/')[4];if(!u||body.code!=='123456')return reply({},401);
-      const factor=u.factors.find(f=>f.id===id);if(!factor)return reply({},401);factor.status='verified';return reply({user:u,access_token:jwt(u,'aal2'),refresh_token:'rotated-refresh'});
+      const factor=u.factors.find(f=>f.id===id);if(!factor)return reply({},401);factor.status='verified';return reply({user:u,access_token:jwt(u,'aal2',verifiedSessionClaims(token).session_id),refresh_token:'rotated-refresh'});
     }
     if(url.pathname.startsWith('/rest/v1/rpc/')){
       const name=url.pathname.split('/').at(-1);if(['resolve_business_identity','resolve_workspace_access','set_owner_admin','accept_workspace_invitation','workspace_email_verified','complete_workspace_password_setup'].includes(name))try{return reply(await rpc(name,body));}catch{return reply({message:'Access denied'},403);}
@@ -119,6 +119,43 @@ try{
   eq((await call('/api/admin/me')).status,403);
   eq((await auth('setup-password',{password:'new-test-password'})).status,200);
   eq((await call('/api/admin/me')).status,200);
+  // A saved password must work after logout; activation cannot act as passwordless login.
+  r=await auth('sign-out');takeCookies(r);
+  eq((await auth('login',{email:fresh,password:'new-test-password'})).status,200);
+  eq((await auth('login',{email:fresh,password:'testing-password'})).status,401);
+  eq((await auth('workspace-code',{email:fresh})).status,409);
+  eq((await auth('workspace-activate',{email:fresh,code:'123456'})).status,409);
+  eq((await auth('workspace-code',{email:ownerEmail})).status,409);
+  // Recovery without MFA still requires mailbox proof and returns to password login.
+  cookie='';eq((await auth('request-reset',{email:fresh})).status,200);
+  r=await auth('verify-reset',{email:fresh,code:'123456'});eq(r.status,200);takeCookies(r);
+  eq((await (await auth('security')).json()).reset_password,true);
+  r=await auth('reset-password',{password:'fresh-recovered-password'});eq(r.status,200);takeCookies(r);
+  eq((await auth('login',{email:fresh,password:'new-test-password'})).status,401);
+  eq((await auth('login',{email:fresh,password:'fresh-recovered-password'})).status,200);
+  // Recovery must not update the password before the existing MFA challenge succeeds.
+  cookie='';await auth('request-reset',{email:ownerEmail});
+  r=await auth('verify-reset',{email:ownerEmail,code:'123456',password:'must-not-be-saved'});eq(r.status,200);takeCookies(r);
+  const recoveryCookies=cookie;
+  eq(f.users.get(ownerEmail).password,'testing-password');
+  eq((await (await auth('security')).json()).reset_password,true);
+  eq((await auth('reset-password',{password:'owner-recovered-password'})).status,403);
+  eq((await auth('mfa-verify',{factor_id:enrollment.factor_id,code:'000000'})).status,401);
+  r=await auth('mfa-verify',{factor_id:enrollment.factor_id,code:'123456'});eq(r.status,200);takeCookies(r);
+  eq((await (await auth('security')).json()).reset_password,true);
+  const realNow=Date.now;Date.now=()=>realNow()+601000;
+  try{eq((await (await auth('security')).json()).reset_password,false);}finally{Date.now=realNow;}
+  const verifiedRecoveryCookies=cookie;
+  cookie=cookie.replace(/star_workspace_recovery=([^;]+)/,(_,v)=>'star_workspace_recovery=x'+v);
+  eq((await auth('reset-password',{password:'owner-recovered-password'})).status,403);cookie=verifiedRecoveryCookies;
+  r=await auth('reset-password',{password:'owner-recovered-password'});eq(r.status,200);takeCookies(r);
+  eq((await auth('reset-password',{password:'replayed-password'})).status,401);
+  eq((await auth('login',{email:ownerEmail,password:'testing-password'})).status,401);
+  r=await auth('login',{email:ownerEmail,password:'owner-recovered-password'});eq(r.status,200);takeCookies(r);
+  // A receipt from another session cannot authorize even the same user's new session.
+  cookie=cookie.replace(/star_workspace_recovery=[^;]*/,recoveryCookies.match(/star_workspace_recovery=[^;]*/)[0]);
+  eq((await (await auth('security')).json()).reset_password,false);
+  eq((await auth('reset-password',{password:'another-password'})).status,403);
   // Invitation expiration, replacement and wrong-email acceptance are enforced in SQL.
   await db.query('update staff set active=true where email=$1',[existing]);
   await db.query('delete from auth.users where id=$1',[reusedId]);await db.query('insert into auth.users(id,email,email_confirmed_at,is_anonymous,encrypted_password) values($1,$2,now(),false,$3)',[u.id,existing,'hash']);
@@ -146,14 +183,100 @@ try{
     await new Promise(resolve=>server.listen(0,'127.0.0.1',resolve));const origin='http://127.0.0.1:'+server.address().port;
     const browser=await chromium.launch({headless:true});
     try{
-      const page=await browser.newPage();const errors=[];page.on('pageerror',e=>errors.push(e.message));
-      await page.goto(origin+'/login/');await page.getByLabel('Email address').fill(ownerEmail);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();
+      const page=await browser.newPage();page.setDefaultTimeout(10000);page.setDefaultNavigationTimeout(10000);const errors=[];page.on('pageerror',e=>errors.push(e.message));
+      await page.goto(origin+'/login/');await page.getByLabel('Email address').fill(ownerEmail);await page.getByLabel('Password',{exact:true}).fill('owner-recovered-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();
       await page.getByRole('heading',{name:'Two-step verification'}).waitFor({timeout:10000}).catch(async e=>{console.error(await page.locator('body').innerText());console.error(errors);throw e;});checks++;
       await page.getByLabel('Authenticator code').fill('123456');await page.getByRole('button',{name:'Verify & continue'}).click();await page.waitForURL('**/admin/**');checks++;
       await page.goto(origin+'/login/?security=1');await page.getByRole('heading',{name:'Account security'}).waitFor();checks++;
       await page.getByLabel('Reason for granting your Admin access').fill('UI acceptance test');await page.getByRole('button',{name:'Grant my Admin role'}).click();await page.getByRole('button',{name:'Open Admin workspace'}).waitFor();checks++;
       await page.getByRole('button',{name:'Open Admin workspace'}).click();await page.waitForURL('**/admin/#/overview');checks++;
       eq((await (await page.request.get(origin+'/api/admin/me')).json()).owner,false);
+      // Browser regression: reset requests only an email code, then MFA, then a new password.
+      await page.request.post(origin+'/api/auth/workspace/sign-out');
+      await page.goto(origin+'/login/');
+      eq(await page.getByText('Applying for a home?').count(),0);
+      eq(await page.getByRole('link',{name:'Open applicant portal →'}).count(),0);
+      await page.getByRole('button',{name:'Forgot password?'}).click();
+      await page.getByLabel('Email address').fill(ownerEmail);
+      await page.getByRole('button',{name:'Send email code'}).click();
+      await page.getByRole('heading',{name:'Verify your reset code'}).waitFor();
+      eq(await page.getByLabel('New password',{exact:true}).count(),0);
+      await page.getByLabel('Email code').fill('123456');
+      await page.getByRole('button',{name:'Verify & continue'}).click();
+      await page.getByRole('heading',{name:'Two-step verification'}).waitFor();checks++;
+      await page.getByLabel('Authenticator code').fill('123456');
+      await page.getByRole('button',{name:'Verify & continue'}).click();
+      await page.getByRole('heading',{name:'Choose a new password'}).waitFor().catch(async e=>{console.error(await page.locator('body').innerText());throw e;});
+      await page.getByLabel('New password',{exact:true}).fill('browser-reset-password');
+      await page.getByLabel('Confirm password').fill('browser-reset-password');
+      await page.getByRole('button',{name:'Save password',exact:true}).click();
+      await page.getByRole('heading',{name:'Password updated'}).waitFor();checks++;
+      await page.getByRole('link',{name:'Back to sign in'}).click();
+      await page.getByLabel('Email address').fill(ownerEmail);
+      await page.getByLabel('Password',{exact:true}).fill('browser-reset-password');
+      await page.getByRole('button',{name:'Sign in',exact:true}).click();
+      await page.getByRole('heading',{name:'Two-step verification'}).waitFor();checks++;
+      await page.getByLabel('Authenticator code').fill('123456');
+      await page.getByRole('button',{name:'Verify & continue'}).click();
+      await page.waitForURL('**/admin/**');checks++;
+      // Browser regression: a new invitation opens activation directly and creates a working password.
+      const uiEmail='ui-invited-admin@example.test',uiUser=f.user(uiEmail),uiInvite='e'.repeat(64);
+      await db.query('insert into auth.users(id,email,encrypted_password) values($1,$2,$3)',[uiUser.id,uiEmail,'provider-generated']);
+      await db.query("insert into staff(email,role,active) values($1,'manager',true)",[uiEmail]);
+      await db.query("insert into workspace_invitations(email,role,token_hash,expires_at) values($1,'manager',$2,now()+interval '7 days')",[uiEmail,await hashInvitation(uiInvite)]);
+      await page.request.post(origin+'/api/auth/workspace/sign-out');
+      await page.goto(origin+'/login/#invite='+uiInvite);
+      await page.getByRole('heading',{name:'Activate your account'}).waitFor();checks++;
+      eq(await page.getByLabel('Email address').inputValue(),uiEmail);
+      await page.getByRole('button',{name:'Send email code'}).click();
+      await page.getByLabel('Email code').fill('123456');
+      await page.getByRole('button',{name:'Verify & continue'}).click();
+      await page.getByRole('heading',{name:'Create your password'}).waitFor();
+      await page.getByLabel('New password',{exact:true}).fill('invited-admin-password');
+      await page.getByLabel('Confirm password').fill('invited-admin-password');
+      await page.getByRole('button',{name:'Save password',exact:true}).click();
+      await page.getByRole('button',{name:'Set up authenticator'}).click();
+      await page.getByLabel('Authenticator code').fill('123456');
+      await page.getByRole('button',{name:'Verify & continue'}).click();
+      await page.waitForURL('**/admin/**');checks++;
+      await page.request.post(origin+'/api/auth/workspace/sign-out');
+      await page.goto(origin+'/login/');
+      await page.getByLabel('Email address').fill(uiEmail);
+      await page.getByLabel('Password',{exact:true}).fill('invited-admin-password');
+      await page.getByRole('button',{name:'Sign in',exact:true}).click();
+      await page.getByRole('heading',{name:'Two-step verification'}).waitFor();
+      await page.getByLabel('Authenticator code').fill('123456');
+      await page.getByRole('button',{name:'Verify & continue'}).click();
+      await page.waitForURL('**/admin/**');checks++;
+      await page.request.post(origin+'/api/auth/workspace/sign-out');
+      await page.goto(origin+'/login/');
+      await page.getByRole('button',{name:'Activate an invited account'}).click();
+      await page.getByLabel('Email address').fill(uiEmail);
+      await page.getByRole('button',{name:'Send email code'}).click();
+      await page.getByRole('status').filter({hasText:'already activated'}).waitFor();checks++;
+      // An existing account can recover its password while accepting a fresh role invitation.
+      const returningEmail='ui-existing-agent@example.test',returningUser=f.user(returningEmail),returningInvite='f'.repeat(64);
+      await db.query('insert into auth.users(id,email,email_confirmed_at,encrypted_password) values($1,$2,now(),$3)',[returningUser.id,returningEmail,'existing-hash']);
+      await db.query("insert into staff(email,role,active) values($1,'agent',true)",[returningEmail]);
+      await db.query("insert into workspace_invitations(email,role,token_hash,expires_at) values($1,'agent',$2,now()+interval '7 days')",[returningEmail,await hashInvitation(returningInvite)]);
+      await page.goto(origin+'/login/#invite='+returningInvite);
+      await page.waitForFunction(expected=>document.querySelector('#email')?.value===expected,returningEmail);
+      await page.getByRole('heading',{name:'Activate your account'}).waitFor();
+      await page.getByRole('button',{name:'Back to sign in'}).click();
+      await page.getByRole('button',{name:'Forgot password?'}).click();
+      await page.getByRole('button',{name:'Send email code'}).click();
+      await page.getByLabel('Email code').fill('123456');
+      await page.getByRole('button',{name:'Verify & continue'}).click();
+      await page.getByRole('heading',{name:'Choose a new password'}).waitFor().catch(async e=>{console.error(await page.locator('body').innerText());throw e;});
+      await page.getByLabel('New password',{exact:true}).fill('returning-agent-password');
+      await page.getByLabel('Confirm password').fill('returning-agent-password');
+      await page.getByRole('button',{name:'Save password',exact:true}).click();
+      await page.getByRole('heading',{name:'Password updated'}).waitFor();checks++;
+      await page.getByRole('link',{name:'Back to sign in'}).click();
+      await page.getByLabel('Email address').fill(returningEmail);
+      await page.getByLabel('Password',{exact:true}).fill('returning-agent-password');
+      await page.getByRole('button',{name:'Sign in',exact:true}).click();
+      await page.waitForURL('**/admin/**');checks++;
       eq(errors,[]);await fs.mkdir('/tmp/star-account-ui',{recursive:true});await page.screenshot({path:'/tmp/star-account-ui/admin.png',fullPage:true});
     }finally{await browser.close();await new Promise(resolve=>server.close(resolve));}
   }
