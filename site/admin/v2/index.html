@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Leasing Desk</title>
+  <!-- INLINE_BRAND_ICON -->
+<style>
+  :root {
+    --bg: #f7f6f1; --panel: #ffffff; --ink: #1f2a33; --text: #4c5963;
+    --primary: #0d3b52; --primary-soft: #dce9ef; --accent: #c1752e; --line: #e4e1d8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 14px/1.5 "Public Sans", system-ui, sans-serif; }
+  header { background: var(--primary); color: #fff; padding: 0.8rem 1.2rem;
+           display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+  header h1 { font-size: 1.05rem; margin: 0; font-weight: 600; letter-spacing: 0.02em; }
+  .chips { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+  .chip { background: rgba(255,255,255,0.14); border-radius: 999px;
+          padding: 0.1rem 0.6rem; font-size: 0.75rem; }
+  header .grow { flex: 1; }
+  .tabs { display: flex; gap: 0.3rem; }
+  .tab { background: transparent; color: rgba(255,255,255,0.75); border: 0;
+         padding: 0.35rem 0.7rem; border-radius: 7px; font: inherit; cursor: pointer; }
+  .tab.active { background: rgba(255,255,255,0.16); color: #fff; }
+  main { display: grid; grid-template-columns: minmax(320px, 5fr) minmax(360px, 7fr);
+         gap: 1rem; padding: 1rem 1.2rem; align-items: start; }
+  @media (max-width: 900px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+  section > h2 { font-size: 0.85rem; text-transform: uppercase; letter-spacing: 0.06em;
+                 color: var(--text); margin: 0; padding: 0.7rem 0.9rem;
+                 border-bottom: 1px solid var(--line); display: flex; align-items: center; gap: 0.6rem; }
+  .body { padding: 0.9rem; }
+  button { background: var(--primary); color: #fff; border: 0; border-radius: 7px;
+           padding: 0.45rem 0.85rem; font: inherit; cursor: pointer; }
+  button.quiet { background: var(--primary-soft); color: var(--primary); }
+  button.warn { background: #fff; color: #8d3b2f; border: 1px solid #d9b3ac; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  table { width: 100%; border-collapse: collapse; }
+  th { text-align: left; font-size: 0.72rem; text-transform: uppercase;
+       letter-spacing: 0.05em; color: var(--text); padding: 0.35rem 0.5rem; }
+  td { padding: 0.45rem 0.5rem; border-top: 1px solid var(--line); vertical-align: top; }
+  tr.row { cursor: pointer; }
+  tr.row:hover td { background: var(--primary-soft); }
+  tr.selected td { background: var(--primary-soft); }
+  .status { display: inline-block; border-radius: 999px; padding: 0.05rem 0.55rem;
+            font-size: 0.72rem; background: var(--primary-soft); color: var(--primary); }
+  .status.executed { background: #e3efe3; color: #2f5d34; }
+  .status.declined, .status.closed { background: #f3e3e0; color: #8d3b2f; }
+  .status.approved, .status.lease_sent { background: #f6ecdf; color: #8a5a1d; }
+  .muted { color: var(--text); }
+  .field { display: grid; gap: 0.2rem; margin-bottom: 0.6rem; }
+  .field label { font-size: 0.75rem; color: var(--text); }
+  input, select { font: inherit; padding: 0.4rem 0.55rem; border: 1px solid var(--line);
+                  border-radius: 7px; background: #fff; width: 100%; }
+  .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 0.6rem; }
+  .links a { display: block; color: var(--primary); word-break: break-all; margin: 0.2rem 0; }
+  .note { background: var(--primary-soft); border-radius: 7px; padding: 0.5rem 0.7rem;
+          margin-top: 0.6rem; font-size: 0.85rem; }
+  .mailrow { border-top: 1px solid var(--line); padding: 0.5rem 0; font-size: 0.85rem; }
+  .mailrow:first-child { border-top: 0; }
+  details { margin-top: 1rem; }
+  summary { cursor: pointer; color: var(--text); }
+  .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
+  @media (max-width: 640px) { .cols { grid-template-columns: 1fr; } }
+  dialog { border: 1px solid var(--line); border-radius: 10px; padding: 1rem; width: min(26rem, 92vw); }
+  dialog::backdrop { background: rgba(31, 42, 51, 0.35); }
+</style>
+</head>
+<body>
+<header>
+  <h1>Leasing Desk</h1>
+  <nav class="tabs">
+    <button class="tab active" data-tab="cases">Cases</button>
+    <button class="tab" data-tab="listings">Listings</button>
+    <button class="tab" data-tab="properties">Properties</button>
+  </nav>
+  <div class="chips" id="env-chips"></div>
+  <div class="grow"></div>
+  <button class="quiet" id="new-app">New Application</button>
+  <button class="quiet" id="reset">Reset Demo Data</button>
+</header>
+<main id="tab-cases">
+  <section>
+    <h2>Cases <span class="muted" id="case-count"></span>
+        <span class="grow"></span><button class="quiet" id="refresh">Refresh</button></h2>
+    <div class="body" id="case-list"><p class="muted">Loading.</p></div>
+  </section>
+  <section>
+    <h2>Case Detail</h2>
+    <div class="body" id="detail"><p class="muted">Pick a case on the left.</p></div>
+  </section>
+</main>
+<main style="padding-top:0" id="tab-cases-outbox">
+  <section style="grid-column: 1 / -1">
+    <h2>Outbox <span class="muted">every message the system sent this session</span></h2>
+    <div class="body" id="outbox"><p class="muted">Nothing yet.</p></div>
+  </section>
+</main>
+
+<main id="tab-listings" hidden style="grid-template-columns: 1fr">
+  <section>
+    <h2>Listings <span class="muted">residential rentals from the live inventory</span></h2>
+    <div class="body" id="listing-list"><p class="muted">Loading.</p></div>
+  </section>
+</main>
+
+<main id="tab-properties" hidden style="grid-template-columns: 1fr">
+  <section>
+    <h2>Properties <span class="muted">lease settings live in the classic admin until the new editor lands</span></h2>
+    <div class="body" id="property-list"><p class="muted">Loading.</p></div>
+  </section>
+</main>
+
+<dialog id="app-dialog">
+  <h3 style="margin-top:0">New Application</h3>
+  <div class="field"><label>Listing</label><select id="app-listing"></select></div>
+  <div class="cols">
+    <div class="field"><label>Full Name</label><input id="app-name" value="Ada Tenant"></div>
+    <div class="field"><label>Email</label><input id="app-email" value="ada@example.com"></div>
+  </div>
+  <div class="cols">
+    <div class="field"><label>Move In</label><input id="app-movein" type="date"></div>
+    <div class="field"><label>Term Months</label><input id="app-term" value="12"></div>
+  </div>
+  <div class="actions">
+    <button id="app-submit">Submit Application</button>
+    <button class="quiet" id="app-cancel">Cancel</button>
+  </div>
+  <div id="app-result"></div>
+</dialog>
+
+<script src="./v2.js"></script>
+</body>
+</html>

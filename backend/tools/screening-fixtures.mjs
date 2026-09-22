@@ -1,0 +1,3 @@
+// Synthetic external-report evidence for isolated tests. No real provider is contacted.
+export const reportFields = id => ({report_provider:'Synthetic test provider',report_reference:`TEST-${id}`,report_url:`https://reports.example.test/${id}`,report_date:'2026-09-08',score_model:'Test score model',credit_score:720,report_outcome:'scored'});
+export const reportFixture = id => ({status:'complete',application_id:id,source:'manual',mock:false,provider:'Synthetic test provider',reference:`TEST-${id}`,report_url:`https://reports.example.test/${id}`,date:'2026-09-08',model:'Test score model',credit_score:720,outcome:'scored',verified_by:'agent-a@example.test',verified_at:'2026-09-08T10:00:00Z'});

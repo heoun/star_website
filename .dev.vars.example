@@ -1,0 +1,131 @@
+# Copy to .dev.vars and fill in. .dev.vars is gitignored, is never uploaded by
+# `wrangler deploy`, and does not exist in GitHub Actions — nothing here can
+# reach production.
+#
+#     cp .dev.vars.example .dev.vars
+#
+# Keys are left present and empty rather than commented out: a value typed
+# after a "#" looks filled in but is not. `npm run dev` says which of the two
+# it is finding.
+
+# Optional local role simulation. Leave blank to test real Supabase login. It is only honoured
+# on a loopback hostname, so setting it can never open production.
+# Use your own address: it is what the audit trail records for local changes.
+DEV_ADMIN_EMAIL=
+
+# Which half of the console to be locally: "manager" or "agent". Blank means
+# manager, which is what a local session has always been.
+#
+# Usually you do not need this: `npm run dev:agent` starts the same server as
+# an agent for one session, which is easier than editing this and remembering
+# to change it back. Set it here only if you want agent to be your default.
+#
+# As an agent you see what an agent sees — the 125 landlord values read-only,
+# no Properties screen, and every attempt to write one refused by the Worker
+# rather than merely hidden.
+# In production the role comes from public.staff, never from a variable.
+DEV_ADMIN_ROLE=
+
+# Platform owner: the only identity that can grant/revoke Admin access.
+# Owner is configuration, not a selectable account type in Accounts & access.
+# For a local Owner session, match DEV_ADMIN_EMAIL and use manager above.
+# In production pin both the verified email and Supabase Auth user UUID.
+# Ordinary Admins cannot change these from the console.
+OWNER_EMAIL=
+OWNER_AUTH_USER_ID=
+
+# Default local storage stays in the simulated R2 buckets. Use supabase only
+# with a dedicated development project after applying supabase/storage.sql.
+STORAGE_BACKEND=r2
+
+# The DEVELOPMENT Supabase project — not production. Create a second free
+# project and run supabase/schema.sql on it, then paste its details here.
+# The admin page prints the project name it is connected to, so if this ever
+# says production you will see it before you delete anything.
+SUPABASE_URL=
+SUPABASE_SERVICE_ROLE_KEY=
+
+# The same project's low-privilege key: the publishable key
+# (sb_publishable_…) if the project has one, otherwise the legacy anon key.
+# Set whichever name matches what you copied; publishable wins if both are set. The applicant portal signs people in through Supabase Auth and
+# this is the key its API expects; it stays in the Worker. Keep Confirm email
+# enabled: unverified identities cannot access either portal.
+SUPABASE_PUBLISHABLE_KEY=
+SUPABASE_ANON_KEY=
+
+# What to call this project in the admin banner. Supabase keeps the display
+# name in its dashboard only — neither the URL nor the key carries it — so
+# write it down here. The project ref is shown beside it either way.
+DEV_SUPABASE_LABEL=
+
+# Encrypts applicant SSNs. A throwaway value is right here — it must NOT be the
+# production key, or a local database dump would decrypt real applications.
+#     openssl rand -base64 32
+APP_ENCRYPTION_KEY=
+
+# Optional. Listing photos live in R2, and your local bucket is empty, so every
+# image 404s and the site looks broken. With this set, a local miss is read from
+# the live site instead. Reading only — uploads and deletes stay local.
+DEV_MEDIA_ORIGIN=https://starreusa.com
+
+# Emails. On a loopback request the Worker prints every email to this terminal
+# instead of sending it, so local form submissions never reach a real inbox.
+# For a delivery rehearsal before a launch, set DEV_REAL_EMAIL=true AND fill in
+# a RESEND_API_KEY — local emails then really send, to whatever address is in
+# the form. Make a separate key named "dev" in the Resend dashboard so it can
+# be revoked on its own, and set the flag back to empty when you are done.
+RESEND_API_KEY=
+DEV_REAL_EMAIL=
+# Optional public HTTPS logo for landlord emails; never use a localhost URL.
+# Default: https://starreusa.com/png/email-logo-v1.png (ships with the site).
+EMAIL_LOGO_URL=
+# Optional: 32 random bytes, base64, enables scoped no-login landlord decisions.
+# Keep stable; rotating invalidates outstanding links. Generate: openssl rand -base64 32
+LANDLORD_DECISION_SECRET=
+
+# Deliberately absent: TURNSTILE_SECRET_KEY. Human verification is skipped when
+# it is unset, which is what you want locally. Cloudflare Access keys are not needed.
+
+# Turns on the rebuilt backend at /api/v2 (see backend/README.md). Leave off
+# in production until a ring is ready to take real traffic.
+BACKEND_V2=on
+
+# Signs the landlord decision/intake links the rebuilt backend emails out.
+# Any long random string; `openssl rand -hex 32` is fine.
+AUTH_LINK_SECRET=
+
+# DocuSign lease signing. Apply supabase/rental-signing.sql after rental-flow.sql.
+# These values are server-only. Production uses separate Worker secrets and the
+# production Integration Key, sender consent and account ID after Go-Live.
+DOCUSIGN_ENABLED=off
+DOCUSIGN_ENVIRONMENT=demo
+DOCUSIGN_INTEGRATION_KEY=
+DOCUSIGN_USER_ID=
+DOCUSIGN_ACCOUNT_ID=
+# PKCS#1 or PKCS#8 PEM; use a quoted string with literal \n between PEM lines.
+DOCUSIGN_PRIVATE_KEY=
+DOCUSIGN_CONNECT_HMAC_SECRET=
+# HTTPS tunnel/test deployment ending in /api/webhooks/docusign.
+DOCUSIGN_WEBHOOK_URL=
+# Required for ALL demo-account sends, including background jobs. DocuSign
+# sends actual email; the existing Resend development guard does not apply.
+DEV_DOCUSIGN_SEND=off
+
+# Optional local-only, repeatable applicant journey. Never enable on production.
+# Bind to the verified Supabase account ID AND email, development database host,
+# and explicit listing IDs. Existing login/password/verification remain unchanged.
+INTERNAL_TESTING=off
+INTERNAL_TEST_DATABASE_HOST=
+INTERNAL_TEST_USER_ID=
+INTERNAL_TEST_EMAIL=
+INTERNAL_TEST_LANDLORD_EMAIL=
+# Roommate inboxes an internal run may invite, comma separated. Each signs in
+# as itself; a sandbox envelope holds the landlord plus at most four tenants.
+INTERNAL_TEST_ROOMMATE_EMAILS=
+INTERNAL_TEST_LISTING_IDS=
+SCREENING_SIMULATOR_URL=http://127.0.0.1:8794
+SCREENING_SIMULATOR_TOKEN=
+# For this profile: RENTAL_AUTOMATION=on, RENTAL_SCREENING=simulator,
+# SITE_ORIGIN=http://127.0.0.1:8787, DEV_REAL_EMAIL=true.
+# Real test email is restricted to configured lead, landlord and roommate inboxes.
+# Start the entire stack, callback tunnel and scheduler with npm run dev:testing.

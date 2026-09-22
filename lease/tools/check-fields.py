@@ -1,0 +1,193 @@
+#!/usr/bin/env python3
+"""Check that the template and the field registry still agree.
+
+    python3 lease/tools/check-fields.py
+
+Every {{placeholder}} in lease/template/lease-template.docx must have an entry
+in lease/schema/fields.json. Entries must appear in the template unless explicitly
+marked as non-template property defaults. Run
+this after editing either one. A placeholder nobody registered would render as
+literal "{{...}}" text in a signed lease; a registered field that no longer
+exists in the template would silently collect data that goes nowhere.
+
+Exits non-zero when they disagree, so it can gate a deploy.
+"""
+
+import json
+import re
+import sys
+import zipfile
+from pathlib import Path
+
+REPO = Path(__file__).resolve().parents[2]
+TEMPLATE = REPO / "lease" / "template" / "lease-template.docx"
+REGISTRY = REPO / "lease" / "schema" / "fields.json"
+ADDRESS = REPO / "site" / "shared" / "lease-address.js"
+
+PLACEHOLDER = re.compile(r"\{\{([a-z0-9_.]+)\}\}")
+VALID_SOURCES = {"deal", "manager", "agent"}
+
+# Which keys each rule kind reads. A rule naming a field that no longer exists
+# would silently stop checking the disclosure it was written for, and an
+# unchecked disclosure is exactly the failure the rules exist to catch.
+RULE_SHAPES = {
+    "one_of": {"fields"},
+    "any_of": {"fields"},
+    "required_when": {"when", "then"},
+    "blank_unless": {"when", "then"},
+    "idle_unless": {"when_filled", "then", "idle"},
+}
+
+
+def composed_parts():
+    """Fields that earn their place by feeding a value the template does print.
+
+    The one-line address is composed from its parts, and the parts are read
+    from the module that composes it so the two cannot drift. A part that no
+    longer prints on its own — the state's abbreviation, once the bedbug form
+    stopped spelling the address out a second way — is still needed.
+    """
+    text = ADDRESS.read_text()
+    block = re.search(r"ADDRESS_PARTS\s*=\s*\[(.*?)\]", text, re.S)
+    return set(re.findall(r'"([a-z0-9_.]+)"', block.group(1))) if block else set()
+
+
+def template_placeholders(path):
+    with zipfile.ZipFile(path) as z:
+        parts = [n for n in z.namelist()
+                 if n.startswith("word/") and n.endswith(".xml")]
+        found = set()
+        for name in parts:
+            found |= set(PLACEHOLDER.findall(z.read(name).decode("utf-8")))
+    return found
+
+
+def rule_problems(registry, by_id):
+    """The disclosure rules have to name fields that exist, and be about boxes.
+
+    Every rule turns on whether a checkbox is ticked. Pointing one at a text
+    field would make it read that field's contents as a tick and quietly pass.
+    """
+    problems = []
+    seen = set()
+
+    for rule in registry.get("rules", []):
+        name = rule.get("id", "<unnamed rule>")
+        if name in seen:
+            problems.append(f"duplicate rule id: {name}")
+        seen.add(name)
+
+        kind = rule.get("kind")
+        if kind not in RULE_SHAPES:
+            problems.append(f"{name}: unknown rule kind {kind!r}")
+            continue
+        for key in RULE_SHAPES[kind]:
+            if key not in rule:
+                problems.append(f"{name}: a {kind} rule needs {key!r}")
+        for key in ("label", "where", "why"):
+            if not rule.get(key):
+                problems.append(f"{name}: needs {key!r} — the panel prints it")
+
+        boxes = list(rule.get("fields", []))
+        for key in ("when", "only_when"):
+            if rule.get(key):
+                boxes.append(rule[key])
+
+        named = boxes + [rule[k] for k in ("when_filled",) if rule.get(k)]
+        then = rule.get("then")
+        named += then if isinstance(then, list) else ([then] if then else [])
+
+        for field_id in named:
+            if field_id not in by_id:
+                problems.append(f"{name}: names {field_id}, which is not a field")
+
+        for field_id in boxes:
+            field = by_id.get(field_id)
+            if field and field["type"] != "checkbox":
+                problems.append(f"{name}: {field_id} is a {field['type']}, not a checkbox")
+
+        if kind == "idle_unless":
+            partner = by_id.get(rule.get("then"))
+            if partner and rule.get("idle") not in (partner.get("options") or []):
+                problems.append(f"{name}: {rule.get('idle')!r} is not one of "
+                                f"{rule.get('then')}'s options")
+
+    return problems
+
+
+def main():
+    if not TEMPLATE.exists():
+        sys.exit(f"template not found: {TEMPLATE}")
+    if not REGISTRY.exists():
+        sys.exit(f"registry not found: {REGISTRY}")
+
+    registry = json.loads(REGISTRY.read_text())
+    fields = registry["fields"]
+    ids = [f["id"] for f in fields]
+    groups = {g["id"] for g in registry["groups"]}
+
+    problems = []
+    problems += rule_problems(registry, {f["id"]: f for f in fields})
+
+    duplicates = sorted({i for i in ids if ids.count(i) > 1})
+    if duplicates:
+        problems.append(f"duplicate field ids: {duplicates}")
+
+    in_template = template_placeholders(TEMPLATE)
+    in_registry = set(ids)
+
+    for missing in sorted(in_template - in_registry):
+        problems.append(f"in the template but not registered: {{{{{missing}}}}}")
+    # Property defaults are stored settings, without their own printed placeholder.
+    contacts = {f["id"] for f in fields if f.get("template") is False}
+    for field in fields:
+        if field["id"] in contacts and (field["source"] != "manager" or field.get("required")):
+            problems.append(f"{field['id']}: non-template defaults must be optional manager settings")
+    for orphan in sorted(in_registry - in_template - composed_parts() - contacts):
+        problems.append(f"registered but absent from the template: {orphan}")
+
+    for field in fields:
+        if field["source"] == "manager" and field.get("scope") != "building":
+            problems.append(f"{field['id']}: manager field not scoped to a property. "
+                            "There is one settings layer a manager writes and it is the "
+                            "property's; see supabase/drop-company-layer.sql")
+        if field["source"] not in VALID_SOURCES:
+            problems.append(f"{field['id']}: unknown source {field['source']!r}")
+        if field["group"] not in groups:
+            problems.append(f"{field['id']}: unknown group {field['group']!r}")
+        if field["type"] == "checkbox" and "marks" not in field:
+            problems.append(f"{field['id']}: checkbox without checked/unchecked marks")
+        if field["type"] == "choice" and not field.get("options"):
+            problems.append(f"{field['id']}: choice without options")
+        if field.get("required") and field["source"] == "manager" \
+                and field.get("default") in (None, "") \
+                and not field.get("needs_setup"):
+            problems.append(f"{field['id']}: required manager setting with no default; "
+                            "give it one or mark it needs_setup")
+
+    if problems:
+        print(f"{len(problems)} problem(s):")
+        for p in problems:
+            print(f"  - {p}")
+        return 1
+
+    print(f"OK: {len(fields)} registered fields, including {len(contacts)} non-template property defaults.")
+    print(f"    {len(registry.get('rules', []))} disclosure rules, all naming real checkboxes.")
+    pending = [f["id"] for f in fields if f.get("needs_setup")]
+    if pending:
+        print(f"\n{len(pending)} setting(s) still need a value before the first "
+              "lease can be generated:")
+        for field_id in pending:
+            print(f"  - {field_id}")
+    per_building = [f["id"] for f in fields if f.get("scope") == "building"]
+    print(f"\n{len(per_building)} setting(s) are set per property. The defaults shipped "
+          "here came from one specific building, so review them before reuse.")
+    by_source = {}
+    for field in fields:
+        by_source[field["source"]] = by_source.get(field["source"], 0) + 1
+    print("  " + ", ".join(f"{k}: {v}" for k, v in sorted(by_source.items())))
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

@@ -1,0 +1,55 @@
+# The architecture gate. Lands with Ring 0; inert until committed.
+# Three greens = runnable: import fence, type check, end-to-end smoke.
+name: Arch Gate
+on:
+  push:
+    paths: ["backend/**", "worker/**", "site/**", "lease/**", "supabase/**", "scripts/**", "package*.json", ".github/workflows/arch-gate.yml"]
+  pull_request:
+    paths: ["backend/**", "worker/**", "site/**", "lease/**", "supabase/**", "scripts/**", "package*.json", ".github/workflows/arch-gate.yml"]
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 24, cache: npm }
+      - run: npm ci
+      - name: Import fence
+        run: npm run gate
+      - name: Type check # tsconfig arrives with Ring 0
+        run: npm run typecheck
+      - name: Atomic application review and recommendation
+        run: npm run test:case-review
+      - name: Rental queue filters and priority
+        run: npm run test:case-queue
+      - name: Automatic rental groups and landlord decisions
+        run: npm run test:rentals && npm run test:rentals:db
+      - name: DocuSign lease signing and durable recovery
+        run: npm run test:signing && npm run test:signing:db
+      - name: Workspace access and workflow
+        run: npm run test:workspace
+      - name: Applicant portal request visibility
+        run: npm run test:portal
+      - name: Unified Supabase identities and invitations
+        run: npm run test:identity
+      - name: Verified identity binding and private storage SQL
+        run: npm run test:identity:db
+      - name: Supabase Storage upload and download
+        run: npm run test:storage
+      - name: Owner governance and landlord onboarding
+        run: npm run test:administration
+      - name: Property lease sections and save behavior
+        run: npm run test:property
+      - name: Lease import extraction and reviewed settings
+        run: npm run test:lease-import
+      - name: Atomic new property and initial defaults
+        run: npm run test:property-create:db
+      - name: Listing drafts and property address inheritance
+        run: npm run test:listings
+      - name: Complete mock properties and leases
+        run: npm run test:demo
+      - name: Build all public and staff screens
+        run: npm run build
+      - name: Smoke # runner arrives with Ring 0; walks the whole flow over HTTP
+        run: npm run smoke
+        env: { SMOKE_DB: memory }

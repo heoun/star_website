@@ -1,6 +1,9 @@
+import { storageBucket } from "./storage.js";
 // Media bytes live in the R2 bucket bound as env.MEDIA. Objects are keyed
 // "<listing-id>/<uuid>.<ext>" and served at /media/<key>. Keys are random,
 // so responses can be cached forever.
+
+import { isLocalRequest } from "./env.js";
 
 const KEY_PATTERN = /^[A-Za-z0-9][A-Za-z0-9/_.-]*$/;
 
@@ -22,10 +25,7 @@ export function isValidKey(key) {
 }
 
 export function requireBucket(env) {
-  if (!env.MEDIA) {
-    throw new Error("The MEDIA R2 bucket binding is not configured.");
-  }
-  return env.MEDIA;
+  return storageBucket(env, "listing-media");
 }
 
 export async function putObject(env, key, contentType, body) {
@@ -35,6 +35,7 @@ export async function putObject(env, key, contentType, body) {
 
 export async function deleteObjectsByPrefix(env, prefix) {
   const bucket = requireBucket(env);
+  if (bucket.deletePrefix) return bucket.deletePrefix(prefix);
   let cursor;
 
   do {
@@ -50,7 +51,35 @@ export async function deleteObject(env, key) {
   await requireBucket(env).delete(key);
 }
 
+// A developer's R2 bucket is empty, so every listing photo would 404 and the
+// site would look broken locally. On a miss, and only on a loopback request,
+// read the bytes from a live origin named in .dev.vars. Reading only: uploads
+// and deletes still go to the local bucket, so nothing here can reach what the
+// live site is serving.
+async function devMediaFallback(request, env, pathname) {
+  const origin = (env.DEV_MEDIA_ORIGIN || "").trim().replace(/\/+$/, "");
+  if (!origin || !isLocalRequest(request)) return null;
+
+  const range = request.headers.get("Range");
+  try {
+    const upstream = await fetch(new URL(pathname, origin).toString(), {
+      method: request.method,
+      headers: range ? { Range: range } : undefined
+    });
+    return upstream.ok || upstream.status === 206 ? upstream : null;
+  } catch (error) {
+    console.error("Development media fallback failed", error);
+    return null;
+  }
+}
+
 export async function serveMedia(request, env, pathname) {
+  const response = await serveFromBucket(request, env, pathname);
+  if (response.status !== 404) return response;
+  return (await devMediaFallback(request, env, pathname)) || response;
+}
+
+async function serveFromBucket(request, env, pathname) {
   if (request.method !== "GET" && request.method !== "HEAD") {
     return new Response("Method not allowed.", { status: 405 });
   }
@@ -89,9 +118,12 @@ export async function serveMedia(request, env, pathname) {
   let object;
   try {
     object = await bucket.get(key, range ? { range } : undefined);
-  } catch {
+  } catch (error) {
     // R2 throws when the requested range cannot be satisfied at all
     // (e.g. an offset at or past the end of the object).
+    if (env.STORAGE_BACKEND === "supabase" && error.status !== 416) {
+      return new Response("Media storage is temporarily unavailable.", { status: 503 });
+    }
     const head = await bucket.head(key);
     if (!head) return new Response("Not found.", { status: 404 });
     return new Response("Range not satisfiable.", {
@@ -106,7 +138,7 @@ export async function serveMedia(request, env, pathname) {
 
   const headers = baseHeaders(object);
 
-  if (range) {
+  if (range && !object.rangeIgnored) {
     // R2 truncates a range that extends past the end of the object; the
     // window it actually returned is reported in object.range.
     const returned = object.range || {};

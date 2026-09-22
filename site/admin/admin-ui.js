@@ -1,0 +1,11 @@
+export const esc = v => String(v ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+export const day = v => v ? new Date(v).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "—";
+export const heading = (title, note, actions = "", workspace = "Admin workspace") => `<div class="pagehead"><div><span class="k">${esc(workspace)}</span><h1>${esc(title)}</h1><p>${esc(note)}</p></div><div class="actions">${actions}</div></div>`;
+export const empty = (title, text) => `<div class="desk-empty"><h3>${esc(title)}</h3><p>${esc(text)}</p></div>`;
+export const send = (api, path, body, method = "POST") => api(path, { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+export const intakeLabels = { invited: "Waiting for landlord", submitted: "Ready for review", changes_requested: "Updates requested", approved: "Added to properties", rejected: "Declined", cancelled: "Cancelled" };
+const versions = new WeakMap();
+export const generation = host => { const version = (versions.get(host) || 0) + 1; versions.set(host, version); return () => versions.get(host) === version; };
+export function intakeFacts(data = {}) {
+  return `<dl class="case-facts"><div><dt>Landlord entity</dt><dd>${esc(data.legal_name || "Not entered")}</dd></div><div><dt>Authorized contact / signer</dt><dd>${esc(data.contact_name || "Not entered")}</dd></div><div><dt>Phone</dt><dd>${esc(data.phone || "Not entered")}</dd></div><div><dt>Mailing address</dt><dd>${esc(data.mailing_address || "Not entered")}</dd></div></dl>${(data.properties || []).map((p, i) => `<article class="intake-property-summary"><span class="k">Property ${i + 1}</span><h3>${esc(p.name || "Unnamed property")}</h3><p>${esc([p.street, p.city, p.state_abbr, p.zip].filter(Boolean).join(", "))}</p><p>${esc(p.unit_count || "Unconfirmed")} rental units</p>${Object.keys(p.utilities || {}).length ? `<dl class="intake-utilities">${Object.entries(p.utilities).map(([k,v]) => `<div><dt>${esc(k)}</dt><dd>${esc(v)}</dd></div>`).join("")}</dl>` : '<p class="soft">Utility arrangements still need confirmation.</p>'}${p.notes ? `<p class="desk-prewrap">${esc(p.notes)}</p>` : ""}</article>`).join("")}`;
+}

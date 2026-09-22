@@ -1,0 +1,20 @@
+@font-face{font-family:Calibri;font-style:normal;font-weight:400;src:local("Calibri"),url("/admin/vendor/carlito-regular.woff2") format("woff2")}
+@font-face{font-family:Calibri;font-style:italic;font-weight:400;src:local("Calibri Italic"),url("/admin/vendor/carlito-italic.woff2") format("woff2")}
+@font-face{font-family:Calibri;font-style:normal;font-weight:700;src:local("Calibri Bold"),url("/admin/vendor/carlito-bold.woff2") format("woff2")}
+body{margin:0;padding:14px;background:#f1efe8}
+.signing-located{outline:2px solid #d29b35!important;outline-offset:4px;background:#fff2c6!important;border-radius:2px}
+.signing-located.is-current-match{outline:3px solid #a96d08!important;background:#ffe49a!important}
+/* A value the lease filled in. Background and ring only: nothing that could move the text. */
+mark.signing-value{background:#fde68a;color:inherit;border-radius:2px;box-shadow:0 0 0 1px #e6c25a}
+.signing-located mark.signing-value{box-shadow:0 0 0 1px #b8811a}
+#status{font:14px system-ui}
+#lease-doc .docx-wrapper{background:transparent;padding:0;font-family:"Times New Roman",Times,serif}
+#lease-doc .docx-wrapper>section.docx{margin:0 auto 14px;box-shadow:0 1px 6px #0c1f2829}
+/* Keep boxes in the numbering flow so a rider retains its original counters. */
+#lease-doc section.docx[data-doc-hidden]{height:0!important;min-height:0!important;margin-top:0!important;margin-bottom:0!important;padding-top:0!important;padding-bottom:0!important;overflow:hidden!important;visibility:hidden;box-shadow:none;border:0}
+.signing-field-layer{position:absolute;inset:0;pointer-events:none;z-index:5}
+.signing-field-box{position:absolute;box-sizing:border-box;border:1px solid #236f91;background:#d8eef9e8;color:#123f53;font:10px Arial,sans-serif;line-height:1.1;display:flex;align-items:center;justify-content:center;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.signing-field-box.landlord{border-color:#8056ac;background:#efe2ffe8;color:#583078}
+/* A date DocuSign fills at signing, not a value the lease already carries. */
+.signing-field-box[data-kind=date_signed]{border-style:dashed;background:#fffffff2}
+.signing-field-box.current{outline:2px solid #de9c24;outline-offset:2px}

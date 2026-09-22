@@ -3,7 +3,56 @@ dist/
 node_modules/
 .wrangler/
 .dev.vars
+.dev.vars.*
 .env
 .env.*
 20250421 星维地产标志定稿（源文件）.ai
 20250421 星维地产标志定稿（源文件）.pdf
+# Working files (design drafts, requirement docs) live in notes/, out of git.
+notes/
+*.docx
+# The lease template is a source file, not a working draft, so it stays in git.
+# The filled-in lease it was built from does not: it carries a real tenant name.
+!lease/template/*.docx
+# The tools write a backup beside it before rewriting it. That is a scratch
+# copy of the template, not a second source of truth.
+*.docx.bak
+__pycache__/
+
+# Share configuration templates, never local credentials.
+!.dev.vars.example
+!.env.example
+
+# Browser automation output and local test/build caches.
+.playwright-mcp/
+playwright-report/
+test-results/
+coverage/
+*.log
+*.tsbuildinfo
+
+# Requirement spreadsheets belong under ignored notes/, not the repository root.
+/lease-information*.xlsx
+# Local lease reference PDFs may contain applicant data; archive under notes/.
+/*Lease Template*.pdf
+
+# Generated artifacts and patch scratch files; keep source assets under site/.
+/tmp/
+/output/
+/.local/
+*.tmp
+*.orig
+*.rej
+# Editor recovery files are local scratch, not source.
+*.swp
+*.swo
+*~
+
+# Local signing keys and credential bundles.
+*.pem
+*.key
+*.p12
+*.pfx
+
+# DocuSign downloads are private review artifacts, archived under notes/.
+/Please_sign_your_lease_*.pdf

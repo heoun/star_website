@@ -1,0 +1,54 @@
+dialog.signing-confirm{box-sizing:border-box;width:min(560px,calc(100vw - 32px));max-height:calc(100dvh - 32px);padding:0;border:1px solid #dbe2e7;border-radius:18px;background:#fff;color:#1f2a33;box-shadow:0 24px 80px #0c1f2840;font:14px/1.55 var(--body,system-ui,sans-serif);overflow:auto}
+dialog.signing-confirm::backdrop{background:#102c3b80;backdrop-filter:blur(3px)}
+.signing-confirm-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;padding:24px 24px 0}
+.signing-confirm-eyebrow{font-size:10px;font-weight:700;letter-spacing:.1em;color:#607584}
+.signing-confirm h2{margin:8px 0 0;color:#143b50;font:600 21px/1.35 var(--display,system-ui,sans-serif)}
+.signing-confirm button{margin:0;cursor:pointer;font:600 13px/1.4 var(--body,system-ui,sans-serif)}
+.signing-confirm button:focus-visible{outline:3px solid #7aabba;outline-offset:3px}
+.signing-confirm button.signing-confirm-close{flex:none;border:0;background:transparent;color:#607584;border-radius:8px;min-width:36px;min-height:36px;padding:4px;font-size:26px;font-weight:400}
+.signing-confirm-body{padding:4px 24px 24px}
+.signing-confirm-body>p{margin:14px 0 20px;color:#4c5963}
+.signing-confirm h3{margin:0 0 10px;font-size:12px;font-weight:600;color:#607584}
+.signing-recipients{list-style:none;margin:0;padding:0;border:1px solid #e0e6eb;border-radius:12px;overflow:hidden}
+.signing-recipients li{display:grid;grid-template-columns:72px minmax(0,1fr);gap:12px;margin:0;padding:14px 16px}
+.signing-recipients li+li{border-top:1px solid #e0e6eb}
+.signing-recipient-role{font-size:12px;color:#607584;padding-top:1px}
+.signing-recipients strong,.signing-recipients div>span{display:block;overflow-wrap:anywhere}
+.signing-recipients div>span{font-size:12px;color:#607584;margin-top:3px}
+.signing-confirm-body>p.signing-confirm-note{font-size:12px;margin:14px 0 0}
+.signing-confirm-actions{display:flex;justify-content:flex-end;gap:10px;padding:18px 24px;border-top:1px solid #e0e6eb;background:#f7f9fa}
+.signing-confirm-actions button{padding:11px 17px;border:1px solid #cad6dd;border-radius:24px;background:#fff;color:#143b50}
+.signing-confirm-actions button.primary{background:#164e65;border-color:#164e65;color:#fff}
+@media(max-width:480px){.signing-confirm-header{padding:20px 20px 0}.signing-confirm-body{padding:4px 20px 20px}.signing-confirm-actions{padding:16px 20px;flex-direction:column}.signing-confirm-actions button{width:100%}.signing-recipients li{grid-template-columns:60px minmax(0,1fr);padding:12px;gap:8px}}
+
+/* The preparation panel and confirmation dialog share the same recipient rows. */
+.signing-panel{color:var(--ink,#1f2a33);font:14px/1.55 var(--body,system-ui,sans-serif)}
+.signing-panel-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:8px}
+.signing-panel-heading h3{margin:0;padding:0;font-size:15px;font-weight:600;border:0}
+.signing-environment,.signing-status{font-size:11px;font-weight:500;color:var(--soft,#607584);white-space:nowrap}
+.signing-environment{border:1px solid var(--line,#dbe2e7);border-radius:6px;padding:2px 8px;background:var(--paper,#f7f9fa)}
+.signing-panel .signing-intro{font-size:13px;color:var(--soft,#607584);margin:0 0 20px}
+.signing-steps{display:flex;gap:4px;list-style:none;margin:8px 0 12px;padding:0}
+.signing-steps li{flex:1;min-width:0;font-size:11px;font-weight:600;line-height:1.35;color:var(--soft,#607584)}
+.signing-steps li::before{content:"";display:block;height:4px;margin-bottom:7px;border-radius:2px;background:var(--line,#dbe2e7)}
+.signing-steps li.is-done{color:var(--good,#2e7d32)}.signing-steps li.is-done::before{background:var(--good,#2e7d32)}
+.signing-steps li.is-now{color:var(--blue,#164e65)}.signing-steps li.is-now::before{background:linear-gradient(90deg,var(--blue,#164e65) 0 35%,#a9cbd8 50%,var(--blue,#164e65) 65% 100%);background-size:200% 100%;animation:signing-step-flow 1.8s linear infinite}
+.signing-steps li.is-issue{color:var(--warn,#b26a00)}.signing-steps li.is-issue::before{background:var(--warn,#b26a00)}
+@keyframes signing-step-flow{from{background-position:100% 0}to{background-position:-100% 0}}
+@media(prefers-reduced-motion:reduce){.signing-steps li.is-now::before{animation:none}}
+.signing-panel .signing-progress-detail{margin:0 0 4px}
+@media(max-width:480px){.signing-steps{gap:3px}.signing-steps li{font-size:10px}}
+.signing-package{margin-top:20px}
+.signing-package-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.signing-package-heading h4{font-size:12px;font-weight:600;color:var(--soft,#607584);margin:0}
+.signing-next{margin-top:18px}
+.signing-next>p{font-size:12px;color:var(--soft,#607584);margin:0 0 12px}
+.signing-actions{display:flex;gap:10px;flex-wrap:wrap}
+.signing-panel button.signing-action{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;min-height:40px;margin:0;padding:10px 16px;border:1px solid var(--line2,#cad6dd);border-radius:24px;background:#fff;color:var(--ink,#1f2a33);font:600 13px/1.4 var(--body,system-ui,sans-serif);cursor:pointer}
+.signing-panel button.signing-action[hidden]{display:none}
+.signing-panel button.signing-action.primary{background:var(--blue,#164e65);border-color:var(--blue,#164e65);color:#fff}
+.signing-panel button.signing-action:disabled{opacity:.5;cursor:not-allowed}
+.signing-panel button.signing-action:focus-visible{outline:3px solid #7aabba;outline-offset:3px}
+.signing-panel [data-signing-feedback]:empty{display:none}
+.signing-panel [data-signing-feedback]{margin:12px 0 0;font-size:13px}
+@media(max-width:480px){.signing-actions{flex-direction:column}.signing-actions button.signing-action{width:100%}}

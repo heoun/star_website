@@ -4,6 +4,9 @@
   "compatibility_date": "2026-07-01",
   "workers_dev": false,
   "preview_urls": false,
+  "vars": { "STORAGE_BACKEND": "supabase", "RENTAL_AUTOMATION": "off" },
+  // Enable RENTAL_AUTOMATION after applying supabase/rental-flow.sql.
+  "triggers": { "crons": ["*/1 * * * *"] },
   "assets": {
     "directory": "./dist",
     "binding": "ASSETS",
@@ -13,8 +16,12 @@
     // the listings feed is served from Supabase, and /admin is access-checked.
     "run_worker_first": ["/data/listings.json", "/data/property.json", "/admin", "/admin/*", "/api/*", "/media/*"]
   },
+  // Retained for local/offline development with STORAGE_BACKEND=r2.
   "r2_buckets": [
-    { "binding": "MEDIA", "bucket_name": "listing-media" }
+    { "binding": "MEDIA", "bucket_name": "listing-media" },
+    // Applicant documents (IDs, paystubs, bank statements). Private: served
+    // only through authenticated portal and admin routes, never at /media/.
+    { "binding": "APPLICANT_DOCS", "bucket_name": "applicant-docs" }
   ],
   "observability": {
     "enabled": true
