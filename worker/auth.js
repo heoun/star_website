@@ -2,6 +2,7 @@
 import { isLocalRequest } from "./env.js";
 import { resolveStaff } from "./staff.js";
 import { accountSecurityEnabled, businessIdentity, verifiedSessionClaims } from "./account-security.js";
+import {createRecoveryCookie,recoveryCookie} from "./workspace-recovery.js";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const SESSION_COOKIES = { applicant: "star_portal", workspace: "star_workspace" };
@@ -77,6 +78,9 @@ export function authErrorMessage(payload, fallback) {
   if (/already registered|already been registered|user_already_exists/i.test(raw)) {
     return "This email already has an account. Sign in instead, or reset your password.";
   }
+  if((payload?.code||payload?.error_code)==='same_password'||/different from the old password/i.test(raw))return "Choose a different password from your current password.";
+  if((payload?.code||payload?.error_code)==='insufficient_aal')return "Verify your authenticator before changing your password.";
+  if((payload?.code||payload?.error_code)==='weak_password')return "Choose a stronger password; this password does not meet the security requirements.";
   if (/password should be/i.test(raw)) return `Please choose a password of at least ${PASSWORD_MIN} characters.`;
   if (/rate limit|too many|429/i.test(raw)) return "Too many attempts. Please wait a minute and try again.";
   if (/expired|invalid/i.test(raw)) return "That code has expired or is not right. Request a new one.";
@@ -115,7 +119,7 @@ export function cookieValue(request, name) {
 
 // `Secure` would make the browser drop the cookie on a plain-HTTP loopback,
 // which is exactly where development runs.
-function sessionCookie(request, value, maxAge, scope = authScope(request)) {
+export function sessionCookie(request, value, maxAge, scope = authScope(request)) {
   const attributes = [`${sessionCookieName(request,scope)}=${value}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`];
   if (!isLocalRequest(request)) attributes.push("Secure");
   return attributes.join("; ");
@@ -282,7 +286,9 @@ async function handleLogin(request, env) {
     }, result.status === 429 ? 429 : 401);
   }
 
-  return signedIn(request, result.payload, env);
+  const response=await signedIn(request,result.payload,env);
+  if(response.ok&&authScope(request)==='workspace'&&accountSecurityEnabled(env))response.headers.append('Set-Cookie',recoveryCookie(request));
+  return response;
 }
 
 // Password reset: prove the inbox again, then choose the new password. The
@@ -308,7 +314,8 @@ async function handleVerifyReset(request, env) {
   if (!EMAIL_PATTERN.test(email) || !/^\d{6,8}$/.test(code)) {
     return json({ error: "Please enter the complete 6–8 digit code from the email." }, 422);
   }
-  if (!validPassword(body.password)) {
+  const secureWorkspace=authScope(request)==='workspace'&&accountSecurityEnabled(env);
+  if (!secureWorkspace && !validPassword(body.password)) {
     return json({ error: `Please choose a password of at least ${PASSWORD_MIN} characters.` }, 422);
   }
 
@@ -317,6 +324,13 @@ async function handleVerifyReset(request, env) {
     return json({
       error: authErrorMessage(verified.payload, "That code has expired or is not right. Request a new one.")
     }, 401);
+  }
+
+  if(secureWorkspace){
+    if(cleanEmail(verified.payload.user?.email)!==email)return json({error:'The reset code does not match this account.'},401);
+    const response=await signedIn(request,verified.payload,env);
+    if(response.ok)response.headers.append('Set-Cookie',await createRecoveryCookie(request,env,verified.payload.access_token));
+    return response;
   }
 
   const updated = await authRequest(env, "user", {
@@ -364,7 +378,9 @@ export async function handleAuthRequest(request, env, ctx, resource) {
         // Clear this browser even if upstream revocation is temporarily unavailable.
         ctx.waitUntil(authRequest(env, "logout?scope=local", { token: stored.at }).catch(() => {}));
       }
-      return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(request, "", 0) });
+      const response=json({ ok: true }, 200, { "Set-Cookie": sessionCookie(request, "", 0) });
+      if(response.ok&&authScope(request)==='workspace'&&accountSecurityEnabled(env))response.headers.append('Set-Cookie',recoveryCookie(request));
+      return response;
     }
     if (!request.headers.get("Content-Type")?.toLowerCase().startsWith("application/json")) return json({ error: "Send this form as JSON." }, 415);
     const reader = request.body?.getReader(); let size = 0; const parts = [];

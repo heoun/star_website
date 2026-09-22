@@ -3,6 +3,11 @@ const host = document.querySelector("#login-content");
 let email = "";
 const secure=(await fetch('/api/auth/workspace/options').then(r=>r.json()).catch(()=>({}))).secure===true;
 let invitation=new URLSearchParams(location.hash.slice(1)).get('invite')||'';
+// Reusing an open login tab for another invitation must not retain the previous account.
+window.addEventListener('hashchange',()=>{
+  const next=new URLSearchParams(location.hash.slice(1)).get('invite')||'';
+  if(next!==invitation)location.reload();
+});
 
 const esc = value => String(value).replace(/[&<>"']/g, c => ({ "&":"&amp;", "<":"&lt;", ">":"&gt;", '"':"&quot;", "'":"&#39;" }[c]));
 async function post(resource, body) {
@@ -30,11 +35,11 @@ async function finishWorkspace(security) {
 }
 function render(mode = "login", notice = "") {
   const verify = mode === "activate" || mode === "reset-confirm";
-  const passwordStep=verify && !(secure && mode==='activate');
-  const title = {login:"Welcome back",code:"Activate your account",activate:secure?"Verify your email":"Set up your sign in",reset:"Reset your password","reset-confirm":"Choose a new password"}[mode];
-  const intro = {login:"Sign in with the email your team invited.",code:"Enter your invited email. We’ll send a code to activate your workspace access.",activate:secure?"Enter your email code to accept your invitation. Existing accounts keep their current password.":"Enter your email code and choose a password. Your access is set by your administrator.",reset:"We’ll email a code so you can choose a new password.","reset-confirm":"Enter the code from your reset email and choose a new password."}[mode];
+  const passwordStep=verify && !secure;
+  const title = {login:"Welcome back",code:"Activate your account",activate:secure?"Verify your email":"Set up your sign in",reset:"Reset your password","reset-confirm":secure?"Verify your reset code":"Choose a new password"}[mode];
+  const intro = {login:"Sign in with the email your team invited.",code:"Enter your invited email. We’ll send a code to activate your workspace access.",activate:secure?"Enter your email code to accept your invitation. Existing accounts keep their current password.":"Enter your email code and choose a password. Your access is set by your administrator.",reset:"We’ll email a code so you can choose a new password.","reset-confirm":secure?"Enter the code from your reset email. We’ll verify your authenticator next if one is linked, then you can choose a new password.":"Enter the code from your reset email and choose a new password."}[mode];
   host.innerHTML = `<h2>${title}</h2><p class="intro">${intro}</p><form>
-    <label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="username" maxlength="180" value="${esc(email)}" required>
+    <label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="username" ${invitation?'readonly':''} maxlength="180" value="${esc(email)}" required>
     ${verify ? '<label for="code">Email code</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,8}" minlength="6" maxlength="8" required>' : ""}
     ${mode === "login" || passwordStep ? `<label for="password">${verify ? "New password" : "Password"}</label><input id="password" name="password" type="password" autocomplete="${verify ? "new-password" : "current-password"}" ${verify ? 'minlength="8"' : ''} maxlength="200" required>` : ""}
     ${passwordStep ? '<label for="confirm">Confirm password</label><input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" maxlength="200" required>' : ""}
@@ -51,7 +56,7 @@ function render(mode = "login", notice = "") {
       else if (mode === "reset") { await post("request-reset", {email}); render("reset-confirm", "If this email has an account, a reset code is on its way."); }
       else {
         await post(mode === "login" ? "login" : mode === "activate" ? "workspace-activate" : "verify-reset", {email, password:data.password, code:data.code});
-        if(secure && invitation && mode==='login')await post('workspace-accept',{email});
+        if(secure && invitation && (mode==='login'||mode==='reset-confirm'))await post('workspace-accept',{email});
         invitation='';
         history.replaceState(null,'',location.pathname+location.search);
         await enterWorkspace();
@@ -59,10 +64,10 @@ function render(mode = "login", notice = "") {
     } catch (error) { status.textContent = error.message; button.disabled = false; }
   };
 }
-render('login', new URLSearchParams(location.search).get('error') === 'workspace-access' ? 'This account does not have workspace access. Sign in with an invited staff or landlord account. Your applicant portal session is unchanged.' : '');
+render(new URLSearchParams(location.search).has('reset')?'reset':'login', new URLSearchParams(location.search).get('error') === 'workspace-access' ? 'This account does not have workspace access. Sign in with an invited staff or landlord account. ' : '');
 
 if(secure && invitation){
-  try{const inv=await post('workspace-invitation',{});email=inv.email;render('login','You have been invited. Sign in if you already have an account, or choose Activate an invited account.');}
+  try{const inv=await post('workspace-invitation',{});email=inv.email;render('code','Verify your invited email to accept. If you already have an account, your existing password stays the same. Use Forgot password if you need to change it.');}
   catch(e){host.innerHTML=`<h2>Invitation unavailable</h2><p>${esc(e.message)}</p><a href="/login/">Sign in</a>`;}
 } else if(secure && new URLSearchParams(location.search).has('security')){
   try{await enterWorkspace();}catch(e){render('login',e.message);}

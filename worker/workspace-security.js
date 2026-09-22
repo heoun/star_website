@@ -1,6 +1,7 @@
-import {authRequest,readSession,signedIn,sameOriginMutation,validPassword,workspaceRoleCookie} from './auth.js';
+import {authRequest,readSession,signedIn,sameOriginMutation,validPassword,workspaceRoleCookie,cookieValue,sessionCookie,authErrorMessage} from './auth.js';
 import {identityRpc,recentMfa,auditIdentity} from './account-security.js';
 import {resolveStaff} from './staff.js';
+import {RECOVERY_COOKIE,hasRecoveryProof,recoveryCookie} from './workspace-recovery.js';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
 const uuid=/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 export async function handleWorkspaceSecurity(request,env,resource) {
@@ -17,17 +18,28 @@ export async function handleWorkspaceSecurity(request,env,resource) {
     if(!resolved.identity)return json({error:resolved.error},403);
     const identity=resolved.identity;
     if(identity.access_state==='invited')return json({error:'Accept your invitation first.'},403);
+    const recovery=await hasRecoveryProof(request,env,session,cookieValue(request,RECOVERY_COOKIE));
     let response;
     if(resource==='security') {
-      response=json({email:identity.email,setup_password:identity.has_password===false,mfa_required:identity.role==='manager',verified:session.aal==='aal2',factors:session.factors,
+      response=json({email:identity.email,reset_password:recovery,reset_expired:!!cookieValue(request,RECOVERY_COOKIE)&&!recovery,recent_mfa:recentMfa(session),setup_password:identity.has_password===false,mfa_required:identity.role==='manager',verified:session.aal==='aal2',factors:session.factors,
         owner_account:identity.is_owner===true,admin_enabled:identity.admin_enabled===true,owner_version:identity.version,onboarding_pending:identity.onboarding_pending===true});
-    } else if(resource==='setup-password') {
-      if(identity.has_password!==false)return json({error:'This account already has a password. Use password reset to change it.'},409);
+    } else if(resource==='setup-password'||resource==='reset-password') {
+      const resetting=resource==='reset-password';
+      if(resetting&&!recovery)return json({error:'Your password reset session has expired. Request a new reset code.'},403);
+      if(session.factors.some(f=>f.status==='verified')&&!recentMfa(session))return json({error:'Verify your authenticator before saving your password.',code:'mfa_required'},403);
+      if(!resetting&&identity.has_password!==false)return json({error:'This account already has a password. Use password reset to change it.'},409);
       if(!validPassword(body.password))return json({error:'Choose a password of at least 8 characters.'},422);
       const result=await authRequest(env,'user',{method:'PUT',token:session.token,body:{password:body.password}});
-      if(!result.ok)return json({error:'Password could not be saved.'},400);
+      if(!result.ok)return json({error:authErrorMessage(result.payload,'Password could not be saved. Please try again.')},result.status===429?429:400);
       await identityRpc(env,'complete_workspace_password_setup',{p_subject:session.subject,p_email:session.email});
       response=json({ok:true});
+      if(resetting){
+        await auditIdentity(env,identity,'password_reset_completed');
+        response.headers.append('Set-Cookie',recoveryCookie(request));
+        response.headers.append('Set-Cookie',sessionCookie(request,'',0,'workspace'));
+        await authRequest(env,'logout?scope=local',{token:session.token}).catch(()=>{});
+        return response;
+      }
     } else if(resource==='mfa-enroll') {
       if(identity.has_password===false)return json({error:'Set your password first.'},403);
       // Enrollment cannot replace a verified factor on an AAL1 session.

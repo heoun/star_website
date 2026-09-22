@@ -1,5 +1,6 @@
 import {identityRequest,identityRpc,hashInvitation,randomInvitation,workspaceAccess} from './account-security.js';
 import {authRequest,signedIn,readSession} from './auth.js';
+import {recoveryCookie} from './workspace-recovery.js';
 import {sendEmail} from './email.js';
 import {fetchStaffMember} from './supabase.js';
 const json=(body,status=200)=>new Response(JSON.stringify(body),{status,headers:{'Content-Type':'application/json','Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
@@ -29,9 +30,12 @@ export async function handleSecureWorkspaceActivation(request,env,resource,body)
   const inv=body.invite?await invitation(env,body.invite):null;
   if(body.invite && (!inv||inv.email!==email))return json({error:'Use the latest invitation and the invited email.'},403);
   const member=await fetchStaffMember(env,email);
-  const owner=(await identityRequest(env,`app_users?email=eq.${encodeURIComponent(email)}&select=id`))[0];
+  const owner=(await identityRequest(env,`app_users?email=eq.${encodeURIComponent(email)}&select=id,password_setup_required,active`))[0];
   const ownerRow=owner?(await identityRequest(env,`platform_owner?user_id=eq.${owner.id}&select=user_id`))[0]:null;
-  const eligible=!!inv || !!ownerRow || member?.active && member.access_state==='active';
+  const incomplete=owner?.active&&owner.password_setup_required===true&&(!!ownerRow||member?.active&&member.access_state==='active');
+  const eligible=!!inv||incomplete;
+  if(!eligible&&!body.invite&&(ownerRow||member?.active&&member.access_state==='active'))return json({error:'This account is already activated. Sign in with your password, or use Forgot password to reset it.',code:'already_activated'},409);
+  if(!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email))return json({error:'Enter your invited email address.'},422);
   if(resource==='workspace-code') {
     if(eligible) {
       if(inv && !await identityRpc(env,'workspace_email_verified',{p_email:email}))await identityRequest(env,`workspace_invitations?email=eq.${encodeURIComponent(email)}&token_hash=eq.${await hashInvitation(body.invite)}`,{method:'PATCH',body:{needs_password:true}});
@@ -53,5 +57,7 @@ export async function handleSecureWorkspaceActivation(request,env,resource,body)
   if(inv)await identityRpc(env,'accept_workspace_invitation',{p_subject:session.user.id,p_email:email,p_hash:await hashInvitation(body.invite)});
   // First password setup is a separate authenticated step, tracked explicitly.
   await workspaceAccess(env,{subject:session.user.id,email});
-  return signedIn(request,session,env);
+  const response=await signedIn(request,session,env);
+  response.headers.append('Set-Cookie',recoveryCookie(request));
+  return response;
 }

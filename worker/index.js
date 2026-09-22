@@ -70,7 +70,7 @@ const application = {
     if (pathname.startsWith("/api/auth/")) {
       const resource = pathname.slice(pathname.startsWith('/api/auth/workspace/') ? '/api/auth/workspace/'.length : '/api/auth/'.length);
       if(pathname==='/api/auth/workspace/options')return new Response(JSON.stringify({secure:accountSecurityEnabled(env)}),{headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
-      if(pathname.startsWith('/api/auth/workspace/') && accountSecurityEnabled(env) && ['security','setup-password','mfa-enroll','mfa-verify','switch-role','owner-admin'].includes(resource))return handleWorkspaceSecurity(request,env,resource);
+      if(pathname.startsWith('/api/auth/workspace/') && accountSecurityEnabled(env) && ['security','reset-password','setup-password','mfa-enroll','mfa-verify','switch-role','owner-admin'].includes(resource))return handleWorkspaceSecurity(request,env,resource);
       if (["workspace-code", "workspace-activate", "workspace-invitation", "workspace-accept"].includes(resource)) return handleWorkspaceAuth(request, env, resource);
       return handleAuthRequest(request, env, ctx, resource);
     }
