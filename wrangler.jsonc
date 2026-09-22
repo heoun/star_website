@@ -40,6 +40,7 @@
       "services": [{"binding":"SCREENING_SIMULATOR","service":"star-screening-staging"}],
       "vars": {
         "APP_ENV":"staging",
+        "AUTH_PROVIDER":"gip",
         "ACCOUNT_SECURITY":"on",
         "OWNER_EMAIL":"info@starreusa.com",
         "STORAGE_BACKEND":"supabase",

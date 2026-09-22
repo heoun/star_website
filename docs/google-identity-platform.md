@@ -1,6 +1,6 @@
 # Google Identity Platform migration — Dev preparation
 
-Status (2026-09-22): **GIP routes, UI and audited migration implemented; Dev cutover in progress**.
+Status (2026-09-22): **Dev configured for GIP; production retains Supabase Auth**.
 `AUTH_PROVIDER=gip` selects GIP explicitly; an absent flag retains Supabase Auth.
 No automatic provider fallback is allowed. Production remains Supabase.
 
@@ -38,7 +38,7 @@ The workload principal has `roles/iam.workloadIdentityUser` on only the runtime
 service account. The Worker will hold its own external workload private key;
 this is **not** a completely keyless setup. It signs five-minute assertions and
 requests ten-minute Google access tokens. No Google service-account key was
-created. Runtime material is not yet uploaded to Cloudflare.
+created. Runtime material is installed only on `star-website-staging`.
 
 The approved custom role `projects/starreusa-dev-auth/roles/starAuthRuntime`
 contains only:

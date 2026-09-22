@@ -18,6 +18,10 @@ try{
   await db.query("insert into staff(email,role,name,active,user_id,auth_user_id,access_state) values($1,'manager','Same Email',true,$2,$3,'active')",[email,staffId,staffSubject]);
   const listing=(await db.query("insert into listings(title,category,transaction_type) values('GIP migration fixture','residential','rental') returning id")).rows[0].id;
   const application=(await db.query('insert into applications(listing_id,email,name,workspace) values($1,$2,$3,$4) returning id',[listing,email,'Applicant',{test_run:{account_id:staffSubject}}])).rows[0].id;
+  await db.query("update applications set status='lease_signed',lease_snapshot=$1 where id=$2",[{rent:3000,tenant:'Applicant'},application]);
+  const signedRecord={phase:'completed',signedPdf:{key:'retained.pdf'},envelope:{envelopeId:'retained-envelope'}};
+  await db.query('insert into rental_signing_packages(id,rental_id,record,member_versions,active,reserved) values($1,$2,$3,$4,true,true)',[crypto.randomUUID(),application,signedRecord,{}]);
+  await rejects(()=>db.query("update applications set workspace=jsonb_set(workspace,'{test_run,account_id}','\"unauthorized\"') where id=$1",[application]));
   const draft=crypto.randomUUID();await db.query('select save_rental_draft($1,$2,$3,$4,$5,$6)',[draft,listing,staffSubject,email,[],{account_id:staffSubject}]);
   for(const [realm,tenant] of Object.entries(tenants))await db.query('insert into gip_auth_realms(realm,project_id,tenant_id) values($1,$2,$3)',[realm,project,tenant]);
   await rejects(()=>rpc('resolve_gip_identity',args('new-applicant-uid',email,'applicant')));
@@ -38,6 +42,9 @@ try{
   eq((await db.query('select user_id from applications where id=$1',[application])).rows[0].user_id,appId);
   eq((await db.query('select owner_id,test_run from rental_drafts where id=$1',[draft])).rows[0],{owner_id:'google-applicant',test_run:{account_id:'google-applicant'}});
   eq((await db.query('select workspace from applications where id=$1',[application])).rows[0].workspace.test_run.account_id,'google-applicant');
+  eq((await db.query('select status,lease_snapshot from applications where id=$1',[application])).rows[0],{status:'lease_signed',lease_snapshot:{rent:3000,tenant:'Applicant'}});
+  eq((await db.query('select record from rental_signing_packages where rental_id=$1',[application])).rows[0].record,signedRecord);
+  await rejects(()=>db.query("update applications set workspace=jsonb_set(workspace,'{test_run,account_id}','\"unauthorized\"') where id=$1",[application]));
   eq((await db.query('select user_id,auth_user_id from staff where email=$1',[email])).rows[0],{user_id:staffId,auth_user_id:staffSubject});
   eq((await db.query('select user_id from platform_owner')).rows[0].user_id,ownerId);
   await rejects(()=>db.query('update applications set user_id=$1 where id=$2',[staffId,application]));

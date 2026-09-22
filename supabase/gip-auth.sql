@@ -119,7 +119,7 @@ end $$;
 -- Google's Admin API before calling. Never export passwords or TOTP secrets here.
 create or replace function public.migrate_gip_identity(p_old_subject uuid,p_new_subject text,p_email text,p_realm text,p_project text,p_tenant text)
 returns uuid language plpgsql security definer set search_path='' as $$
-declare old_uid uuid; new_uid uuid; provider_key text; prior public.gip_identity_migrations;
+declare old_uid uuid; new_uid uuid; provider_key text; prior public.gip_identity_migrations; signing_write text;
 begin
   if not exists(select 1 from public.gip_auth_realms where realm=p_realm and project_id=p_project and tenant_id=p_tenant and not enabled) then raise exception 'Migration requires inactive authentication';end if;
   if exists(select 1 from public.applicant_auth_config where enabled) or exists(select 1 from public.applicant_identity_migrations) then raise exception 'Review existing applicant provider migration first';end if;
@@ -150,7 +150,13 @@ begin
     update public.rental_drafts set owner_id=p_new_subject,
       test_run=case when test_run->>'account_id'=p_old_subject::text then jsonb_set(test_run,'{account_id}',to_jsonb(p_new_subject)) else test_run end
       where owner_id=p_old_subject::text and owner_email=p_email;
-    update public.applications set workspace=jsonb_set(workspace,'{test_run,account_id}',to_jsonb(p_new_subject)) where user_id=new_uid and workspace->'test_run'->>'account_id'=p_old_subject::text;
+    -- Only this verified operator migration may rewrite the test identity
+    -- marker on an already locked signing case. All lease/signing fields stay
+    -- untouched, and the normal signing guard is restored immediately.
+    signing_write:=current_setting('star.signing_write',true);
+    perform set_config('star.signing_write','on',true);
+    update public.applications set workspace=jsonb_set(workspace,'{test_run,account_id}',to_jsonb(p_new_subject)) where user_id=new_uid and lower(email)=p_email and workspace->'test_run'->>'account_id'=p_old_subject::text;
+    perform set_config('star.signing_write',coalesce(signing_write,''),true);
   end if;
   insert into public.identity_audit(actor_id,acting_role,action,target_id,details) values(null,'operator','migrate_gip_identity',new_uid,jsonb_build_object('old_user_id',old_uid,'realm',p_realm,'provider',provider_key));
   return new_uid;
