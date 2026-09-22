@@ -1,8 +1,8 @@
 # Google Identity Platform migration — Dev preparation
 
-Status (2026-09-22): **provider adapter and Dev infrastructure only; not cut over**.
-The current Worker routes, account UI and business identity resolvers still use
-Supabase Auth. These new files do not switch Dev or production authentication.
+Status (2026-09-22): **GIP routes, UI and audited migration implemented; Dev cutover in progress**.
+`AUTH_PROVIDER=gip` selects GIP explicitly; an absent flag retains Supabase Auth.
+No automatic provider fallback is allowed. Production remains Supabase.
 
 ## Approved target
 
@@ -48,14 +48,20 @@ contains only:
 - `firebaseauth.users.update`
 - `firebaseauth.users.sendEmail`
 
-The role is bound to the runtime service account on the Dev project and both Dev
-tenants. The impersonation exchange succeeds. IAM `testIamPermissions` reports
-all four permissions, and a default-project account lookup succeeds, but tenant
-account lookup and creation return `INSUFFICIENT_PERMISSION`. Do not broaden to
-Editor, Owner, or Identity Platform Admin to bypass this failure. A proposed
-additional **tenant-scoped read-only** `identitytoolkit.tenants.get` diagnostic
-permission is awaiting the user's separate approval; it has not been granted.
-Its necessity has not yet been established.
+The four-permission role is bound on the Dev project and its two tenants.
+Real audit logs established two additional requirements: `SignUp` requires
+`identitytoolkit.tenants.update`, and `GetAccountInfo` requires
+`identitytoolkit.tenants.get`. Both were approved separately. The single-permission
+roles `starAuthTenantWriter` and `starAuthTenantReader` are bound **only to the two
+named Dev tenant resources**, never the project. The write permission also permits
+changing tenant authentication configuration; it is broader than user writes.
+No Editor, Owner, tenant IAM-management or production permission was granted.
+Temporary read audit logging used for diagnosis was restored afterwards.
+
+The actual WIF runtime now passes the 25-check live acceptance probe, including
+account provisioning, lookup and branded-action generation. Synthetic accounts
+were removed and no emails were sent. Earlier provider-only results were not
+used as a substitute for this runtime verification.
 
 ## Local tools and secrets
 
@@ -80,6 +86,9 @@ npm run gip:workload -- prepare
 npm run gip:workload -- create
 npm run gip:workload -- grant
 npm run gip:workload -- grant-tenants
+npm run gip:workload -- grant-tenant-write
+npm run gip:workload -- grant-tenant-read
+npm run gip:dev -- domains
 ```
 
 Provisioning commands are Dev-only. `create`, `grant` and `grant-tenants` change
@@ -97,7 +106,7 @@ npm run test:gip:live
 npm run test:gip:live -- --provider-only
 ```
 
-Offline tests currently pass 89 checks across signed JWT validation, issuer/
+Offline provider tests pass 89 checks across signed JWT validation, issuer/
 audience/tenant isolation, refresh isolation, disabled/revoked users, MFA pending
 credentials, email action purpose/replay handling, recent MFA enrollment,
 credential confinement and provider error redaction.
@@ -108,30 +117,43 @@ only its own created UIDs. It does not access business records. The normal probe
 requires the actual WIF runtime credential for Workspace provisioning; do not
 mark it passed based on `--provider-only`.
 
-Last provider-only result: 25 checks passed, including actual email verification,
-independent passwords for the same mailbox, invitation password setup, TOTP
-signin, reset isolation and replay rejection. Both test accounts were removed.
-The runtime-IAM acceptance probe remains failing as described above.
+Additional tests cover the real Worker routes with synthetic Google transports,
+a real PostgreSQL-compatible migration schema, and browser forms. Run
+`npm run test:gip:ui` with Playwright available for browser coverage.
 
-## Remaining cutover work
+## Migration and cutover
 
-1. Resolve and verify minimum runtime tenant permissions; read back the final
-   policy and remove any diagnostic permission that was not needed.
-2. Add provider/project/tenant business bindings and an audited migration with
-   conflict checks. Workspace Owner/staff must retain their business UUIDs;
-   applicant identities must remain separate even with the same email.
-3. Integrate GIP into server sessions, invitation acceptance, branded verification
-   and recovery links, login UI, MFA enrollment and role-switch authorization.
-   A pending MFA credential must never become an authenticated session. A reset
-   link must never bypass the next MFA challenge. Do not silently fall back to
-   the old provider after cutover.
-4. Prepare and verify existing account migration, including the Owner's MFA
-   transition. Do not assume Supabase TOTP secrets can be imported. Do not bind
-   a newly registered identity to historical records by email alone.
-5. Configure allowed Dev domains, install the authorized runtime secrets on
-   `star-website-staging`, run migration/route/UI regression tests and release
-   gates, then deploy Dev and verify the actual live workflows.
-6. Keep production unchanged until it has a separately reviewed rollout.
+The operator-only `scripts/gip-migrate-dev.mjs` supports `plan`, `provision` and
+`sql`. It is pinned to Star Dev and never exports password hashes or TOTP secrets.
+It chooses stable target UIDs before provisioning, verifies both source and target
+identities, and refuses to bind a pre-existing target merely because email matches.
+The ignored manifest must be retained for resumability and audit. No emails are
+sent by this script. SQL execution is a separate operator action.
+
+The reviewed Dev plan has three Workspace identities and two Applicant identities,
+preserving 18 applications, two drafts, staff roles and the singleton Owner's
+business UUID. The same mailbox can have an independent identity in both tenants.
+The user explicitly approved new passwords and fresh MFA enrollment for Dev;
+source Supabase accounts and their factors remain unchanged. Staff-only accounts
+are not automatically registered in the Applicant tenant.
+
+Release sequence:
+1. Apply the tested schema bundle while GIP realm configuration is inactive.
+2. Install runtime secrets and deploy compatible code with existing Supabase Auth.
+3. Enable `AUTH_MIGRATION=maintenance` and stop local writers using the same DB.
+   All normal HTTP requests receive 503 with Retry-After; scheduled jobs pause.
+4. Execute the generated cutover SQL atomically: migrate verified bindings,
+   preserve Workspace UUIDs, rebind Applicant records, and enable both realms.
+5. Select `AUTH_PROVIDER=gip`, verify configuration, remove maintenance, and
+   check the public login/portal routes and access gates. Align local configuration.
+6. Existing users choose passwords through their realm's reset/activation flow.
+   Owner/Admin access stays blocked until fresh TOTP enrollment is completed.
+
+Do not roll back only the Worker after business data migration. Keep maintenance
+active and review the recorded old/new bindings and any post-cutover writes before
+reverting database references. Retaining old accounts alone is not a full rollback.
+Production requires a separate reviewed migration; this adapter's runtime credential
+is deliberately restricted to the Dev project.
 
 References: [Google tenant access control](https://docs.cloud.google.com/identity-platform/docs/multi-tenancy-access-control),
 [Google account API permissions](https://docs.cloud.google.com/identity-platform/docs/access-control),

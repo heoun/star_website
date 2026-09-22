@@ -3,10 +3,13 @@ import { isLocalRequest } from "./env.js";
 import { resolveStaff } from "./staff.js";
 import { accountSecurityEnabled, businessIdentity, verifiedSessionClaims } from "./account-security.js";
 import {createRecoveryCookie,recoveryCookie} from "./workspace-recovery.js";
+import {gipConfig} from './gip.js';
+import {readGipSession} from './gip-session.js';
+import {handleGipAuth} from './gip-flow.js';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const SESSION_COOKIES = { applicant: "star_portal", workspace: "star_workspace" };
-function authScope(request) {
+export function authScope(request) {
   const path = new URL(request.url).pathname;
   return path.startsWith('/api/auth/workspace/') || ['/api/auth/workspace-code','/api/auth/workspace-activate'].includes(path) ? 'workspace' : 'applicant';
 }
@@ -14,7 +17,7 @@ function authScope(request) {
 // Missing selectors support old clients; a supplied invalid/missing slot must
 // never fall back to another applicant's legacy session.
 const APPLICANT_CONTEXT=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-function sessionCookieName(request,scope=authScope(request)) {
+export function sessionCookieName(request,scope=authScope(request)) {
   if(scope==='workspace')return SESSION_COOKIES.workspace;
   const header=request.headers.get('X-Applicant-Session');
   const query=new URL(request.url).searchParams.get('applicant_session');
@@ -44,6 +47,7 @@ function json(payload, status = 200, headers = {}) {
 // Accept publishable and legacy anon keys. These only travel in apikey;
 // Authorization carries the user's verified access token.
 export function authConfig(env, scope = 'workspace') {
+  if(env.AUTH_PROVIDER && env.AUTH_PROVIDER!=='supabase')return null;
   if (scope === 'applicant' && env.APPLICANT_AUTH_MODE && !['legacy','isolated','maintenance'].includes(env.APPLICANT_AUTH_MODE)) return null;
   if (scope === 'applicant' && env.APPLICANT_AUTH_MODE === 'maintenance') return null;
   if (scope === 'applicant' && env.APPLICANT_AUTH_MODE === 'isolated') {
@@ -62,6 +66,11 @@ export function authConfig(env, scope = 'workspace') {
   const url = (env.SUPABASE_URL || "").replace(/\/+$/, "");
   const key = env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || "";
   return url && key ? { url, key } : null;
+}
+
+export function authConfigured(env,scope='workspace') {
+  if(env.AUTH_PROVIDER==='gip'){try{gipConfig(env,scope);return true;}catch{return false;}}
+  return !!authConfig(env,scope);
 }
 
 export async function authRequest(env, path, { method = "POST", token, body, scope = 'workspace' } = {}) {
@@ -167,6 +176,7 @@ export async function signedIn(request, session, env) {
 // cookie the response must set — Supabase rotates refresh tokens, so
 // dropping it would sign the applicant out a request later.
 export async function readSession(request, env, scope = authScope(request)) {
+  if(env.AUTH_PROVIDER==='gip')return readGipSession(request,env,scope);
   if (!authConfig(env, scope)) return null;
 
   const name=sessionCookieName(request,scope);
@@ -389,6 +399,7 @@ export function sameOriginMutation(request) {
 
 // Called by both /api/auth and the existing applicant endpoints.
 export async function handleAuthRequest(request, env, ctx, resource) {
+  if(env.AUTH_PROVIDER==='gip')return handleGipAuth(request,env,resource,authScope(request));
   if (!authConfig(env, authScope(request))) return json({ error: "Sign-in is temporarily unavailable." }, 503);
   if (!sessionCookieName(request)) return json({error:"Invalid applicant session."},400);
   if (!sameOriginMutation(request)) return json({ error: "Use this website to submit the form." }, 403);

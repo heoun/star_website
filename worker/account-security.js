@@ -1,5 +1,6 @@
 // Provider bindings are confined to this adapter. Business user IDs survive provider migrations.
 import { requireConfig } from './supabase.js';
+import {gipConfig} from './gip.js';
 export const accountSecurityEnabled = env => env.ACCOUNT_SECURITY === 'on';
 export async function identityRequest(env, path, {method='GET',body,prefer='return=representation'}={}) {
   const config=requireConfig(env);
@@ -9,10 +10,18 @@ export async function identityRequest(env, path, {method='GET',body,prefer='retu
 }
 export const identityRpc=(env,name,body)=>identityRequest(env,`rpc/${name}`,{method:'POST',body});
 export const businessIdentity=(env,identity,scope='workspace')=>
-  scope==='applicant' && env.APPLICANT_AUTH_MODE==='isolated'
+  env.AUTH_PROVIDER==='gip'
+    ? identityRpc(env,'resolve_gip_identity',{...gipIdentityArgs(env,identity,scope),p_realm:scope})
+    : scope==='applicant' && env.APPLICANT_AUTH_MODE==='isolated'
     ? identityRpc(env,'resolve_applicant_identity',{p_subject:identity.subject,p_email:identity.email,p_issuer:new URL(env.APPLICANT_AUTH_URL).origin+'/auth/v1'})
     : identityRpc(env,'resolve_business_identity',{p_subject:identity.subject,p_email:identity.email});
-export const workspaceAccess=(env,identity)=>identityRpc(env,'resolve_workspace_access',{p_subject:identity.subject,p_email:identity.email});
+export function gipIdentityArgs(env,identity,scope='workspace') {
+  const config=gipConfig(env,scope);
+  return {p_subject:identity.subject,p_email:identity.email,p_project:config.projectId,p_tenant:config.tenantId};
+}
+export const workspaceAccess=(env,identity)=>env.AUTH_PROVIDER==='gip'
+  ? identityRpc(env,'resolve_gip_workspace_access',gipIdentityArgs(env,identity))
+  : identityRpc(env,'resolve_workspace_access',{p_subject:identity.subject,p_email:identity.email});
 // Only inspect claims AFTER Supabase has validated this exact access token via /user.
 export function verifiedSessionClaims(token) {
   try { const part=token.split('.')[1];return JSON.parse(atob(part.replace(/-/g,'+').replace(/_/g,'/'))); } catch {return {};}

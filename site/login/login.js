@@ -1,7 +1,19 @@
 import {secureAccount} from './security.js';
 const host = document.querySelector("#login-content");
 let email = "";
-const secure=(await fetch('/api/auth/workspace/options').then(r=>r.json()).catch(()=>({}))).secure===true;
+const options=await fetch('/api/auth/workspace/options').then(r=>r.json()).catch(()=>({}));
+if(options.provider==='gip'){
+  const {mountGipAuth}=await import('../shared/gip-auth-ui.js');
+  const gipPost=async(resource,body)=>{
+    const response=await fetch('/api/auth/workspace/'+resource,{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const result=await response.json();if(!response.ok)throw Object.assign(new Error(result.error||'Account access is unavailable.'),{code:result.code});return result;
+  };
+  await mountGipAuth(host,{scope:'workspace',post:gipPost,enter:()=>secureAccount(host,gipPost,finishWorkspace,{manage:new URLSearchParams(location.search).has('security')})});
+}else{
+  await legacyLogin();
+}
+async function legacyLogin(){
+const secure=options.secure===true;
 let invitation=new URLSearchParams(location.hash.slice(1)).get('invite')||'';
 // Reusing an open login tab for another invitation must not retain the previous account.
 window.addEventListener('hashchange',()=>{
@@ -20,19 +32,7 @@ async function enterWorkspace() {
   if(secure)return secureAccount(host,post,finishWorkspace,{manage:new URLSearchParams(location.search).has('security')});
   return finishWorkspace();
 }
-async function finishWorkspace(security) {
-  const intended=new URLSearchParams(location.search).get('return');
-  if(secure && /^\/landlord-onboarding\/#([a-f0-9]{64})$/.test(intended||'')){location.replace(intended);return;}
-  if(security?.onboarding_pending){host.innerHTML='<h2>Landlord onboarding</h2><p>Your account is ready. Open your latest property-information invitation to complete onboarding. Business access becomes available after your submission is approved.</p><a href="/login/?security=1">Account security</a>';return;}
 
-  const response = await fetch("/api/admin/me", { credentials:"same-origin" });
-  const result = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(result.error || "Your account does not have workspace access. Contact your administrator.");
-  const returnTo=new URLSearchParams(location.search).get('return');
-  if(!result.owner && returnTo?.startsWith('/landlord-decision/#')){location.replace(returnTo);return;}
-  const route = result.owner ? "#/staff" : location.hash.startsWith("#/") ? location.hash : "#/overview";
-  location.replace(`/admin/${route}`);
-}
 function render(mode = "login", notice = "") {
   const verify = mode === "activate" || mode === "reset-confirm";
   const passwordStep=verify && !secure;
@@ -71,4 +71,19 @@ if(secure && invitation){
   catch(e){host.innerHTML=`<h2>Invitation unavailable</h2><p>${esc(e.message)}</p><a href="/login/">Sign in</a>`;}
 } else if(secure && new URLSearchParams(location.search).has('security')){
   try{await enterWorkspace();}catch(e){render('login',e.message);}
+}
+}
+
+async function finishWorkspace(security) {
+  const intended=new URLSearchParams(location.search).get('return');
+  if(options.secure && /^\/landlord-onboarding\/#([a-f0-9]{64})$/.test(intended||'')){location.replace(intended);return;}
+  if(security?.onboarding_pending){host.innerHTML='<h2>Landlord onboarding</h2><p>Your account is ready. Open your latest property-information invitation to complete onboarding. Business access becomes available after your submission is approved.</p><a href="/login/?security=1">Account security</a>';return;}
+
+  const response = await fetch("/api/admin/me", { credentials:"same-origin" });
+  const result = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(result.error || "Your account does not have workspace access. Contact your administrator.");
+  const returnTo=new URLSearchParams(location.search).get('return');
+  if(!result.owner && returnTo?.startsWith('/landlord-decision/#')){location.replace(returnTo);return;}
+  const route = result.owner ? "#/staff" : location.hash.startsWith("#/") ? location.hash : "#/overview";
+  location.replace(`/admin/${route}`);
 }

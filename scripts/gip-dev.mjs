@@ -5,7 +5,7 @@ import {writeFileSync,mkdirSync} from 'node:fs';
 const project='starreusa-dev-auth';
 const tenants={applicant:'Applicant-sw0j9',workspace:'Workspace-7ppgr'};
 const command=process.argv[2]||'inspect';
-if(!['inspect','configure','save-config'].includes(command))throw new Error('Use inspect, configure, or save-config. This tool cannot target production.');
+if(!['inspect','configure','save-config','domains'].includes(command))throw new Error('Use inspect, configure, save-config, or domains. This tool cannot target production.');
 const token=execFileSync(resolve('.local/gip-tools/google-cloud-sdk/bin/gcloud'),['auth','print-access-token','info@starreusa.com','--project='+project],{env:{...process.env,CLOUDSDK_CONFIG:resolve('.local/gip-tools/config')},encoding:'utf8',stdio:['ignore','pipe','pipe']}).trim();
 async function api(path,method='GET',body){
   const prefix=path.includes('/tenants/')?'v2/':'admin/v2/';
@@ -17,6 +17,11 @@ async function api(path,method='GET',body){
 const config=await api(`projects/${project}/config`);
 if(![`projects/${project}/config`,'projects/54640971372/config'].includes(config.name))throw new Error('Unexpected target project');
 const safeTenant=({name,displayName,allowPasswordSignup,enableEmailLinkSignin,enableAnonymousUser,mfaConfig,client,emailPrivacyConfig,passwordPolicyConfig,smsRegionConfig})=>({name,displayName,allowPasswordSignup,enableEmailLinkSignin,enableAnonymousUser,mfaConfig,client,emailPrivacyConfig,passwordPolicyConfig,smsRegionConfig});
+if(command==='domains'){
+  const authorizedDomains=[...new Set([...(config.authorizedDomains||[]),'dev.starreusa.com','localhost','127.0.0.1'])];
+  await api(`projects/${project}/config?updateMask=authorizedDomains`,'PATCH',{authorizedDomains});
+  config.authorizedDomains=(await api(`projects/${project}/config`)).authorizedDomains;
+}
 if(command==='configure'){
   for(const [scope,id] of Object.entries(tenants)){
     const body={allowPasswordSignup:true,enableEmailLinkSignin:false,enableAnonymousUser:false,

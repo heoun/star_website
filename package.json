@@ -58,8 +58,9 @@
     "test:account-security": "node scripts/test-account-security.mjs",
     "test:auth-realms": "node scripts/test-auth-realms.mjs",
     "test:auth-realms:ui": "node scripts/test-auth-realms.mjs --ui",
-    "test:gip": "node scripts/test-gip.mjs && node scripts/test-gip-actions.mjs && node scripts/test-gip-admin.mjs",
+    "test:gip": "node scripts/test-gip.mjs && node scripts/test-gip-actions.mjs && node scripts/test-gip-admin.mjs && node scripts/test-gip-schema.mjs && node scripts/test-gip-flow.mjs",
     "test:gip:live": "node scripts/test-gip-live.mjs",
+    "test:gip:ui": "node scripts/test-gip-ui.mjs",
     "gip:dev": "node scripts/gip-dev.mjs",
     "gip:workload": "node scripts/gip-workload.mjs"
   },

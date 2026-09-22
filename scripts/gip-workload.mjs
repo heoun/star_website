@@ -6,7 +6,7 @@ import {resolve} from 'node:path';
 const project='starreusa-dev-auth',number='54640971372',pool='star-dev-auth',provider='cloudflare-worker';
 const serviceAccount=`star-dev-auth-runtime@${project}.iam.gserviceaccount.com`;
 const command=process.argv[2];
-if(!['prepare','create','grant','grant-tenants'].includes(command))throw new Error('Use prepare, create, grant, or grant-tenants.');
+if(!['prepare','create','grant','grant-tenants','grant-tenant-write','grant-tenant-read'].includes(command))throw new Error('Use prepare, create, grant, grant-tenants, grant-tenant-write, or grant-tenant-read.');
 const dir='.local/gip';mkdirSync(dir,{recursive:true,mode:0o700});
 const path=dir+'/workload.json';
 if(!existsSync(path)){
@@ -37,10 +37,21 @@ if(command==='create'){
   run(['iam','service-accounts','add-iam-policy-binding',serviceAccount,
     '--role=roles/iam.workloadIdentityUser',`--member=principal://iam.googleapis.com/projects/${number}/locations/global/workloadIdentityPools/${pool}/subject/star-website-staging`,'--format=value(version)']);
   console.log('Only the pinned star-website-staging workload can obtain short-lived credentials for the approved Dev runtime account.');
-} else if(command==='grant-tenants'){
+} else if(['grant-tenants','grant-tenant-write','grant-tenant-read'].includes(command)){
+  const read=command==='grant-tenant-read',roleId=command==='grant-tenants'?'starAuthRuntime':read?'starAuthTenantReader':'starAuthTenantWriter';
+  if(command!=='grant-tenants'){
+    // Approved separately: this also permits changing tenant authentication
+    // configuration. Bind only on the two named Dev tenants, never the project.
+    const roles=JSON.parse(run(['iam','roles','list','--format=json']));
+    const permission=read?'identitytoolkit.tenants.get':'identitytoolkit.tenants.update';
+    const existing=roles.find(r=>r.name===`projects/${project}/roles/${roleId}`);
+    if(!existing)run(['iam','roles','create',roleId,'--title=Star Dev tenant account '+(read?'reads':'writes'),'--permissions='+permission,'--stage=GA','--format=json']);
+    const role=JSON.parse(run(['iam','roles','describe',roleId,'--format=json']));
+    if(role.deleted||JSON.stringify(role.includedPermissions)!==JSON.stringify([permission]))throw new Error('Unexpected tenant permissions; no grant attempted.');
+  }
   const token=run(['auth','print-access-token','info@starreusa.com']).trim();
   const headers={Authorization:'Bearer '+token,'Content-Type':'application/json','x-goog-user-project':project};
-  const role=`projects/${project}/roles/starAuthRuntime`,member=`serviceAccount:${serviceAccount}`;
+  const role=`projects/${project}/roles/${roleId}`,member=`serviceAccount:${serviceAccount}`;
   for(const tenant of ['Applicant-sw0j9','Workspace-7ppgr']){
     const base=`https://identitytoolkit.googleapis.com/admin/v2/projects/${project}/tenants/${tenant}`;
     async function policyRequest(method,body){
@@ -55,6 +66,8 @@ if(command==='create'){
       binding.members.push(member);
       await policyRequest('setIamPolicy',{policy});
     }
-    console.log(`${tenant}: approved custom role bound, other policy entries preserved.`);
+    const verified=await policyRequest('getIamPolicy',{});
+    if(!verified.bindings?.some(b=>b.role===role&&!b.condition&&b.members?.includes(member)))throw new Error('Tenant grant readback failed.');
+    console.log(`${tenant}: ${role.split('/').at(-1)} bound and verified; other policy entries preserved.`);
   }
 }

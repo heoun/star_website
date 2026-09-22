@@ -2,6 +2,7 @@
 const esc=v=>String(v??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export async function secureAccount(host,post,enter,{manage=false,forceVerify=false}={}) {
   let state=await post('security',{});
+  if(state.provider==='gip'&&forceVerify){host.innerHTML='<h2>Verify your identity again</h2><p>Sign in with your password and authenticator to continue.</p><a href="/login/?security=1&reauth=1">Sign in again</a>';return;}
   if(state.reset_expired){host.innerHTML='<h2>Reset session expired</h2><p>Request a new email code to finish resetting your password.</p><a href="/login/?reset=1">Request a new reset code</a>';return;}
   const verifiedFactors=state.factors.filter(f=>f.status==='verified');
   const changingPassword=state.setup_password||state.reset_password;

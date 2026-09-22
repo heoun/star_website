@@ -16,7 +16,7 @@ export async function sendWorkspaceInvitation(request,env,email) {
   const sent=await sendEmail(request,env,{to:[email],subject:`${dev?'[DEV · Test] ':''}Your Star Real Estate workspace invitation`,text:`${environmentNote}You have been invited to join Star Real Estate as ${member.role==='manager'?'an Admin':member.role==='agent'?'an Agent':'a Landlord'}.\n\nAccept your invitation:\n${url}\n\nSign in with ${email}, or create your account if this is your first visit. Existing accounts keep their current password. This invitation expires in seven days.\n\nStar Real Estate`},{workspaceInvitationRecipient:member.email});
   return {status:sent?'sent':'failed'};
 }
-async function invitation(env,token) {
+export async function invitation(env,token) {
   if(!tokenPattern.test(token||''))return null;
   const [row]=await identityRequest(env,`workspace_invitations?token_hash=eq.${await hashInvitation(token)}&select=email,role,expires_at,accepted_at,revoked_at`);
   if(!row||row.accepted_at||row.revoked_at||Date.parse(row.expires_at)<=Date.now())return null;

@@ -10,6 +10,17 @@ alter table public.app_users add column if not exists realm text not null defaul
   check(realm in ('workspace','applicant'));
 alter table public.app_users drop constraint if exists app_users_email_key;
 create unique index if not exists app_users_realm_email on public.app_users(realm,email);
+-- Provider configuration is inactive until the operator verifies a complete migration.
+create table if not exists public.gip_auth_realms (
+  realm text primary key check(realm in ('workspace','applicant')),
+  project_id text not null check(project_id ~ '^[a-z][a-z0-9-]{4,28}[a-z0-9]$'),
+  tenant_id text not null check(tenant_id ~ '^[A-Za-z0-9_-]{1,128}$'),
+  enabled boolean not null default false,
+  unique(project_id,tenant_id)
+);
+alter table public.gip_auth_realms enable row level security;
+revoke all on public.gip_auth_realms from public,anon,authenticated;
+grant select,insert,update on public.gip_auth_realms to service_role;
 create table if not exists public.applicant_auth_config (
   singleton boolean primary key default true check(singleton),
   issuer text not null unique check(issuer ~ '^https://[^/]+/auth/v1$'),
@@ -163,6 +174,7 @@ drop trigger if exists application_identity on public.applications;
 create trigger application_identity before insert or update on public.applications for each row execute function public.attach_application_identity();
 -- Pin existing verified identities at migration time. Subsequent email reuse is rejected.
 do $$ declare u record; uid uuid; begin
+  if exists(select 1 from public.gip_auth_realms where enabled) then return;end if;
   for u in select id,email from auth.users where email_confirmed_at is not null and not coalesce(is_anonymous,false) and email is not null loop
     uid:=public.resolve_business_identity(u.id,u.email);
     update public.staff set user_id=uid,auth_user_id=u.id where email=lower(u.email) and (auth_user_id is null or auth_user_id=u.id) and user_id is null;

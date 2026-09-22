@@ -17,6 +17,7 @@ import { internalTesting,internalTestParticipant,internalTestListing } from '../
 import { handleLandlordDecision } from './landlord-decision.js';
 import { invitedTestContext } from './internal-testing.js';
 import {deploymentError,deploymentResponse} from './deployment.js';
+import {handleGipAuth} from './gip-flow.js';
 
 const application = {
   async scheduled(_event,env,ctx) {
@@ -69,6 +70,8 @@ const application = {
 
     if (pathname.startsWith("/api/auth/")) {
       const resource = pathname.slice(pathname.startsWith('/api/auth/workspace/') ? '/api/auth/workspace/'.length : '/api/auth/'.length);
+      if(env.AUTH_PROVIDER==='gip')return handleGipAuth(request,env,resource,pathname.startsWith('/api/auth/workspace/')||resource.startsWith('workspace-')?'workspace':'applicant');
+      if(pathname==='/api/auth/options')return Response.json({provider:'supabase'},{headers:{'Cache-Control':'no-store'}});
       if(pathname==='/api/auth/workspace/options')return new Response(JSON.stringify({secure:accountSecurityEnabled(env)}),{headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
       if(pathname.startsWith('/api/auth/workspace/') && accountSecurityEnabled(env) && ['security','reset-password','setup-password','mfa-enroll','mfa-verify','switch-role','owner-admin'].includes(resource))return handleWorkspaceSecurity(request,env,resource);
       if (["workspace-code", "workspace-activate", "workspace-invitation", "workspace-accept"].includes(resource)) return handleWorkspaceAuth(request, env, resource);
@@ -151,10 +154,14 @@ export default {
       }catch{return Response.json({ok:false},{status:503,headers:{'Cache-Control':'no-store'}});}
     }
     if(new URL(request.url).pathname==='/api/release' && request.method==='GET')return Response.json({environment:env.APP_ENV || 'production',revision:env.RELEASE_SHA || 'local'},{headers:{'Cache-Control':'no-store'}});
+    // Operator-controlled cutover window: never allow new writes while business
+    // identities are being rebound. Webhooks receive 503 so senders can retry.
+    if(env.AUTH_MIGRATION==='maintenance')return Response.json({error:'Account migration is in progress. Please try again shortly.'},{status:503,headers:{'Cache-Control':'no-store','Retry-After':'60'}});
     return deploymentResponse(await application.fetch(request,env,ctx),env);
   },
   async scheduled(event,env,ctx) {
     if(deploymentError(env))throw new Error('Background jobs blocked: environment configuration is invalid.');
+    if(env.AUTH_MIGRATION==='maintenance')return;
     return application.scheduled(event,env,ctx);
   }
 };

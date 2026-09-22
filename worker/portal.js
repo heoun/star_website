@@ -29,7 +29,7 @@ import { internalTestParticipant,internalTestListing } from './internal-testing.
 // bank statement must not be one bug away from that. Every document read or
 // write here checks the session email against the application's email first.
 
-import { authConfig, readSession, handleAuthRequest, sameOriginMutation } from "./auth.js";
+import { authConfigured, readSession, handleAuthRequest, sameOriginMutation } from "./auth.js";
 export { readSession } from "./auth.js";
 import { sendEmail } from "./email.js";
 import {
@@ -382,7 +382,7 @@ async function sendCompletionNotice(request, env, application) {
 }
 
 export async function handlePortalRequest(request, env, ctx, pathname) {
-  if (!authConfig(env, 'applicant')) {
+  if (!authConfigured(env, 'applicant')) {
     console.error("Applicant authentication is unavailable or in maintenance.");
     return json({ error: "The portal is temporarily unavailable. Please try again shortly." }, 503);
   }
@@ -392,14 +392,14 @@ export async function handlePortalRequest(request, env, ctx, pathname) {
 
   try {
     if (!sameOriginMutation(request)) return json({ error: "Use this website to submit the form." }, 403);
-    if (!id && ["register", "resend", "verify-register", "login", "request-reset", "verify-reset", "sign-out"].includes(resource)) {
+    if (!id && (["register", "resend", "verify-register", "login", "request-reset", "verify-reset", "sign-out"].includes(resource)||env.AUTH_PROVIDER==='gip'&&['options','check-action','mfa-login'].includes(resource))) {
       return handleAuthRequest(request, env, ctx, resource);
     }
 
     // Everything below is somebody's private data, so it needs a session.
     const session = await readSession(request, env);
     if (!session) {
-      return json({ error: "Please sign in.", ...(env.APPLICANT_AUTH_MODE==='isolated' ? {auth_realm:'applicant'} : {}) }, 401);
+      return json({ error: "Please sign in.", ...(env.APPLICANT_AUTH_MODE==='isolated'||env.AUTH_PROVIDER==='gip' ? {auth_realm:'applicant'} : {}) }, 401);
     }
 
     let response;

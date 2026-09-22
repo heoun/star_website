@@ -1,5 +1,6 @@
 import { createApplicantSession } from '../shared/applicant-session.js';
-(function () {
+import {mountGipAuth} from '../shared/gip-auth-ui.js';
+(async function () {
   const container = document.getElementById("portal");
   if (!container) return;
 
@@ -43,6 +44,8 @@ import { createApplicantSession } from '../shared/applicant-session.js';
 
   const applicantSession=createApplicantSession(invitedEmail);
 
+  const authOptions=await fetch('/api/auth/options').then(r=>r.json()).catch(()=>({}));
+  const gip=authOptions.provider==='gip';
   const state = {
     isolatedAuth: false,
     email: invitedEmail,      // carried between the auth steps
@@ -122,7 +125,10 @@ import { createApplicantSession } from '../shared/applicant-session.js';
     ? '<p class="portal-note">Your applicant account and password are separate from the team workspace, even if you use the same email. First time here? Create your applicant account. Previously applied? Use “Forgot your password?” to set your applicant password and access your applications.</p>'
     : '';
 
+  function renderGip(mode){return mountGipAuth(container,{scope:'applicant',email:state.email,mode,post:(resource,body)=>postJson('/'+resource,body),enter:()=>load()});}
+
   function renderSignIn() {
+    if(gip)return renderGip('login');
     registrationPassword='';
     container.innerHTML = `
       <h1>Applicant Portal</h1>
@@ -174,6 +180,7 @@ import { createApplicantSession } from '../shared/applicant-session.js';
   // ---- creating an account ------------------------------------------------
 
   function renderRegister() {
+    if(gip)return renderGip('register');
     container.innerHTML = `
       <h1>Create your account</h1>
       ${accountNote()}
@@ -676,5 +683,6 @@ import { createApplicantSession } from '../shared/applicant-session.js';
     }
   }
 
-  load();
+  if(gip&&new URLSearchParams(location.hash.slice(1)).has('oob'))await renderGip('login');
+  else load();
 })();
