@@ -7,7 +7,7 @@ const env={ACCOUNT_SECURITY:'on',GIP_PROJECT_ID:'starreusa-dev-auth',GIP_API_KEY
 const email='invited@example.invalid';
 let mode='',exchanges=0,checks=0,created=0;
 const fetcher=async (url,options)=>{
-  assert.equal(options.redirect,'error');assert.ok(options.signal);
+  assert.equal(options.redirect,'manual');assert.ok(options.signal);
   const u=new URL(url),body=JSON.parse(options.body);
   if(u.hostname==='sts.googleapis.com'){
     exchanges++;

@@ -120,6 +120,11 @@ mark it passed based on `--provider-only`.
 Additional tests cover the real Worker routes with synthetic Google transports,
 a real PostgreSQL-compatible migration schema, and browser forms. Run
 `npm run test:gip:ui` with Playwright available for browser coverage.
+The GIP gate also runs the actual workerd fetch implementation with intercepted
+outbound requests. Keep this regression: Workers rejects `redirect: 'error'` at
+request construction, unlike Node. Both transports use `manual` and reject all
+3xx responses before processing their bodies or following any credential-bearing
+redirect.
 
 ## Migration and cutover
 

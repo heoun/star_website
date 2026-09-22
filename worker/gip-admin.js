@@ -23,7 +23,10 @@ export function createGipAdmin(env,scope,{fetcher=fetch}={}) {
   async function request(url,body,authorization){
     const stage=url.includes('sts.googleapis.com')?'federation':url.includes('iamcredentials.googleapis.com')?'impersonation':url.split(':').at(-1);
     let r;
-    try {r=await fetcher(url,{method:'POST',redirect:'error',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json',...(authorization?{Authorization:'Bearer '+authorization}:{})},body:JSON.stringify(body)});}catch{throw failure(stage,0,'network');}
+    // Workers supports manual/follow, not the browser's redirect:error mode.
+    // Never forward credentials or workload assertions to a redirect target.
+    try {r=await fetcher(url,{method:'POST',redirect:'manual',signal:AbortSignal.timeout(15000),headers:{'Content-Type':'application/json',...(authorization?{Authorization:'Bearer '+authorization}:{})},body:JSON.stringify(body)});}catch{throw failure(stage,0,'network');}
+    if(r.status>=300&&r.status<400)throw failure(stage,r.status,'redirect');
     const reader=r.body?.getReader();if(!reader)throw unavailable();
     const decoder=new TextDecoder();let text='',length=0;
     for(;;){const {done,value}=await reader.read();if(done)break;length+=value.length;if(length>131072){await reader.cancel();throw unavailable();}text+=decoder.decode(value,{stream:true});}

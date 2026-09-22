@@ -80,10 +80,12 @@ export function createGipClient(env, scope, {fetcher = fetch, keyResolver = goog
     url.searchParams.set('key', config.apiKey);
     let response;
     try {
-      response = await fetcher(url, {method:'POST', redirect:'error', signal:AbortSignal.timeout(15000),
+      response = await fetcher(url, {method:'POST', redirect:'manual', signal:AbortSignal.timeout(15000),
         headers:{'Content-Type':refresh ? 'application/x-www-form-urlencoded' : 'application/json'},
         body:refresh ? new URLSearchParams(body).toString() : JSON.stringify(body)});
     } catch {throw unavailable();}
+    // Fail closed without forwarding passwords/tokens to another endpoint.
+    if (response.status >= 300 && response.status < 400) throw unavailable();
     const data = await readJson(response);
     if (!response.ok) throw providerError(response, data);
     return data;
