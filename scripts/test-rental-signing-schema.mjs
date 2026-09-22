@@ -27,6 +27,13 @@ try {
  await reject(()=>reserve('admin@example.test',{...s.v,[root.id]:999}));
  await reserve('agent@example.test');eq((await db.query('select active from rental_signing_packages where id=$1',[s.id])).rows[0].active,true);
  await reserve('agent@example.test');checks++;
+ await db.exec('alter table applications add column user_id uuid');
+ const beforeBinding=await versions();
+ const facts=async()=> (await db.query("select to_jsonb(a)-array['user_id','updated_at'] facts from applications a where id=$1",[root.id])).rows[0].facts;
+ const beforeFacts=await facts();
+ await db.query('update applications set user_id=$1 where id=$2',[crypto.randomUUID(),root.id]);
+ eq(await versions(),beforeBinding);eq(await facts(),beforeFacts);
+
  for(const sql of ["update applications set name='Changed' where id=$1","update applications set workspace=workspace||'{\"tenant_signature\":{}}'::jsonb where id=$1",'delete from applications where id=$1'])await reject(()=>db.query(sql,[root.id]));
  await reject(()=>db.query("update applications set name='Changed' where id=$1",[mate.id]));
  await db.query("update applications set notes='A staff note' where id=$1",[root.id]);checks++;

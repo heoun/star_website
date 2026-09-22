@@ -70,8 +70,8 @@ create or replace function public.invalidate_rental_group() returns trigger lang
 declare root_id uuid; group_status text;
 begin
  if current_setting('star.rental_write',true)='on' then return new;end if;
- if (to_jsonb(new)-array['workspace','workspace_version','status','notes','updated_at','responsible_email','collaborator_emails','lease_snapshot']) is not distinct from
-    (to_jsonb(old)-array['workspace','workspace_version','status','notes','updated_at','responsible_email','collaborator_emails','lease_snapshot']) then return new;end if;
+ if (to_jsonb(new)-array['user_id','workspace','workspace_version','status','notes','updated_at','responsible_email','collaborator_emails','lease_snapshot']) is not distinct from
+    (to_jsonb(old)-array['user_id','workspace','workspace_version','status','notes','updated_at','responsible_email','collaborator_emails','lease_snapshot']) then return new;end if;
  root_id:=old.rental_group_id;
  select status into group_status from public.applications where id=root_id;
  if group_status in ('lease_sent','lease_signed') then raise exception 'The signing lease must be voided before changing applicants';end if;

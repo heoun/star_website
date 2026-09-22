@@ -2,7 +2,7 @@ import {readFileSync,writeFileSync} from 'node:fs';
 import {createHash} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 // Destructive retirements remain explicit, separate migrations.
-export const schemaFiles=['schema','backoffice','workspace','administration','identity','storage','property-create','rental-flow','rental-membership','rental-drafts','rental-signing'];
+export const schemaFiles=['schema','backoffice','workspace','administration','identity','storage','property-create','rental-flow','rental-membership','rental-drafts','rental-signing','account-security'];
 export function schemaRevision() {
   return createHash('sha256').update(schemaFiles.map(f=>readFileSync(`supabase/${f}.sql`,'utf8')).join('\n')).digest('hex');
 }

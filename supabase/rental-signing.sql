@@ -41,8 +41,8 @@ begin
  select exists(select 1 from public.rental_signing_packages where rental_id in (rid,destination) and active) into locked;
  if not locked then if tg_op='DELETE' then return old; else return new; end if; end if;
  if tg_table_name='applications' and tg_op='UPDATE' then
-  if (to_jsonb(new)-array['workspace_version','updated_at','notes','responsible_email','collaborator_emails','workspace'])=
-     (to_jsonb(old)-array['workspace_version','updated_at','notes','responsible_email','collaborator_emails','workspace']) and
+  if (to_jsonb(new)-array['user_id','workspace_version','updated_at','notes','responsible_email','collaborator_emails','workspace'])=
+     (to_jsonb(old)-array['user_id','workspace_version','updated_at','notes','responsible_email','collaborator_emails','workspace']) and
      (new.workspace-array['admin_note','activity'])=(old.workspace-array['admin_note','activity']) then return new; end if;
  end if;
  raise exception 'Void the DocuSign lease before changing signing information' using errcode='23505';
