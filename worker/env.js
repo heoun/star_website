@@ -21,6 +21,8 @@ export function isLocalRequest(request) {
 // the list of roles, and a typo there should say so rather than quietly hand
 // out the wider of the two.
 export function devIdentity(request, env) {
+  // Real account tests never inherit a local administrator after sign-out.
+  if(env.ACCOUNT_SECURITY==='on' && typeof env.LOCAL_EMAIL_SINK?.send!=='function')return null;
   const email = (env.DEV_ADMIN_EMAIL || "").trim();
   if (!email || !isLocalRequest(request)) return null;
   return {

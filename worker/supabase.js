@@ -366,7 +366,7 @@ export async function fetchApplicationSsn(env, id) {
   try {
     response = await restRequest(
       env,
-      `applications?id=eq.${encodeURIComponent(id)}&select=${columns}`
+      `applications?id=eq.${encodeURIComponent(id)}&select=${columns}${env.ACCOUNT_SECURITY==='on'?",user_id":""}`
     );
   } catch (error) {
     if (!workOrSchoolColumns || !missingColumn(error) || !namesWorkOrSchool(error)) throw error;
@@ -396,30 +396,30 @@ function escapeLikePattern(value) {
 // `employment_status` decides which document checklist the applicant sees, so
 // the portal reads it — behind the same degrade flag as the console, because
 // both are asking the same database.
-export async function fetchApplicationsByEmail(env, email) {
-  const columns = [PORTAL_APPLICATION_COLUMNS, workOrSchoolColumns && "employment_status", workspaceColumn && "workspace"]
+export async function fetchApplicationsByEmail(env, email, userId) {
+  const columns = [PORTAL_APPLICATION_COLUMNS, env.ACCOUNT_SECURITY==='on' && "user_id", workOrSchoolColumns && "employment_status", workspaceColumn && "workspace"]
     .filter(Boolean).join(",");
   let response;
   try {
     response = await restRequest(
       env,
       `applications?select=${columns}` +
-      `&email=ilike.${encodeURIComponent(escapeLikePattern(email))}` +
+      (env.ACCOUNT_SECURITY==='on' ? `&user_id=eq.${encodeURIComponent(userId||"00000000-0000-0000-0000-000000000000")}` : `&email=ilike.${encodeURIComponent(escapeLikePattern(email))}`) +
       "&order=created_at.desc&application_documents.order=created_at.asc"
     );
   } catch (error) {
     if (missingColumn(error) && workOrSchoolColumns && namesWorkOrSchool(error)) {
       workOrSchoolColumns = false;
-      return fetchApplicationsByEmail(env, email);
+      return fetchApplicationsByEmail(env, email, userId);
     }
     if (missingColumn(error) && workspaceColumn && namesWorkspace(error)) {
       workspaceColumn = false;
-      return fetchApplicationsByEmail(env, email);
+      return fetchApplicationsByEmail(env, email, userId);
     }
     throw error;
   }
   const rows = await response.json();
-  return rows.filter((row) => String(row.email || "").trim().toLowerCase() === email);
+  return rows.filter((row) => env.ACCOUNT_SECURITY==='on' ? row.user_id===userId : String(row.email || "").trim().toLowerCase() === email);
 }
 
 // One application, with only what the portal's upload path needs: whose it
@@ -433,7 +433,7 @@ export async function fetchPortalApplication(env, id) {
   try {
     response = await restRequest(
       env,
-      `applications?id=eq.${encodeURIComponent(id)}&select=${columns}`
+      `applications?id=eq.${encodeURIComponent(id)}&select=${columns}${env.ACCOUNT_SECURITY==='on'?",user_id":""}`
     );
   } catch (error) {
     if (!workOrSchoolColumns || !missingColumn(error) || !namesWorkOrSchool(error)) throw error;
@@ -472,7 +472,7 @@ export async function fetchApplicationDocument(env, id) {
   const response = await restRequest(
     env,
     `application_documents?id=eq.${encodeURIComponent(id)}` +
-    `&select=${DOCUMENT_COLUMNS},applications(email)`
+    `&select=${DOCUMENT_COLUMNS},applications(email${env.ACCOUNT_SECURITY==='on'?",user_id":""})`
   );
   const [row] = await response.json();
   return row || null;
@@ -683,7 +683,7 @@ export async function fetchApplicationForLease(env, id) {
     "children_under_11,status," +
     "listings(id,title,property_name,unit,location,price_amount,building_id,created_at)";
   const select = (columns) =>
-    restRequest(env, `applications?id=eq.${encodeURIComponent(id)}&select=${columns}`);
+    restRequest(env, `applications?id=eq.${encodeURIComponent(id)}&select=${columns}${env.ACCOUNT_SECURITY==='on'?",user_id":""}`);
 
   const parts = [base];
   if (concessionColumn) parts.push("concession_terms");

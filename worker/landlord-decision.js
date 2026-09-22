@@ -1,6 +1,8 @@
 import {verifyLandlordDecisionToken} from './landlord-decision-token.js';
 import {rentalMode,rentalWorkflow} from './rentals.js';
-import {sameOriginMutation} from './auth.js';
+import {sameOriginMutation,readSession} from './auth.js';
+import {resolveStaff} from './staff.js';
+import {accountSecurityEnabled} from './account-security.js';
 import {fetchBuilding} from './supabase.js';
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
 const fail=(message,status)=>{throw Object.assign(new Error(message),{status});};
@@ -17,6 +19,14 @@ export async function handleLandlordDecision(request,env) {
   try {
     const token=request.headers.get('Authorization')?.match(/^Bearer (\S+)$/)?.[1];
     const claims=await verifyLandlordDecisionToken(env,request.url,token);
+    let authenticated;
+    if(accountSecurityEnabled(env)){
+      const session=await readSession(request,env,'workspace');
+      if(!session)fail('Sign in with your landlord account to review this request.',401);
+      const resolved=await resolveStaff(env,session);
+      if(!resolved.identity || resolved.identity.role!=='landlord' || resolved.identity.onboarding_pending || resolved.identity.email!==claims.email)fail('This request requires the assigned landlord account.',403);
+      authenticated=resolved.identity;
+    }
     const flow=rentalWorkflow(env,request),g=await flow.store.group(claims.id),r=g?.root.workspace?.recommendation;
     if(!g || g.root.id!==claims.id || g.root.workspace?.rental_flow!=='automatic' || !r || r.revision!==claims.revision || r.landlord_email.toLowerCase()!==claims.email)
       fail('This email is out of date. Open the latest decision request.',409);
@@ -25,7 +35,7 @@ export async function handleLandlordDecision(request,env) {
     const building=await fetchBuilding(env,g.root.listings.building_id);
     if(building?.landlord_signer_email && building.landlord_signer_email.toLowerCase()!==claims.email)
       fail('The landlord for this property has changed. Contact the leasing team.',403);
-    const principal={role:'landlord',email:claims.email,property_ids:staff.property_ids};
+    const principal=authenticated || {role:'landlord',email:claims.email,property_ids:staff.property_ids};
     const view=await flow.get(principal,claims.id);
     // Link scanners and ordinary page loads may read this summary, never decide.
     if(request.method==='GET')return json({case:view});

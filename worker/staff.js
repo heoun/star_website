@@ -1,6 +1,7 @@
 // Supabase proves identity; the staff directory controls business permissions.
 // No default role. Owner identity is pinned in deployment configuration.
 
+import { accountSecurityEnabled, workspaceAccess } from "./account-security.js";
 import { fetchStaffMember, bindStaffIdentity, isMissingTable } from "./supabase.js";
 import { agentMayWriteField } from "../site/shared/lease-permissions.js";
 
@@ -28,7 +29,7 @@ export function isManager(identity) {
 // Returns { identity } when the request may proceed, or { error, status } when
 // it may not. Never returns a partly-filled identity: a caller that forgets to
 // check would otherwise get an object with no role and treat it as valid.
-export async function resolveStaff(env, identity) {
+export async function resolveStaff(env, identity, {allowPending=false}={}) {
   if (!identity) return { error: "Not authorized.", status: 403 };
 
   const email = String(identity.email ?? "").trim().toLowerCase();
@@ -49,6 +50,20 @@ export async function resolveStaff(env, identity) {
     // Landlord assignments always come from the database, including locally.
     const member = [LANDLORD, AGENT].includes(role) ? await fetchStaffMember(env, email) : null;
     return { identity: { ...identity, email, role, owner: role === MANAGER && email === ownerEmail(env), property_ids: member?.active ? member.property_ids || [] : [] } };
+  }
+
+  if(accountSecurityEnabled(env)) {
+    let access;
+    try {access=await workspaceAccess(env,identity);} catch(error) {return {error:error.message,status:error.status||503};}
+    const owner=access.is_owner===true && identity.workspaceRole!=='admin';
+    if(access.is_owner && !owner && !access.admin_enabled)return {error:'Admin access has been revoked. Switch to Owner.',status:403};
+    const resolved={...identity,...access,email,role:access.is_owner?MANAGER:access.role,owner};
+    if(!allowPending) {
+      if(access.access_state==='invited')return {error:'Accept your workspace invitation first.',status:403};
+      if(access.has_password===false)return {error:'Set your account password before continuing.',status:403,code:'password_required'};
+      if(resolved.role===MANAGER && identity.aal!=='aal2')return {error:'Complete two-step verification before opening the workspace.',status:403,code:'mfa_required'};
+    }
+    return {identity:resolved};
   }
 
   const owner = ownerEmail(env);

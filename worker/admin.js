@@ -250,7 +250,7 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
     const resolved = await resolveStaff(env, authenticated);
     const response = resolved.identity
       ? await handleAuthenticatedAdmin(request, env, ctx, pathname, resolved.identity)
-      : json({ error: resolved.error }, resolved.status || 403);
+      : json({ error: resolved.error, code:resolved.code }, resolved.status || 403);
     response.headers.set("Cache-Control", "no-store");
     if (authenticated.setCookie) response.headers.append("Set-Cookie", authenticated.setCookie);
     return response;
@@ -271,12 +271,19 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
         email: identity.email,
         role: identity.role,
         owner: identity.owner === true,
+        user_id: identity.user_id,
+        owner_account: identity.is_owner===true,
+        admin_enabled: identity.admin_enabled===true,
+        owner_version: identity.version,
+        onboarding_pending:identity.onboarding_pending===true,
         demo: identity.development === true && Boolean(env.LOCAL_EMAIL_SINK),
         name: identity.name || "",
         property_ids: identity.property_ids || [],
         ...describeEnvironment(request, env)
       });
     }
+
+    if(identity.onboarding_pending)return json({error:"Complete landlord onboarding and wait for approval before accessing business records."},403);
 
     // Owner governs access only, including when following an old business URL.
     if (identity.owner === true) {

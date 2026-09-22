@@ -84,6 +84,7 @@ export function makeRealAuth(env: AuthEnv, baseUrl = ""): AuthPort {
       const url = new URL(request.url);
       const token = url.searchParams.get("llt");
       if (token) {
+        if(env.ACCOUNT_SECURITY==='on')return null;
         const secret = String(env.AUTH_LINK_SECRET || "");
         if (!secret) return null;
         const claims = await verifyLink(secret, token);

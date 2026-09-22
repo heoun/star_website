@@ -265,7 +265,7 @@ export function toPortalApplication(row) {
 
 async function handleList(env, session,request) {
   const [rows,pending_applications] = await Promise.all([
-    fetchApplicationsByEmail(env, session.email),
+    fetchApplicationsByEmail(env, session.email, session.user_id),
     rentalMode(env) ? pendingOwnedApplications(env,session) : []
   ]);
   const applications = rows.map(toPortalApplication);
@@ -278,7 +278,7 @@ async function handleUpload(request, env, ctx, session, applicationId) {
   }
 
   const application = await fetchPortalApplication(env, applicationId);
-  if (!application || String(application.email || "").trim().toLowerCase() !== session.email) {
+  if (!application || (env.ACCOUNT_SECURITY==='on' ? !session.user_id || application.user_id!==session.user_id : String(application.email || "").trim().toLowerCase() !== session.email)) {
     return json({ error: "Application not found." }, 404);
   }
 
@@ -348,7 +348,7 @@ async function fetchOwnedDocument(env, session, id) {
   const row = await fetchApplicationDocument(env, id);
   if (!row) return null;
   const owner = String(row.applications?.email || "").trim().toLowerCase();
-  return owner === session.email ? row : null;
+  return (env.ACCOUNT_SECURITY==='on' ? !!session.user_id && row.applications?.user_id===session.user_id : owner===session.email) ? row : null;
 }
 
 async function handleDownload(env, session, id) {

@@ -1,6 +1,7 @@
 // Shared Supabase provider, separate applicant and workspace browser sessions.
 import { isLocalRequest } from "./env.js";
 import { resolveStaff } from "./staff.js";
+import { accountSecurityEnabled, businessIdentity, verifiedSessionClaims } from "./account-security.js";
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const SESSION_COOKIES = { applicant: "star_portal", workspace: "star_workspace" };
@@ -103,7 +104,7 @@ function decodeSessionCookie(value) {
   }
 }
 
-function cookieValue(request, name) {
+export function cookieValue(request, name) {
   const header = request.headers.get("Cookie") || "";
   for (const part of header.split(/;\s*/)) {
     const eq = part.indexOf("=");
@@ -120,14 +121,20 @@ function sessionCookie(request, value, maxAge, scope = authScope(request)) {
   return attributes.join("; ");
 }
 
+export function workspaceRoleCookie(request,role) {
+  return `star_workspace_role=${role}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_SECONDS}${isLocalRequest(request)?"":"; Secure"}`;
+}
+
 export async function signedIn(request, session, env) {
   if (!sessionCookieName(request)) return json({error:"Invalid applicant session."},400);
   if (!verifiedUser(session.user)) return json({ error: "Confirm your email before signing in." }, 403);
+  let access;
   if (authScope(request) === 'workspace') {
-    const resolved = await resolveStaff(env, {email: session.user.email, subject: session.user.id});
+    const resolved = await resolveStaff(env, {email: session.user.email, subject: session.user.id}, {allowPending:true});
+    access=resolved.identity;
     if (!resolved.identity) return json({error: resolved.error}, resolved.status || 403);
   }
-  return json({ ok: true, email: String(session.user?.email || "").toLowerCase() }, 200, {
+  return json({ ok: true, email: String(session.user?.email || "").toLowerCase(), ...(access && accountSecurityEnabled(env) ? {setup_password:access.has_password===false,mfa_required:access.role==="manager"} : {}) }, 200, {
     "Set-Cookie": sessionCookie(request, encodeSessionCookie(session), SESSION_SECONDS)
   });
 }
@@ -147,7 +154,7 @@ export async function readSession(request, env, scope = authScope(request)) {
 
   const user = await authRequest(env, "user", { method: "GET", token: stored.at });
   if (user.ok && verifiedUser(user.payload)) {
-    return { email: String(user.payload.email).trim().toLowerCase(), subject: user.payload.id, token: stored.at };
+    return verifiedIdentity(request,env,user.payload,stored.at);
   }
 
   if (user.ok || ![401, 403].includes(user.status) || !stored.rt) return null;
@@ -158,11 +165,21 @@ export async function readSession(request, env, scope = authScope(request)) {
   if (!refreshed.ok || !session?.access_token || !verifiedUser(session.user)) return null;
 
   return {
-    email: String(session.user.email).trim().toLowerCase(),
-    subject: session.user.id,
-    token: session.access_token,
+    ...await verifiedIdentity(request,env,session.user,session.access_token),
     setCookie: sessionCookie(request, encodeSessionCookie(session), SESSION_SECONDS, scope)
   };
+}
+
+async function verifiedIdentity(request,env,user,token) {
+  const identity={email:String(user.email).trim().toLowerCase(),subject:user.id,token,setCookie:undefined,user_id:undefined,aal:undefined,mfaAt:0,workspaceRole:"owner",factors:[]};
+  if(!accountSecurityEnabled(env))return identity;
+  const claims=verifiedSessionClaims(token);
+  identity.user_id=await businessIdentity(env,identity);
+  identity.aal=claims.aal;
+  identity.mfaAt=Math.max(0,...(Array.isArray(claims.amr)?claims.amr:[]).filter(a=>a.method==='totp'||a.method==='mfa/totp').map(a=>Number(a.timestamp)||0));
+  identity.workspaceRole=cookieValue(request,'star_workspace_role')==='admin'?'admin':'owner';
+  identity.factors=(user.factors||[]).filter(f=>f.factor_type==='totp').map(({id,status,friendly_name})=>({id,status,friendly_name}));
+  return identity;
 }
 
 // -------------------------------------------------------------------- account
