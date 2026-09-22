@@ -141,20 +141,20 @@ try{
  await end.locator('input').fill('09/30/2027');eq(await panel.locator('[data-ws-term]').innerText(),'12 Months');
  await end.getByRole('button',{name:'Done',exact:true}).click();
  const rent=panel.locator('[data-ws-row="rent.monthly"]');await rent.locator(':scope > summary').click();await rent.locator('input').fill('3100');
- eq(await page.getByRole('button',{name:'Review Signing Package',exact:true}).isDisabled(),true);
+ eq(await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).isDisabled(),true);
  await rent.getByRole('button',{name:'Done',exact:true}).click();eq(await rent.getAttribute('open'),null);
  await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();
  eq(await panel.locator('.ws-signer').count(),3);
  eq(await panel.locator('.ws-signer-order').allTextContents(),['1','1','2']);
  await panel.getByText(owner.email,{exact:true}).waitFor();checks++;
- eq(await panel.getByRole('button',{name:'Review Signing Package',exact:true}).count(),0);
+ eq(await panel.getByRole('button',{name:'Review Lease for Signatures',exact:true}).count(),0);
  await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  const landlord=panel.locator('[data-ws-row="landlord.address"]');await landlord.locator(':scope > summary').click();await landlord.locator('input').fill('LEASE ONLY CORRECTION');
  const defaults=JSON.stringify(fixture.state.settings);page.once('dialog',d=>d.accept());
  await page.getByRole('button',{name:'Save & Request Approval',exact:true}).click();
  await page.getByText('Corrections saved. A new landlord approval is required.',{exact:true}).waitFor();
  eq(row.status,'sent_to_landlord');eq(row.lease_snapshot,null);eq(JSON.stringify(fixture.state.settings),defaults);
- eq(await page.getByRole('button',{name:'Review Signing Package',exact:true}).isDisabled(),true);
+ eq(await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).isDisabled(),true);
  await flow.execute(owner,ids.b,{action:'landlord_accept',version:row.workspace_version,revision:row.workspace.recommendation.revision});
  await page.reload();await panel.getByRole('heading',{name:'Landlord & Signer',exact:true}).waitFor();
  await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();
@@ -165,7 +165,7 @@ try{
  eq(await page.getByRole('button',{name:'Send With DocuSign',exact:true}).isEnabled(),true);
  eq(packages.size,1); // Prepared once for the first approval when Documents opened; a new approval needs a new package.
  await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
- await page.getByRole('button',{name:'Review Signing Package',exact:true}).click();
+ await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).click();
  await page.getByText('Review the lease and signer details, then send with DocuSign.',{exact:true}).waitFor();
  eq(packages.size,2);
  const savedFrame=page.frameLocator('iframe[title="Lease for Signing"]');
@@ -178,7 +178,7 @@ try{
  await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();
  eq(await panel.locator('.ws-signer').count(),3);
  eq(await page.getByRole('button',{name:'Send With DocuSign',exact:true}).count(),1);
- eq(await page.getByRole('button',{name:'Review Signing Package',exact:true}).count(),0);
+ eq(await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).count(),0);
  await page.getByText('Signing package opened for review · Not sent.',{exact:true}).waitFor();
  await page.screenshot({path:`${out}/signing-recipients.png`,fullPage:true});
  // Selecting a document under Documents shows its own signing copy with the
@@ -197,6 +197,12 @@ try{
  eq(await savedFrame.locator('.signing-field-box').count(),10);
  eq(await savedFrame.locator('.signing-field-box[data-kind="initial"]').count(),4);
  eq(await savedFrame.locator('.signing-field-box[data-kind="full_name"]').count(),3);
+ // Opening a copy starts on its first page even though its first field sits
+ // pages down; only a click on a field moves the page, and zoom stays put.
+ const frameTop=()=>savedFrame.locator('body').evaluate(()=>window.scrollY);
+ const currentInView=()=>savedFrame.locator('.signing-field-box.current').evaluate(el=>{const r=el.getBoundingClientRect();return r.width>80 && r.top>=0 && r.bottom<innerHeight;});
+ eq(await frameTop(),0);
+ eq(await savedFrame.locator('.signing-field-box.current').evaluate(el=>el.getBoundingClientRect().top>innerHeight),true);
  // Every value the lease filled into this copy is marked on it, in the order
  // it prints, and nothing else is: the same words and numbers set as fixed
  // text stay plain, and an empty value leaves no mark. The expectation is read
@@ -243,6 +249,7 @@ try{
  await page.locator('[data-lease-zoom="1"]').click();
  await page.locator('#lease-zoom-label').filter({hasText:'110%'}).waitFor();
  await savedFrame.locator('[data-signing-field="lease-38-1-initial"].current').waitFor();
+ eq(await frameTop(),0);
  eq(await savedFrame.locator('mark.signing-value').count(),leaseMarks);
  eq(await savedFrame.locator('.signing-field-box').count(),10);
  await page.locator('[data-lease-zoom="-1"]').click();
@@ -277,6 +284,7 @@ try{
  await page.screenshot({path:`${out}/signing-fields-39.png`,fullPage:true});
  await detail.locator('[data-preview-signing-fields="lease-1-signature"]').click();
  await savedFrame.locator('[data-signing-field="lease-1-signature"].current').waitFor();
+ eq(await currentInView(),true);assert.ok(await frameTop()>0);checks++;
  eq(await savedFrame.locator('[data-signing-field="lease-3-full_name"]').innerText(),owner.name);
  await page.screenshot({path:`${out}/signing-fields-47.png`,fullPage:true});
  // Every rider opens its own copy with its original tenant/landlord lines and navigation.
@@ -291,11 +299,12 @@ try{
   twins+=await plainTwins();empties+=riderValues.empty;
   if(layout==='utilities')await page.screenshot({path:`${out}/filled-values-utilities.png`,fullPage:true});
   eq(await savedFrame.locator(`[data-signing-field="${layout}-3-full_name"]`).innerText(),owner.name);
-  eq(await savedFrame.locator('.signing-field-box.current').evaluate(el=>{const r=el.getBoundingClientRect();return r.width>80 && r.top>=0 && r.bottom<innerHeight;}),true);
+  eq(await frameTop(),0);
   eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),layout==='fines'?'rules':layout);
   eq(await page.locator('#lease-doc-name').innerText(),({utilities:'Utilities Rider',packages:'Packages Rider',keys:'Key Rider',insurance:'Renters Insurance Rider',rules:'Community Rules Rider',fines:'Fine Schedule'})[layout]);
   await detail.locator(`[data-preview-signing-fields="${layout}-3-signature"]`).click();
   await savedFrame.locator(`[data-signing-field="${layout}-3-signature"].current`).waitFor();
+  eq(await currentInView(),true);
   await page.screenshot({path:`${out}/signing-fields-${layout}.png`,fullPage:true});
  }
  eq(await detail.locator('[data-preview-layout]').allTextContents(),['Community Rules Rider','Fine Schedule']);
@@ -331,6 +340,7 @@ try{
   await panel.locator(`[data-ws-doc="${layout}"]`).click();
   const recipient=layout==='allergen'?'3':'1';
   await savedFrame.locator(`[data-signing-field="${layout}-${recipient}-signature"].current`).waitFor();
+  eq(await frameTop(),0);
   const individual=['window_guards','bedbug','dhcr'].includes(layout);
   const noticeValues=await expectedValues(layout,{overrides:individual?copyOverrides('1'):{}});
   eq(await markedValues(),noticeValues.values);eq(await valueCounts(),[String(noticeValues.values.length),'0']);
@@ -355,6 +365,7 @@ try{
   if(['window_guards','bedbug','dhcr'].includes(layout)){
    await detail.locator('[data-preview-tenant="2"]').click();
    await savedFrame.locator(`[data-signing-field="${layout}-2-signature"].current`).waitFor();
+   eq(await frameTop(),0);
    eq(await savedFrame.locator('.signing-field-box[data-recipient="1"]').count(),0);
    eq(await savedFrame.locator(`[data-signing-field="${layout}-2-signature"]`).innerText(),'T2 · Signature');
    assert.match(await savedFrame.locator('#lease-doc').innerText(),/Applicant E/);checks++;

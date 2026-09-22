@@ -3,7 +3,7 @@
 import * as doc from './lease-doc.js';
 import {SIGNING_DOCUMENTS} from '../shared/lease-signing-layout.js';
 import {mapDocuments} from '../shared/lease-documents.js';
-import {showSigningFields,clearSigningFields} from './signing-field-preview.js';
+import {showSigningFields,clearSigningFields,revealSigningField} from './signing-field-preview.js';
 import {showValueMarks,clearValueMarks} from './signing-value-highlight.js';
 const params=new URLSearchParams(location.search),id=params.get('rental'),packageId=params.get('package'),hash=params.get('sha');
 const host=document.querySelector('#lease-doc'),status=document.querySelector('#status');
@@ -53,6 +53,7 @@ window.addEventListener('message',event=>{
    if(!layout)throw new Error('Signing positions are not configured for this document.');
    const part=event.data.document;
    if(!part || part.layout!==layout.id || !/^[0-9]+$/.test(part.documentId) || !/^[a-f0-9]{64}$/.test(part.sha256))throw new Error('Prepare a new signing package to preview this document.');
+   const shown=currentDocument;
    await mountSaved(part);doc.showSections(null);clearLocation();
    const signers=part.tenantRecipientId?event.data.signers.filter(s=>s.role==='landlord' || s.recipientId===part.tenantRecipientId):event.data.signers;
    fieldPreview={signers,selected:event.data.selected,layout:layout.id,options:{standalone:true,values:event.data.values,tenantOrder:event.data.signers.filter(s=>s.role==='tenant').map(s=>s.recipientId)}};
@@ -60,6 +61,10 @@ window.addEventListener('message',event=>{
    // boxes are then measured on the final layout. See signing-value-highlight.js.
    const values=showValueMarks(host,event.data.marks);
    const result=showSigningFields(host,fieldPreview.signers,fieldPreview.selected,fieldPreview.layout,fieldPreview.options);
+   // A copy that just opened starts on its first page. Only a click on a
+   // field moves the page to it; a redraw for zoom or resize stays put.
+   if(event.data.reveal && result.selected)revealSigningField(result.selected);
+   else if(currentDocument!==shown)window.scrollTo(0,0);
    parent.postMessage({type:'signing-fields-ready',packageId,layout:layout.id,documentId:part.documentId,...result,values},location.origin);
   }catch(error){parent.postMessage({type:'signing-fields-error',packageId,layout:event.data.layout,documentId:event.data.document?.documentId,message:error.message},location.origin);}
  }

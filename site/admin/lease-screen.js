@@ -807,7 +807,7 @@ function updateActions() {
     const save=screen.querySelector('#lease-save'),review=screen.querySelector('#lease-final'),draft=screen.querySelector('#lease-draft');
     const problems=workspace.reviewIssues(state).length;
     save.hidden=state.readOnly || !state.dirty.size;save.textContent='Save & Request Approval';save.disabled=problems>0;
-    draft.hidden=state.readOnly || !!signingEntry?.reviewed;draft.textContent='Review Signing Package';
+    draft.hidden=state.readOnly || !!signingEntry?.reviewed;draft.textContent='Review Lease for Signatures';
     review.hidden=false;review.textContent=state.readOnly?'View Signing Status':'Send With DocuSign';
     review.disabled=!!state.dirty.size || !state.signing?.configuration?.enabled || !screen.querySelector('#lease-alarm').hidden || (!state.readOnly && (problems>0 || state.caseRow.status!=='landlord_approved'));
     draft.disabled=review.disabled || signingLoading || signingBusy;
@@ -959,7 +959,7 @@ function renderSigningPanel() {
 // Under Documents, the selected document's signing fields are drawn on its
 // own copy from the saved signing package and listed beneath its entry.
 // Selecting the document is the whole gesture. The package is prepared once
-// per approved revision (the same package Review Signing Package opens) and
+// per approved revision (the same package Review Lease for Signatures opens) and
 // only the selected copy is mounted, so a switch costs one fetch. Preview
 // only: nothing here creates an envelope or sends anything.
 const docPreview={layout:'',tenant:'',status:'idle',message:'',selected:'',part:null,fields:[],signers:[],values:null,token:0,busy:false};
@@ -1018,12 +1018,14 @@ function resetDocumentPreview(){
   cancelDocumentPreview();
   docPreview.status='idle';docPreview.part=null;docPreview.fields=[];docPreview.selected='';docPreview.values=null;
 }
-function postFieldPreview(){
+// reveal: the frame scrolls to the selected field. Only a click on a field
+// asks for that; a copy that opens for any other reason starts on page one.
+function postFieldPreview(reveal=false){
   const entry=signingEntry,part=docPreview.part;
   if(!entry || !signingFrame || !part)return;
   requestAnimationFrame(()=>{
     if(signingEntry!==entry || !signingFrame || docPreview.part!==part)return;
-    signingFrame.contentWindow.postMessage({type:'signing-fields-preview',packageId:entry.preview.id,signers:docPreview.signers,selected:docPreview.selected,layout:part.layout,document:part,values:entry.preview.values,marks:previewMarks(entry,part)},location.origin);
+    signingFrame.contentWindow.postMessage({type:'signing-fields-preview',packageId:entry.preview.id,signers:docPreview.signers,selected:docPreview.selected,reveal:!!reveal,layout:part.layout,document:part,values:entry.preview.values,marks:previewMarks(entry,part)},location.origin);
   });
 }
 // Where the copy's filled values print, read off the template this screen
@@ -1044,7 +1046,7 @@ function previewMarks(entry,part){
   }
   return valueMarks(paragraphs,{overrides,labelOf:id=>state.byId.get(id)?.label || id});
 }
-async function previewDocumentFields(){
+async function previewDocumentFields(options={}){
   cancelDocumentPreview();
   const token=docPreview.token,id=state.activeDocument,opened=state;
   docPreview.part=null;docPreview.fields=[];docPreview.values=null;
@@ -1080,7 +1082,7 @@ async function previewDocumentFields(){
     docPreview.part=part;docPreview.fields=fields;
     if(!fields.some(f=>f.id===docPreview.selected))docPreview.selected=fields[0]?.id || '';
     screen.querySelector('#lease-doc-name').textContent=part.name || layout.name;
-    renderDocumentPreview();postFieldPreview();
+    renderDocumentPreview();postFieldPreview(options.reveal);
   }catch(error){
     if(!current())return;
     const blocked=previewBlocker();
@@ -1313,8 +1315,8 @@ function bindOnce() {
       docPreview.selected=button.dataset.previewSigningFields;
       screen.dataset.tab='doc';
       for(const chip of screen.querySelectorAll('[data-lease-tab]'))chip.classList.toggle('is-on',chip.dataset.leaseTab==='doc');
-      if(docPreview.status==='ready' && signingFrame && docPreview.part){renderDocumentPreview();postFieldPreview();}
-      else previewDocumentFields();
+      if(docPreview.status==='ready' && signingFrame && docPreview.part){renderDocumentPreview();postFieldPreview(true);}
+      else previewDocumentFields({reveal:true});
       return;
     }
     if(button.dataset.previewLayout!==undefined){docPreview.layout=button.dataset.previewLayout;docPreview.selected='';previewDocumentFields();return;}
