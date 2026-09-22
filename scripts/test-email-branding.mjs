@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {sendEmail} from '../worker/email.js';
+import {sendWorkspaceInvitation} from '../worker/workspace-invitations.js';
 import {MAIL_FROM,MAIL_LAYOUT_MARKER,mailShell,mailPlace,readyMail} from '../worker/mail-layout.js';
 const originalFetch=globalThis.fetch;
 const base={to:['recipient@example.test'],subject:'Receipt <test>',text:'Hello <script>\n\nhttps://example.test/portal/?x=1&y=2',reply_to:'office@example.test'};
@@ -53,5 +54,40 @@ try {
   assert(!/upload|approved|credit score|passed/i.test(ready.text));
   assert.equal(readyMail({},{place:'P',link,test:'11111111-2222'}).subject,'[Internal Test 11111111] Application received · P');
   checks+=6;
+  // An explicit workspace invitation may reach its active directory member on
+  // Dev. Other messages, extra recipients and inactive accounts remain blocked.
+  const dev={APP_ENV:'staging',RESEND_API_KEY:'fixture-only',SUPABASE_URL:'https://database.example.test',SUPABASE_SERVICE_ROLE_KEY:'fixture-only',INTERNAL_TEST_EMAIL:'tester@example.test'};
+  const invited='agent@example.test',request=new Request('https://dev.starreusa.com/api/admin/staff/agent/invite');
+  let active=true,delivered=[],stored=[];
+  globalThis.fetch=async(url,init={})=>{
+    const path=new URL(url).pathname;
+    if(path==='/rest/v1/staff')return Response.json([{email:invited,role:'agent',active}]);
+    if(path==='/rest/v1/workspace_invitations'){stored.push(JSON.parse(init.body));return Response.json([]);}
+    assert.equal(url,'https://api.resend.com/emails');delivered.push(JSON.parse(init.body));return Response.json({id:'fixture-invitation'});
+  };
+  assert.equal(await sendEmail(request,dev,{...base,to:[invited]}),false);
+  assert.equal(delivered.length,0);
+  assert.deepEqual(await sendWorkspaceInvitation(request,dev,invited),{status:'sent'});
+  assert.equal(delivered.length,1);
+  assert.equal(stored.length,1);
+  assert.equal(delivered[0].from,MAIL_FROM);
+  assert.deepEqual(delivered[0].to,[invited]);
+  assert(delivered[0].subject.startsWith('[DEV · Test]'));
+  assert(delivered[0].text.includes('Live access requires a separate invitation and activation.'));
+  assert(delivered[0].html.includes('DEV — TEST ENVIRONMENT'));
+  assert(delivered[0].text.includes('https://dev.starreusa.com/login/#invite='));
+  assert.equal('workspaceInvitationRecipient' in delivered[0],false);
+  checks+=12;
+  assert.equal(await sendEmail(request,dev,{...base,to:[invited],cc:['another@example.test']},{workspaceInvitationRecipient:invited}),false);
+  assert.equal(await sendEmail(request,dev,{...base,to:['another@example.test']},{workspaceInvitationRecipient:invited}),false);
+  assert.equal(await sendEmail(request,dev,{...base,to:[invited],workspaceInvitationRecipient:invited}),false);
+  assert.equal(delivered.length,1);checks+=4;
+  active=false;
+  assert.deepEqual(await sendWorkspaceInvitation(request,dev,invited),{status:'failed'});
+  assert.equal(delivered.length,1);assert.equal(stored.length,1);checks+=3;
+  active=true;
+  assert.deepEqual(await sendWorkspaceInvitation(new Request('https://starreusa.com'),{...dev,APP_ENV:'production'},invited),{status:'sent'});
+  assert.equal(delivered[1].subject,'Your Star Real Estate workspace invitation');
+  assert(!delivered[1].text.includes('DEV — TEST ENVIRONMENT'));checks+=3;
   console.log(`PASS ${checks} outbound email branding checks: Resend payload, legacy HTML, plain-text receipts, branded content, sender, escaping, links, reply-to, idempotency, local preview, property labels and the ready-for-review confirmation.`);
 }finally{globalThis.fetch=originalFetch;}

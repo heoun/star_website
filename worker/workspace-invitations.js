@@ -11,7 +11,9 @@ export async function sendWorkspaceInvitation(request,env,email) {
   const token=randomInvitation(),token_hash=await hashInvitation(token);
   await identityRequest(env,'workspace_invitations?on_conflict=email',{method:'POST',prefer:'resolution=merge-duplicates,return=representation',body:{email,role:member.role,token_hash,expires_at:new Date(Date.now()+7*86400000).toISOString(),accepted_by:null,accepted_at:null,revoked_at:null,needs_password:false,created_at:new Date().toISOString()}});
   const url=`${new URL(request.url).origin}/login/#invite=${token}`;
-  const sent=await sendEmail(request,env,{to:[email],subject:'Your Star Real Estate workspace invitation',text:`You have been invited to join Star Real Estate as ${member.role==='manager'?'an Admin':member.role==='agent'?'an Agent':'a Landlord'}.\n\nAccept your invitation:\n${url}\n\nSign in with ${email}, or create your account if this is your first visit. Existing accounts keep their current password. This invitation expires in seven days.\n\nStar Real Estate`});
+  const dev=env.APP_ENV==='staging';
+  const environmentNote=dev?'DEV — TEST ENVIRONMENT\nThis invitation is for dev.starreusa.com only. Your test account and permissions are separate from the live site. Live access requires a separate invitation and activation.\n\n':'';
+  const sent=await sendEmail(request,env,{to:[email],subject:`${dev?'[DEV · Test] ':''}Your Star Real Estate workspace invitation`,text:`${environmentNote}You have been invited to join Star Real Estate as ${member.role==='manager'?'an Admin':member.role==='agent'?'an Agent':'a Landlord'}.\n\nAccept your invitation:\n${url}\n\nSign in with ${email}, or create your account if this is your first visit. Existing accounts keep their current password. This invitation expires in seven days.\n\nStar Real Estate`},{workspaceInvitationRecipient:member.email});
   return {status:sent?'sent':'failed'};
 }
 async function invitation(env,token) {
