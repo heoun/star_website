@@ -16,7 +16,7 @@ const browser=await chromium.launch({headless:true});const page=await browser.ne
 const errors=[];page.on('pageerror',e=>errors.push(e.message));
 try{
  await page.goto(`http://127.0.0.1:${server.address().port}/`);
- await page.getByRole('button',{name:'Review Signing Package',exact:true}).click();
+ await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).click();
  await page.getByRole('heading',{name:'Signing Recipients'}).waitFor();
  eq(await page.getByRole('button',{name:'Send With DocuSign'}).isEnabled(),true);
  eq(await page.locator('[data-signing-preview] li').count(),3);
@@ -38,7 +38,7 @@ try{
  await page.getByRole('button',{name:'Send With DocuSign'}).click();
  await page.getByRole('button',{name:'Close Confirmation'}).click();
  eq(await page.evaluate(()=>calls.filter(c=>c.action==='send').length),0);
- eq(await page.getByRole('button',{name:'Review Signing Package',exact:true}).count(),0);
+ eq(await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).count(),0);
  eq(await page.evaluate(()=>calls.filter(c=>c.action==='prepare').length),1);
  await page.getByRole('button',{name:'Review Lease Draft',exact:true}).click();
  await page.getByRole('button',{name:'Send With DocuSign'}).click();await page.getByText('Signatures in progress',{exact:true}).waitFor();
@@ -65,10 +65,10 @@ try{
  eq(await page.getByRole('link',{name:'Download signed lease'}).count(),1);eq(await page.getByRole('link',{name:'Completion certificate'}).count(),1);
  eq(await page.locator('.signing-steps li.is-done').count(),6);eq(await page.locator('.signing-steps [aria-current="step"]').count(),0);
  await page.reload();
- await page.getByRole('button',{name:'Review Signing Package',exact:true}).click();
+ await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).click();
  await page.evaluate(()=>{ctx.row.workspace_version++;render();});
  eq(await page.getByRole('button',{name:'Send With DocuSign'}).count(),0);
- await page.getByRole('button',{name:'Review Signing Package',exact:true}).click();
+ await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).click();
 
  await page.getByRole('button',{name:'Send With DocuSign'}).click();
  await confirmation.waitFor();eq(await confirmation.getByText('a@example.test',{exact:true}).count(),1);
@@ -78,19 +78,19 @@ try{
  await page.getByText('Signatures in progress' ,{exact:true}).waitFor();
  eq(await page.evaluate(()=>calls.filter(c=>c.action==='send').length),1);
  await page.reload();
- await page.getByRole('button',{name:'Review Signing Package',exact:true}).click();
+ await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).click();
  await page.getByRole('button',{name:'Send With DocuSign'}).click();
  await page.getByRole('button',{name:'Back to Review',exact:true}).click();
  await page.getByText('Lease opened for review. Ready when you are.',{exact:true}).waitFor();
  eq(await page.evaluate(()=>calls.filter(c=>c.action==='send').length),0);
- await page.reload();await page.getByRole('button',{name:'Review Signing Package',exact:true}).click();
+ await page.reload();await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).click();
  await page.getByRole('button',{name:'Send With DocuSign'}).click();
  await page.evaluate(()=>ctx.row.workspace_version++);
  await page.getByRole('button',{name:'Skip Review & Send',exact:true}).click();
  await page.getByText('The lease changed. Prepare a new signing package.',{exact:true}).waitFor();
  eq(await page.evaluate(()=>calls.filter(c=>c.action==='send').length),0);
  await page.evaluate(()=>{ctx.signing={configuration:{enabled:false,canSend:false,message:'Not configured'}};ctx.row.status='landlord_approved';render();});
- eq(await page.getByRole('button',{name:'Review Signing Package'}).isDisabled(),true);
+ eq(await page.getByRole('button',{name:'Review Lease for Signatures'}).isDisabled(),true);
  eq(errors,[]);await mkdir('/tmp/star-signing-qa',{recursive:true});await page.screenshot({path:'/tmp/star-signing-qa/signing-mobile.png',fullPage:true});
  console.log('PASS '+checks+' signing browser checks: platform review, skip-review confirmation, revision invalidation, single send, ordering, cancellation, downloads and disabled setup');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

@@ -19,10 +19,10 @@
 
 入口：`Rentals → application group → Lease & Decision`。
 
-1. 点击 **Review Signing Package** 准备签署包，显示收件人及 **Review Lease Draft**。
+1. 点击 **Review Lease for Signatures** 准备签署包，显示收件人及 **Review Lease Draft**。
 2. **Review Lease Draft** 打开左侧待签合同、右侧条款核对。平台读取该包保存的原始 DOCX，校验 SHA-256 后渲染，无需下载。审核状态只保存在当前页面会话中，并绑定 rental revision；修改条款会清除该状态。
 3. 审核界面可直接 **Send With DocuSign**。也可在 **Lease & Decision** 发送；未打开本次签署包审核时，必须再次确认跳过审核，弹窗列出收件人。后端仍验证版本、批准记录、签署人及幂等性。
-   审核页的 **E-sign Recipients** 只显示一份签字顺序和收件人列表；发送统一位于底部。尚未打开待签版本时，底部另提供 **Review Signing Package**，打开成功后隐藏这个入口。直接点击发送会先准备签署包，再按审核状态决定是否显示确认框。
+   审核页的 **E-sign Recipients** 只显示一份签字顺序和收件人列表；发送统一位于底部。尚未打开待签版本时，底部另提供 **Review Lease for Signatures**，打开成功后隐藏这个入口。直接点击发送会先准备签署包，再按审核状态决定是否显示确认框。
 4. 每个人分别显示等待、已送达、已签署、拒签；landlord 明确显示等待 tenants 签完。
    面板顶部是六段进度条 Prepared / Uploaded / Sent / Tenants Sign / Landlord Signs / Completed，
    当前段有流动动画，needs_attention 时当前段变琥珀色；条下一句说明当前步骤：上传中显示
@@ -127,7 +127,7 @@ Window Guards、Bedbug、DHCR 原稿只有一组租客签字线，为每位租�
 文件条目下方列出图例、各签署人的字段按钮、Community Rules 的 Fine Schedule 切换和
 逐租客通知的 Tenant Copy 切换。签署包按已批准版本只准备一次，切换文件只加载该文件
 的副本；未批准、有未保存更正或签署进行中时只显示内容并说明原因。找不到或找到多个
-token 时拒绝预览。自动预览不算审阅：只有 Review Signing Package / Review Lease Draft
+token 时拒绝预览。自动预览不算审阅：只有 Review Lease for Signatures / Review Lease Draft
 才把该签署包标为已审阅，否则直接发送仍会弹出跳过审阅的确认。E-sign Recipients 只保留
 签字顺序与 DocuSign 状态。
 
@@ -298,7 +298,7 @@ JWT 需要 `signature impersonation` scopes 和有效 consent。
    执行现有 rental 和 signing 的到期任务；关闭开发进程即停止定时执行。
    使用开发数据库中的有效 staff 身份；若使用 `DEV_ADMIN_EMAIL`，这个邮箱也须在
    `staff` 表中有 active Admin/Agent 记录，因为发送事务会重查权限。
-6. 使用测试收件人完成申请组、房东同意、**Review Signing Package → Review Lease Draft**，
+6. 使用测试收件人完成申请组、房东同意、**Review Lease for Signatures → Review Lease Draft**，
    在平台核对合同后 **Send With DocuSign**；或从 Rental 确认跳过审核后发送。界面每次刷新只读取本地签署记录，不直接轮询供应商。
    首次发送与收到回调会立即启动持久化任务；定时任务负责补偿。
    普通 `npm run dev` 不启动这个本地定时器。

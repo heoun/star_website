@@ -102,7 +102,7 @@ export async function runJourneyBrowser({env,fixture,pending,advance}) {
     await page.screenshot({path:out+'/landlord-approved.png',fullPage:true});
     await login('admin@example.test');await page.goto(`${base}/admin/#/applications/${id}`);
     await page.getByRole('button',{name:'Lease & Decision',exact:false}).click();
-    await page.getByRole('button',{name:'Review Signing Package',exact:true}).waitFor();checks++;
+    await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).waitFor();checks++;
     // An invitation opened under the lead's session starts invitee account
     // creation directly and preserves the complete return URL.
     await login(env.INTERNAL_TEST_EMAIL);
