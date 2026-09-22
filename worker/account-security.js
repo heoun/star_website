@@ -8,7 +8,10 @@ export async function identityRequest(env, path, {method='GET',body,prefer='retu
   return response.status===204?null:response.json();
 }
 export const identityRpc=(env,name,body)=>identityRequest(env,`rpc/${name}`,{method:'POST',body});
-export const businessIdentity=(env,identity)=>identityRpc(env,'resolve_business_identity',{p_subject:identity.subject,p_email:identity.email});
+export const businessIdentity=(env,identity,scope='workspace')=>
+  scope==='applicant' && env.APPLICANT_AUTH_MODE==='isolated'
+    ? identityRpc(env,'resolve_applicant_identity',{p_subject:identity.subject,p_email:identity.email,p_issuer:new URL(env.APPLICANT_AUTH_URL).origin+'/auth/v1'})
+    : identityRpc(env,'resolve_business_identity',{p_subject:identity.subject,p_email:identity.email});
 export const workspaceAccess=(env,identity)=>identityRpc(env,'resolve_workspace_access',{p_subject:identity.subject,p_email:identity.email});
 // Only inspect claims AFTER Supabase has validated this exact access token via /user.
 export function verifiedSessionClaims(token) {

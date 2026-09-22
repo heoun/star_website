@@ -44,10 +44,13 @@ import { createApplicantSession } from '../shared/applicant-session.js';
   const applicantSession=createApplicantSession(invitedEmail);
 
   const state = {
+    isolatedAuth: false,
     email: invitedEmail,      // carried between the auth steps
     data: null      // the signed-in payload: email, document_types, applications
   };
   let testTools=null,selectedId=new URLSearchParams(location.search).get('application'),pollTimer;
+  // Retained only in this page's memory until mailbox verification, never storage.
+  let registrationPassword='';
 
   // One reusable file input for every Upload button; which slot it feeds is
   // remembered while the picker is open.
@@ -62,6 +65,7 @@ import { createApplicantSession } from '../shared/applicant-session.js';
     const response = await applicantSession.fetch(`/api/portal${path}`, { credentials: "same-origin", ...options });
     const isJson = (response.headers.get("Content-Type") || "").includes("application/json");
     const payload = isJson ? await response.json().catch(() => null) : null;
+    if (payload?.auth_realm === 'applicant') state.isolatedAuth = true;
 
     if (!response.ok) {
       const error = new Error(payload?.error || `Request failed (${response.status})`);
@@ -114,10 +118,15 @@ import { createApplicantSession } from '../shared/applicant-session.js';
   }
 
   // ---- signing in ---------------------------------------------------------
+  const accountNote = () => state.isolatedAuth
+    ? '<p class="portal-note">Your applicant account and password are separate from the team workspace, even if you use the same email. First time here? Create your applicant account. Previously applied? Use “Forgot your password?” to set your applicant password and access your applications.</p>'
+    : '';
 
   function renderSignIn() {
+    registrationPassword='';
     container.innerHTML = `
       <h1>Applicant Portal</h1>
+      ${accountNote()}
       <p class="lede">${invitedEmail
         ? `This invitation was sent to ${escapeHtml(invitedEmail)}. Sign in with that address, or create your account with it, to continue the application.`
         : nextPath.startsWith("/apply/")
@@ -167,6 +176,7 @@ import { createApplicantSession } from '../shared/applicant-session.js';
   function renderRegister() {
     container.innerHTML = `
       <h1>Create your account</h1>
+      ${accountNote()}
       <p class="lede">${invitedEmail ? `You’re invited to join a rental application. Create your own account with ${escapeHtml(invitedEmail)}, or sign in below if you already have one.` : 'Use the email address you want your application filed under.'}
         We will send a code to confirm it is yours.</p>
       <form class="portal-login" id="register-form" novalidate>
@@ -211,7 +221,7 @@ import { createApplicantSession } from '../shared/applicant-session.js';
 
       // A project with email confirmation turned off signs the account in on
       // the spot; otherwise the code is on its way.
-      if (result && result.confirm) renderRegisterCode();
+      if (result && result.confirm) { registrationPassword=password; renderRegisterCode(); }
       else await arrived();
     });
   }
@@ -254,7 +264,8 @@ import { createApplicantSession } from '../shared/applicant-session.js';
       const code = document.getElementById("login-code").value.replace(/\D/g, "");
       if (!/^\d{6,8}$/.test(code)) throw new Error("Please enter the complete 6–8 digit code from the email.");
 
-      await postJson("/verify-register", { email: state.email, code });
+      await postJson("/verify-register", { email: state.email, code, password:registrationPassword });
+      registrationPassword='';
       await arrived();
     });
   }
@@ -264,6 +275,7 @@ import { createApplicantSession } from '../shared/applicant-session.js';
   function renderResetRequest() {
     container.innerHTML = `
       <h1>Reset your password</h1>
+      ${state.isolatedAuth ? '<p class="portal-note">This resets only your applicant password. Your team workspace password stays the same.</p>' : ''}
       <p class="lede">Enter your account email. If it has an account, a verification code
         is on its way to it.</p>
       <form class="portal-login" id="reset-form" novalidate>

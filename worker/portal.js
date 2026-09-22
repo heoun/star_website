@@ -382,8 +382,8 @@ async function sendCompletionNotice(request, env, application) {
 }
 
 export async function handlePortalRequest(request, env, ctx, pathname) {
-  if (!authConfig(env)) {
-    console.error("SUPABASE_URL or SUPABASE_ANON_KEY is not configured; the applicant portal is unavailable.");
+  if (!authConfig(env, 'applicant')) {
+    console.error("Applicant authentication is unavailable or in maintenance.");
     return json({ error: "The portal is temporarily unavailable. Please try again shortly." }, 503);
   }
 
@@ -399,7 +399,7 @@ export async function handlePortalRequest(request, env, ctx, pathname) {
     // Everything below is somebody's private data, so it needs a session.
     const session = await readSession(request, env);
     if (!session) {
-      return json({ error: "Please sign in." }, 401);
+      return json({ error: "Please sign in.", ...(env.APPLICANT_AUTH_MODE==='isolated' ? {auth_realm:'applicant'} : {}) }, 401);
     }
 
     let response;

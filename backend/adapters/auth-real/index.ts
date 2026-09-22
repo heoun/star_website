@@ -99,6 +99,9 @@ export function makeRealAuth(env: AuthEnv, baseUrl = ""): AuthPort {
       refreshedCookie = session?.setCookie;
       const identity = session || (applicantRoute ? null : devIdentity(request, env));
       if (!identity) return null;
+      // A staff member may also apply for a home. Route scope determines the
+      // principal; a matching staff email never upgrades an applicant session.
+      if (applicantRoute) return session ? {kind:"applicant", id:session.user_id || session.email, email:session.email} : null;
       const member = "development" in identity && identity.development ? true : await fetchStaffMember(env, identity.email);
       if (member || identity.email === String(env.OWNER_EMAIL || "").trim().toLowerCase()) {
         const resolved = await resolveStaff(env, identity) as { identity?: { email: string; role: string; owner?: boolean } };

@@ -32,7 +32,7 @@ export async function handleSecureWorkspaceActivation(request,env,resource,body)
   const inv=body.invite?await invitation(env,body.invite):null;
   if(body.invite && (!inv||inv.email!==email))return json({error:'Use the latest invitation and the invited email.'},403);
   const member=await fetchStaffMember(env,email);
-  const owner=(await identityRequest(env,`app_users?email=eq.${encodeURIComponent(email)}&select=id,password_setup_required,active`))[0];
+  const owner=(await identityRequest(env,`app_users?email=eq.${encodeURIComponent(email)}&realm=eq.workspace&select=id,password_setup_required,active`))[0];
   const ownerRow=owner?(await identityRequest(env,`platform_owner?user_id=eq.${owner.id}&select=user_id`))[0]:null;
   const incomplete=owner?.active&&owner.password_setup_required===true&&(!!ownerRow||member?.active&&member.access_state==='active');
   const eligible=!!inv||incomplete;
