@@ -4,7 +4,7 @@
   "compatibility_date": "2026-07-01",
   "workers_dev": false,
   "preview_urls": false,
-  "vars": { "APP_ENV":"production", "STORAGE_BACKEND": "supabase", "RENTAL_AUTOMATION": "off" },
+  "vars": { "APP_ENV":"production", "ACCOUNT_SECURITY":"on", "OWNER_EMAIL":"info@starreusa.com", "STORAGE_BACKEND": "supabase", "RENTAL_AUTOMATION": "off" },
   // Enable RENTAL_AUTOMATION after applying supabase/rental-flow.sql.
   "triggers": { "crons": ["*/1 * * * *"] },
   "assets": {
@@ -40,6 +40,8 @@
       "services": [{"binding":"SCREENING_SIMULATOR","service":"star-screening-staging"}],
       "vars": {
         "APP_ENV":"staging",
+        "ACCOUNT_SECURITY":"on",
+        "OWNER_EMAIL":"info@starreusa.com",
         "STORAGE_BACKEND":"supabase",
         "SITE_ORIGIN":"https://dev.starreusa.com",
         "SUPABASE_URL":"https://shlodyxlnepxnafthvod.supabase.co",

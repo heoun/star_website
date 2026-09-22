@@ -950,6 +950,9 @@ async function refreshApplications() {
 // can see that they are an agent stops wondering why a box will not open.
 function showSession() {
   whoEl.textContent = session.email;
+  if(!document.querySelector('#account-security-link')){
+    const link=document.createElement('a');link.id='account-security-link';link.href='/login/?security=1';link.textContent='Account security & roles';whoEl.parentElement.append(link);
+  }
   const label = session.owner ? "Platform owner" : { manager: "Admin", agent: "Agent", landlord: "Landlord" }[session.role] || "Account";
   whoRoleEl.textContent = session.name || label;
   document.body.dataset.role = session.role;
