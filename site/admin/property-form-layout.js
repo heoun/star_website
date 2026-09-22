@@ -1,7 +1,7 @@
 // Shared field layout for new-property drafts and the saved-property editor.
 export const PROPERTY_LABELS = {
  'landlord.print_name':"Landlord signer's name",'landlord.entity_name':'Landlord legal entity','landlord.address':'Landlord address',
- 'manager.name':"Property Manager's Name",'manager.address':"Property Management's Address",'manager.phone':"Property Management's Phone",
+ 'manager.name':"Property Manager's Name",'manager.contact_name':'Property Management Contact','manager.email':'Property Management Email','manager.address':"Property Management's Address",'manager.phone':"Property Management's Phone",
  'legal_notice.name':"Landlord / Authorized Recipient's Name",'legal_notice.address':"Landlord / Authorized Recipient's Address",'legal_notice.phone':"Landlord / Authorized Recipient's Phone Number",'emergency.phone':'Housing Emergency Contact'
 };
 export const CHOICE_PAIRS = [

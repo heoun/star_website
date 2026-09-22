@@ -618,6 +618,30 @@
       "scope": "building"
     },
     {
+      "id": "manager.contact_name",
+      "label": "Property management contact",
+      "group": "contacts",
+      "source": "manager",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "note": "The person to contact at the property management company.",
+      "scope": "building",
+      "template": false
+    },
+    {
+      "id": "manager.email",
+      "label": "Property management email",
+      "group": "contacts",
+      "source": "manager",
+      "type": "email",
+      "required": false,
+      "default": null,
+      "note": "For property management enquiries.",
+      "scope": "building",
+      "template": false
+    },
+    {
       "id": "manager.address",
       "label": "Property manager — address",
       "group": "contacts",
