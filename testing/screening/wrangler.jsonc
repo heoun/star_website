@@ -1,0 +1,10 @@
+{
+  "name": "star-screening-staging",
+  "main": "worker.js",
+  "compatibility_date": "2026-09-22",
+  "workers_dev": false,
+  "preview_urls": false,
+  "vars": {"APP_ENV":"staging"},
+  "d1_databases": [{"binding":"DB","database_name":"star-screening-staging","database_id":"13397bce-96cc-447d-b3a1-0e4afb417d86","migrations_dir":"migrations"}],
+  "observability": {"enabled":true}
+}

@@ -4,7 +4,7 @@
   "compatibility_date": "2026-07-01",
   "workers_dev": false,
   "preview_urls": false,
-  "vars": { "STORAGE_BACKEND": "supabase", "RENTAL_AUTOMATION": "off" },
+  "vars": { "APP_ENV":"production", "STORAGE_BACKEND": "supabase", "RENTAL_AUTOMATION": "off" },
   // Enable RENTAL_AUTOMATION after applying supabase/rental-flow.sql.
   "triggers": { "crons": ["*/1 * * * *"] },
   "assets": {
@@ -23,6 +23,33 @@
     // only through authenticated portal and admin routes, never at /media/.
     { "binding": "APPLICANT_DOCS", "bucket_name": "applicant-docs" }
   ],
+  "env": {
+    "staging": {
+      "name": "star-website-staging",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [{"pattern":"dev.starreusa.com","custom_domain":true}],
+      "r2_buckets": [],
+      "services": [{"binding":"SCREENING_SIMULATOR","service":"star-screening-staging"}],
+      "vars": {
+        "APP_ENV":"staging",
+        "STORAGE_BACKEND":"supabase",
+        "SITE_ORIGIN":"https://dev.starreusa.com",
+        "SUPABASE_URL":"https://shlodyxlnepxnafthvod.supabase.co",
+        "INTERNAL_TEST_DATABASE_HOST":"shlodyxlnepxnafthvod.supabase.co",
+        "DEV_SUPABASE_LABEL":"Star Dev",
+        "INTERNAL_TESTING":"on",
+        "RENTAL_AUTOMATION":"on",
+        "RENTAL_SCREENING":"simulator",
+        "DOCUSIGN_ENABLED":"on",
+        "DOCUSIGN_ENVIRONMENT":"demo",
+        "DOCUSIGN_WEBHOOK_URL":"https://dev.starreusa.com/api/webhooks/docusign",
+        "DEV_DOCUSIGN_SEND":"on",
+        "EMAIL_LOGO_URL":"https://dev.starreusa.com/png/email-logo-v1.png"
+      },
+      "triggers":{"crons":["* * * * *"]}
+    }
+  },
   "observability": {
     "enabled": true
   }

@@ -43,7 +43,7 @@ export function devIdentity(request, env) {
 // typed by hand and can be stale; the ref is read from the URL actually in use
 // and cannot be, which is why both appear.
 export function describeEnvironment(request, env) {
-  const local = isLocalRequest(request);
+  const local = isLocalRequest(request) || env.APP_ENV==='staging';
   const host = (() => {
     try {
       return new URL(env.SUPABASE_URL || "").hostname;

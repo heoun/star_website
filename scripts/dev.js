@@ -164,7 +164,7 @@ checkConfiguration();
 
 const wrangler = spawn(
   "npx",
-  ["--yes", "wrangler@4", "dev", "--port", String(port), "--ip", "127.0.0.1", ...extraArgs],
+  ["--no-install", "wrangler", "dev", "--port", String(port), "--ip", "127.0.0.1", "--var", "APP_ENV:local", ...extraArgs],
   { cwd: root, stdio: "inherit" }
 );
 

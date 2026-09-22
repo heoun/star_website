@@ -119,7 +119,7 @@ export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSi
       await api('/connect/envelopes/publish/historical','POST',{envelopes:[id],config:{configurationType:'custom',name:'Star local testing recovery',urlToPublishTo:config.webhookUrl,allowEnvelopePublish:'true',includeHMAC:'true',requiresAcknowledgement:'true',includeDocuments:'false',deliveryMode:'SIM',eventData:{version:'restv2.1',format:'json',includeData:['recipients']}}});
     },
     async configureTestingWebhook(url,name) {
-      if(config.environment!=='demo' || !name.startsWith('Star local testing ') || new URL(url).protocol!=='https:' || new URL(url).pathname!=='/api/webhooks/docusign')throw fail('Testing webhooks require the sandbox account and a dedicated HTTPS listener.');
+      if(config.environment!=='demo' || !(name.startsWith('Star local testing ') || (name==='Star staging testing shlodyxlnepxnafthvod.supabase.co' && url==='https://dev.starreusa.com/api/webhooks/docusign')) || new URL(url).protocol!=='https:' || new URL(url).pathname!=='/api/webhooks/docusign')throw fail('Testing webhooks require the sandbox account and a dedicated HTTPS listener.');
       const list=await json(await api('/connect'));
       const existing=(list.configurations || []).filter((c:{name:string})=>c.name===name);
       if(existing.length>1)throw fail('Duplicate testing Connect configurations. Keep one before restarting.');
