@@ -53,11 +53,15 @@
     "test:testing": "node scripts/test-testing-launcher.mjs",
     "deploy:dev": "node scripts/release.mjs staging",
     "db:bundle": "node scripts/release-schema.mjs",
-    "test:release": "npm run typecheck && npm run gate && npm run test:environments && npm run test:case-review && npm run test:case-queue && npm run test:rentals && npm run test:rentals:db && npm run test:signing && npm run test:signing:db && npm run test:workspace && npm run test:portal && npm run test:identity && npm run test:identity:db && npm run test:account-security && npm run test:auth-realms && npm run test:storage && npm run test:administration && npm run test:property && npm run test:lease-import && npm run test:property-create:db && npm run test:listings && npm run test:demo && npm run test:email && npm run test:journey && npm run build && SMOKE_DB=memory npm run smoke",
+    "test:release": "npm run typecheck && npm run gate && npm run test:environments && npm run test:case-review && npm run test:case-queue && npm run test:rentals && npm run test:rentals:db && npm run test:signing && npm run test:signing:db && npm run test:workspace && npm run test:portal && npm run test:identity && npm run test:identity:db && npm run test:account-security && npm run test:auth-realms && npm run test:gip && npm run test:storage && npm run test:administration && npm run test:property && npm run test:lease-import && npm run test:property-create:db && npm run test:listings && npm run test:demo && npm run test:email && npm run test:journey && npm run build && SMOKE_DB=memory npm run smoke",
     "test:environments": "node scripts/test-environments.mjs",
     "test:account-security": "node scripts/test-account-security.mjs",
     "test:auth-realms": "node scripts/test-auth-realms.mjs",
-    "test:auth-realms:ui": "node scripts/test-auth-realms.mjs --ui"
+    "test:auth-realms:ui": "node scripts/test-auth-realms.mjs --ui",
+    "test:gip": "node scripts/test-gip.mjs && node scripts/test-gip-actions.mjs && node scripts/test-gip-admin.mjs",
+    "test:gip:live": "node scripts/test-gip-live.mjs",
+    "gip:dev": "node scripts/gip-dev.mjs",
+    "gip:workload": "node scripts/gip-workload.mjs"
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.5.8",
@@ -65,5 +69,8 @@
     "pdfjs-dist": "6.3.289",
     "typescript": "^5.6.0",
     "wrangler": "^4.132.0"
+  },
+  "dependencies": {
+    "jose": "^6.2.12"
   }
 }
