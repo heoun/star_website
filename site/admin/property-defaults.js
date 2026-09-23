@@ -338,7 +338,7 @@ function defaultsMarkup(ctx) {
           return `<button type="button" data-property-step="${item.id}" ${item.id === section.id ? 'aria-current="step"' : ''}><span class="property-step-number">${String(n + 1).padStart(2, "0")}</span><span>${escapeHtml(item.label)}</span>${missing ? `<span class="property-step-missing" aria-label="${missing} required values missing">${missing}</span>` : ''}</button>`;
         }).join("")}
       </nav>
-      <div class="property-step-content"><div class="property-step-position" tabindex="-1">Step ${index + 1} of ${sections.length}<span>${ui.editingGroup ? "Editing · changes not saved" : "Property lease information"}</span></div>
+      <div class="property-step-content"><div class="property-step-position" tabindex="-1">Step ${index + 1} of ${sections.length}<span>${ui.editingGroup ? "Editing · changes not saved" : "Property lease information"}</span>${!ctx.docLinked ? '<button type="button" data-property-fullscreen aria-label="Expand lease editor to full screen">Full Screen</button>' : ""}</div>
         ${ctx.docLinked ? panel : `<div class="property-edit-preview"><div class="property-edit-pane">${panel}</div><iframe data-property-preview title="Property Lease Preview" src="./property-preview.html"></iframe></div>`}
         <div class="property-step-footer"><button type="button" data-property-step="${sections[index - 1]?.id || ''}" ${index === 0 ? "disabled" : ""}>← Previous</button><span>${index + 1} / ${sections.length}</span>${index < sections.length - 1 ? `<button type="button" data-property-step="${sections[index + 1].id}">Next: ${escapeHtml(sections[index + 1].label)} →</button>` : '<span class="soft">End of lease information</span>'}</div>
       </div>
@@ -521,6 +521,13 @@ function syncDirectEditing(host, ui) {
 function syncDefaultsNavigation(host, ui) {
   syncDirectEditing(host,ui);
   syncPropertyPreview(host,ui);
+  host.classList.add('property-fullscreen-host');
+  const refreshFullscreen=()=>{
+    const button=host.querySelector('[data-property-fullscreen]');
+    if(button){const expanded=document.fullscreenElement===host;button.textContent=expanded?'Exit Full Screen':'Full Screen';button.setAttribute('aria-label',expanded?'Exit full screen':'Expand lease editor to full screen');}
+  };
+  host.onfullscreenchange=refreshFullscreen;
+  refreshFullscreen();
   const nav = host.querySelector(".property-steps");
   const active = nav?.querySelector('[aria-current="step"]');
   if (!active) return;
@@ -549,6 +556,11 @@ function syncDefaultsNavigation(host, ui) {
 async function handleDefaultsClick(event, ctx) {
   const { host, ui, rerender } = ctx;
 
+  if(event.target.closest('[data-property-fullscreen]')) {
+    if(document.fullscreenElement===host)await document.exitFullscreen();
+    else await host.requestFullscreen();
+    return true;
+  }
   const step = event.target.closest("[data-property-step]");
   if (step) {
     const fromFooter = !!step.closest(".property-step-footer"), previous = ui.activeSection;

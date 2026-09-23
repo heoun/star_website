@@ -119,6 +119,15 @@ try{
  await g.locator('.property-steps [data-property-step="management"]').click();
  assert.equal(await g.locator('[data-settings-save="management"]').isDisabled(),true);
  await g.locator('[data-setting="manager.name"]').fill('Temporary change');
+ await g.locator('[data-property-fullscreen]').click();
+ await g.waitForFunction(()=>!!document.fullscreenElement);
+ assert.equal(await g.locator('[data-property-fullscreen]').textContent(),'Exit Full Screen');
+ assert.equal(await g.locator('[data-setting="manager.name"]').inputValue(),'Temporary change');
+ await g.screenshot({path:'/tmp/property-fullscreen.png',fullPage:true});
+ await g.locator('[data-property-fullscreen]').click();
+ await g.waitForFunction(()=>!document.fullscreenElement);
+ assert.equal(await g.locator('[data-setting="manager.name"]').inputValue(),'Temporary change');
+
  await g.locator('.property-steps [data-property-step="payments"]').click();
  await g.getByRole('button',{name:'Continue Editing',exact:true}).click();
  assert.equal(await g.locator('[data-setting="manager.name"]').inputValue(),'Temporary change');

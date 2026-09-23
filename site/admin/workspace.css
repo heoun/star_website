@@ -399,3 +399,18 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* Keep whole-draft submission separate from step navigation. */
 .property-review-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:24px; padding:20px 0 8px; border-top:1px solid var(--line); }
+
+.property-step-position [data-property-fullscreen] { margin-left:16px; font-size:12px; flex:none; }
+.property-step-position > span { margin-left:auto; }
+.property-fullscreen-host:fullscreen { box-sizing:border-box; width:100%; height:100%; max-width:none; padding:16px; background:var(--bg,#f5f7f9); overflow:auto; }
+.property-fullscreen-host:fullscreen > :not(.property-flow):not(:has(.property-flow)):not(.sheet),
+.property-fullscreen-host:fullscreen .property-flow-intro { display:none; }
+.property-fullscreen-host:fullscreen #property-defaults { height:100%; }
+.property-fullscreen-host:fullscreen .property-flow:not(.is-document) { height:100%; max-height:none; margin:0; }
+@media(min-width:1121px) {
+ .property-fullscreen-host:fullscreen .property-steps,
+ .property-fullscreen-host:fullscreen .property-edit-preview { height:auto; min-height:0; }
+}
+@media(max-width:1120px) {
+ .property-fullscreen-host:fullscreen .property-flow:not(.is-document) { height:auto; min-height:100%; }
+}
