@@ -200,6 +200,11 @@ export function extractLeaseDefaults(text, fields) {
   // Building disclosures: bedbug history, sprinkler, gas, smoking policy.
   const bedbugForm = region(/\(Only boxes checked apply\)/i, /Signature of Tenant|Signature of\s+Owner|DBB-N/i, 1800);
   for (const [phrase, id] of BEDBUG_ROWS) inRegion(bedbugForm, new RegExp(`${MARK}\\s*:?\\s*${phrase}`, 'i'), (item, line) => add(id, checked(item[1]), item[0], line));
+  for (const [id,pattern] of [
+    ['bedbug.building_eradicated_floors', /The location of the infestation was on the\s+(.+?)\s*floor\(s\)/i],
+    ['bedbug.building_not_eradicated_floors', /building had a bedbug infestation history on the\s+(.+?)\s*floor\(s\)/i],
+    ['bedbug.other_details', /Other\s*:\s*(.+?)\s*\.(?:\s|$)/i]
+  ]) inRegion(bedbugForm, pattern, (item,line)=>add(id,item[1],item[0],line));
   match('bedbug.mark_none', /(?:\[\s*[xX]\s*\]|☒|☑)\s*(There is no history of any bedbug infestation within the past year in the building or in any apartment)/, 1, () => true);
   scan(new RegExp(`(?:^|[\\s(])(?:${CHECKED}|X)\\s*:?\\s*Option\\s*([12])\\s*:`), (item, line) => add(`sprinkler.mark_option${item[1]}`, true, item[0], line));
   scan(new RegExp(`(?:^|[\\s(])${UNCHECKED}\\s*:?\\s*Option\\s*([12])\\s*:`), (item, line) => add(`sprinkler.mark_option${item[1]}`, false, item[0], line));
