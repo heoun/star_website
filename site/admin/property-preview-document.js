@@ -1,5 +1,6 @@
 import {mountDocument,patchField,showSections,clearHighlight} from './lease-doc.js';
 import {formatSettingValue,isAnswered} from '../shared/lease-values.js';
+import {CHOICE_PAIRS} from './property-form-layout.js';
 import {PROPERTY_DOCUMENT_SOURCES} from './property-document-sources.js';
 const host=document.querySelector('#document'),picker=document.querySelector('#field'),count=document.querySelector('#count'),position=document.querySelector('#position'),empty=document.querySelector('#empty'),status=document.querySelector('#status');
 let registry=[],payload=null,active='',index=0,ready=false,section='',matches=[];
@@ -35,7 +36,15 @@ function paint(data){
  }
  lastDisplay=display;lastMissing=missing;
  const previousActive=active,previousSection=section;
- if(section!==data.section){active=data.ids[0]||'';index=0;section=data.section;document.querySelector('details').open=false;}
+ if(section!==data.section){
+  active=data.ids[0]||'';
+  const pair=CHOICE_PAIRS.find(pair=>[pair.positive,pair.negative].includes(active));
+  if(pair&&data.values[pair.positive]!==data.values[pair.negative]){
+   if(data.values[pair.positive]===true)active=pair.positive;
+   else if(data.values[pair.negative]===true)active=pair.negative;
+  }
+  index=0;section=data.section;document.querySelector('details').open=false;
+ }
  if(data.focused&&data.focused!==active){active=data.focused;index=0;}
  const ids=[...new Set([...data.ids,...(active?[active]:[])])];
  if(lastIds!==JSON.stringify(ids)){picker.replaceChildren();for(const id of ids)picker.append(new Option(field(id).label,id));lastIds=JSON.stringify(ids);}

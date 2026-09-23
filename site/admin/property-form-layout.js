@@ -5,7 +5,7 @@ export const PROPERTY_LABELS = {
  'legal_notice.name':"Landlord / Authorized Recipient's Name",'legal_notice.address':"Landlord / Authorized Recipient's Address",'legal_notice.phone':"Landlord / Authorized Recipient's Phone Number",'emergency.phone':'Housing Emergency Contact'
 };
 export const CHOICE_PAIRS = [
- {positive:'good_cause.mark_yes',negative:'good_cause.mark_no',label:'Is this unit subject to Good Cause Eviction?',yes:'YES — Subject to Good Cause Eviction',no:'NO — Not subject to Good Cause Eviction'},
+ {positive:'good_cause.mark_yes',negative:'good_cause.mark_no',label:'Is this unit subject to Good Cause Eviction?',yes:'Yes',no:'No'},
  {positive:'good_cause.increase_above_threshold',negative:'good_cause.increase_below_threshold',label:'Rent Increase',order:['no','yes'],yes:'B — Above the threshold',no:'A — Not above the threshold'},
  {positive:'insurance.required_yes',negative:'insurance.required_no',label:'Renters Insurance',yes:'IS required',no:'IS NOT required'},
  {positive:'smoking.in_unit_yes',negative:'smoking.in_unit_no',label:'Smoking Allowance',yes:'IS allowed',no:'IS NOT allowed'},

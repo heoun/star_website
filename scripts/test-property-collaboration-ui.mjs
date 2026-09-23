@@ -213,6 +213,14 @@ try{
  await g.locator('[data-settings-save="good_cause"]').click();
  await g.getByText('Saved 2 values to the draft. Admin approval is required.',{exact:true}).waitFor();
  assert.equal(await coverage.inputValue(),'no');
+ await g.frameLocator('[data-property-preview]').locator('[data-lease-slot="good_cause.mark_no"].is-current-match').waitFor();
+ await g.locator('.property-steps [data-property-step="sprinkler"]').click();
+ await g.locator('.property-steps [data-property-step="good_cause"]').click();
+ assert.equal(await coverage.inputValue(),'no');
+ await g.frameLocator('[data-property-preview]').locator('[data-lease-slot="good_cause.mark_no"].is-current-match').waitFor();
+ assert.equal(await coverage.locator('option[value="yes"]').textContent(),'Yes');
+ assert.equal(await coverage.locator('option[value="no"]').textContent(),'No');
+
  const increase=g.locator('[data-setting-pair="good_cause.increase_above_threshold"]');
  const justification=g.locator('[data-setting="good_cause.increase_justification"]');
  await increase.selectOption('yes');
