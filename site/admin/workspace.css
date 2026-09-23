@@ -355,3 +355,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 /* Shared property names across Rentals, Properties & Settings, and Listings. */
 .property-list-name { font-family: var(--body); font-size: 15px; font-weight: 650; line-height: 1.5; color: var(--blue); }
+
+.account-invitation-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;width:100%;margin-top:12px}
+.account-invitation-actions button{width:100%;min-width:0;white-space:normal}

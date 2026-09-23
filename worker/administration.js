@@ -1,3 +1,4 @@
+import {workspaceInvitationStates} from './workspace-invitation-state.js';
 import {accountSecurityEnabled,recentMfa,identityRequest} from "./account-security.js";
 import {readSession,sameOriginMutation} from "./auth.js";
 import { inviteWorkspaceAccount } from "./workspace-auth.js";
@@ -25,7 +26,14 @@ export async function handleAdministration(request, env, identity, resource, id,
     if(accountSecurityEnabled(env) && !['GET','HEAD'].includes(request.method) && !recentMfa(identity))return json({error:'Verify your authenticator again before changing account access.',code:'mfa_required'},403);
     const { accounts, onboarding } = administrationFor(requireConfig(env), env, request, identity);
     if (resource === "staff") {
-      if (!id && request.method === "GET") return json(await accounts.list(identity));
+      if (!id && request.method === "GET") {
+        const directory = await accounts.list(identity);
+        if (accountSecurityEnabled(env)) {
+          const states = await workspaceInvitationStates(env, directory.staff.map(member => member.email));
+          directory.staff = directory.staff.map(member => ({...member, invitation_state: states.get(member.email)}));
+        }
+        return json(directory);
+      }
       if (id && subresource === "history" && request.method === "GET") return json({ history: await accounts.history(identity, decodeURIComponent(id)) });
       if (!id && request.method === "PUT") {
         const command = { ...await bodyOf(request), action: "save" };
@@ -36,6 +44,8 @@ export async function handleAdministration(request, env, identity, resource, id,
         const {staff}=await accounts.list(identity);
         const member=staff.find(person=>person.email===decodeURIComponent(id).toLowerCase());
         if(!member?.allowed_actions.includes('save'))return json({error:'You cannot revoke this invitation.'},403);
+        const state = (await workspaceInvitationStates(env, [member.email])).get(member.email);
+        if(state.activated || !state.pending)return json({error:'There is no pending invitation to revoke.'},409);
         await identityRequest(env,`workspace_invitations?email=eq.${encodeURIComponent(member.email)}&accepted_at=is.null`,{method:'PATCH',body:{revoked_at:new Date().toISOString()}});
         return json({ok:true});
       }
@@ -43,6 +53,8 @@ export async function handleAdministration(request, env, identity, resource, id,
         const { staff } = await accounts.list(identity);
         const member = staff.find(person => person.email === decodeURIComponent(id).toLowerCase());
         if (!member?.active || !member.allowed_actions.includes("save")) return json({ error: "You cannot invite this account." }, 403);
+        if(accountSecurityEnabled(env) && (await workspaceInvitationStates(env,[member.email])).get(member.email).activated)
+          return json({error:'This account is already activated. Use password recovery if needed.'},409);
         return json({ invitation: await inviteWorkspaceAccount(request, env, member.email) });
       }
       if (id && subresource === "actions" && request.method === "POST") {

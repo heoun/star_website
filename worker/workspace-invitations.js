@@ -1,3 +1,4 @@
+import {workspaceInvitationStates} from './workspace-invitation-state.js';
 import {identityRequest,identityRpc,hashInvitation,randomInvitation,workspaceAccess} from './account-security.js';
 import {authRequest,signedIn,readSession} from './auth.js';
 import {recoveryCookie} from './workspace-recovery.js';
@@ -8,6 +9,7 @@ const tokenPattern=/^[a-f0-9]{64}$/;
 export async function sendWorkspaceInvitation(request,env,email) {
   const member=await fetchStaffMember(env,email);
   if(!member?.active)return {status:'failed'};
+  if((await workspaceInvitationStates(env,[email])).get(email).activated)return {status:'already_activated'};
   const token=randomInvitation(),token_hash=await hashInvitation(token);
   await identityRequest(env,'workspace_invitations?on_conflict=email',{method:'POST',prefer:'resolution=merge-duplicates,return=representation',body:{email,role:member.role,token_hash,expires_at:new Date(Date.now()+7*86400000).toISOString(),accepted_by:null,accepted_at:null,revoked_at:null,needs_password:false,created_at:new Date().toISOString()}});
   const url=`${new URL(request.url).origin}/login/#invite=${token}`;
