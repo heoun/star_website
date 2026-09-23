@@ -361,7 +361,7 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
 
     if (!id && request.method === "GET") {
       const rows = await fetchListings(env, { publishedOnly: false });
-      return json({ listings: rows.filter(row => isManager(identity) || row.published || (identity.property_ids || []).includes(row.building_id))
+      return json({ listings: rows.filter(row => isManager(identity) || (identity.property_ids || []).includes(row.building_id))
         .map(row => ({ ...toAdminListing(row), can_edit: isManager(identity) || (identity.property_ids || []).includes(row.building_id) })) });
     }
 

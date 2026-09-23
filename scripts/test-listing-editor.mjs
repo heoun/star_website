@@ -45,5 +45,17 @@ try {
   await call(`/listings/${listing.id}`, "PATCH", {building_id:"",location:"10 Standalone Street, Example City, NY 10001",property_name:"Standalone (mock)"});
   equal(fixture.state.listings.find(row => row.id === listing.id).location, "10 Standalone Street, Example City, NY 10001");
   equal(fixture.state.listings.find(row => row.id === listing.id).building_id, null);
+  // Public visibility never grants workspace marketing access.
+  const assigned=fixture.state.listings[0];assigned.building_id=property.id;
+  const outsider={...assigned,id:crypto.randomUUID(),building_id:fixture.state.buildings[1].id,published:true};
+  fixture.state.listings.push(outsider);
+  fixture.env.DEV_ADMIN_EMAIL='agent-a@example.test';fixture.env.DEV_ADMIN_ROLE='agent';
+  equal((await call('/listings')).listings.map(row=>row.id),[assigned.id]);
+  assigned.published=false;
+  equal((await call('/listings')).listings.map(row=>row.id),[assigned.id]);
+  fixture.state.staff.find(row=>row.email==='agent-a@example.test').property_ids=[];
+  equal((await call('/listings')).listings,[]);
+  fixture.env.DEV_ADMIN_EMAIL='admin@example.test';fixture.env.DEV_ADMIN_ROLE='manager';
+  equal((await call('/listings')).listings.length,fixture.state.listings.length);
   console.log(`PASS ${count} listing checks: draft creation, saved list visibility, inherited address, removed fields, numeric prices, newest-first order, explicit publication and standalone address`);
 } finally { globalThis.fetch = originalFetch; }
