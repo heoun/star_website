@@ -1,6 +1,6 @@
 import {esc} from './admin-ui.js';
 import {PROPERTY_LABELS} from './property-form-layout.js';
-import {sectionsFor} from './property-sections.js';
+import {createPropertyDefaults} from './property-defaults.js';
 const endpoint='/property-collaborations';
 const propertyFields={name:'Property Name',street:'Street',city:'City',state:'State',state_abbr:'State Abbreviation',zip:'ZIP Code',landlord_signer_email:'Landlord Signing Email'};
 const time=value=>new Date(value).toLocaleString();
@@ -55,48 +55,91 @@ export async function renderCollaborationAdmin(host,{api,buildingId,onApproved})
  host.querySelectorAll('[data-review-id]').forEach(button=>button.onclick=()=>review(host.querySelector('[data-review-host]'),api,button.dataset.reviewId,refresh).catch(error=>{host.querySelector('[data-review-host]').textContent=error.message;}));
  } catch(error){host.innerHTML='<p role="alert">'+esc(error.message)+'</p>';}
 }
-function control(group,id,field,value) {
- const attrs=' data-group="'+group+'" name="'+esc(id)+'"';
- if(field.type==='checkbox')return '<select'+attrs+'><option value="">Not Provided</option><option value="true"'+(value===true?' selected':'')+'>Yes</option><option value="false"'+(value===false?' selected':'')+'>No</option></select>';
- if(field.type==='choice')return '<select'+attrs+'><option value="">Not Provided</option>'+field.options.map(v=>'<option value="'+esc(v)+'"'+(v===value?' selected':'')+'>'+esc(v)+'</option>').join('')+'</select>';
- return '<input'+attrs+' maxlength="'+(group==='property'?200:400)+'" value="'+esc(value??'')+'">';
-}
 export async function renderAgentProperties(host,{api,buildingId}) {
  host.innerHTML='<p>Loading property assignments…</p>';
- try{
- const {collaborations}=await api(endpoint);
- if(!buildingId){host.innerHTML='<div class="pagehead"><div><span class="k">Temporary Collaboration</span><h1>Properties & Settings</h1><p>Prepare changes for Admin review.</p></div></div>'+collaborations.map(r=>'<a class="prop-row" href="#/properties/'+encodeURIComponent(r.building_id)+'"><b>'+esc(r.name)+'</b><span>'+esc(statusLabel(r))+'</span><span>Expires '+esc(time(r.expires_at))+'</span></a>').join('')+(collaborations.length?'':'<p>No active property assignments.</p>');return;}
- const assignment=collaborations.find(r=>r.building_id===buildingId);
- if(!assignment){host.innerHTML='<p role="alert">You do not have active collaboration access to this property.</p>';return;}
- const [{collaboration:r,history},{registry}]=await Promise.all([api(endpoint+'/'+assignment.id),api('/lease/fields')]);
- const fields=registry.fields.filter(f=>f.source==='manager'),editable=r.state==='draft';
- const values={property:{...r.base_property,...r.property_patch},settings:{...r.base_settings,...r.settings_patch}};
- host.innerHTML='<a href="#/properties">← All Properties</a><div class="pagehead"><div><h1>'+esc(assignment.name)+'</h1><p>'+esc(statusLabel(r))+' · Access Ends '+esc(time(r.expires_at))+'</p><p>Changes remain in draft until an Admin approves them.</p></div></div>'+
- (r.note?'<p class="status">Admin Feedback: '+esc(r.note)+'</p>':'')+
- (editable?'<form class="desk-form" data-draft><details class="case-disclosure" open><summary>Property Details</summary>'+Object.entries(propertyFields).map(([id,title])=>'<label>'+esc(title)+control('property',id,{type:'text'},values.property[id])+'</label>').join('')+'</details>'+
- sectionsFor(fields).filter(s=>s.fields.length).map(section=>'<details class="case-disclosure"><summary>'+esc(section.label)+'</summary>'+section.fields.map(f=>'<label>'+esc(label(f.id,fields))+control('settings',f.id,f,values.settings[f.id])+'</label>').join('')+'</details>').join('')+
- '<div class="actions"><button class="primary" name="action" value="save">Save Draft</button><button name="action" value="submit">Submit for Review</button></div><p role="status"></p></form>':diffMarkup(r,fields))+
- documents(r)+(editable?'<form class="desk-form" data-upload><label>Add Supporting Document<input name="file" type="file" accept=".pdf,.docx,.jpg,.jpeg,.png" required></label><button>Upload Document</button><p role="status"></p></form>':'')+historyMarkup(history,fields);
- let version=r.version;
- const save=async()=>{
-  const patch={version,property_patch:{},settings_patch:{}};
-  host.querySelectorAll('[data-group]').forEach(input=>{
-   const group=input.dataset.group,f=fields.find(f=>f.id===input.name);
-   const value=input.value===''?null:group==='settings'&&f?.type==='checkbox'?input.value==='true':input.value.trim()||null;
-   if(JSON.stringify(value)!==JSON.stringify(r['base_'+group][input.name]??null))patch[group+'_patch'][input.name]=value;
-  });
-  const {collaboration}=await post(api,endpoint+'/'+r.id+'/save',patch);version=collaboration.version;
- };
- const form=host.querySelector('[data-draft]');
- if(form)form.onsubmit=async event=>{event.preventDefault();const action=event.submitter.value;const buttons=[...host.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
- try{await save();if(action==='submit'){await post(api,endpoint+'/'+r.id+'/submit',{version});await renderAgentProperties(host,{api,buildingId});}
- else form.querySelector('[role=status]').textContent='Draft saved. Live settings are unchanged.';}
- catch(error){form.querySelector('[role=status]').textContent=error.message;}finally{buttons.forEach(b=>b.disabled=false);}};
- const upload=host.querySelector('[data-upload]');
- if(upload)upload.onsubmit=async event=>{event.preventDefault();const file=new FormData(upload).get('file');const buttons=[...host.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
- try{if(file.size>10*1024*1024)throw Error('Maximum file size is 10 MB.');await save();
- const response=await fetch('/api/admin'+endpoint+'/'+r.id+'/documents?name='+encodeURIComponent(file.name),{method:'POST',credentials:'same-origin',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
- const result=await response.json();if(!response.ok)throw Error(result.error||'Upload failed.');await renderAgentProperties(host,{api,buildingId});
- }catch(error){upload.querySelector('[role=status]').textContent=error.message;}finally{buttons.forEach(b=>b.disabled=false);}};
+ try {
+  const {collaborations}=await api(endpoint);
+  if(!buildingId){host.innerHTML='<div class="pagehead"><div><span class="k">Temporary Collaboration</span><h1>Properties & Settings</h1><p>Prepare changes for Admin review.</p></div></div>'+collaborations.map(r=>'<a class="prop-row" href="#/properties/'+encodeURIComponent(r.building_id)+'"><b>'+esc(r.name)+'</b><span>'+esc(statusLabel(r))+'</span><span>Expires '+esc(time(r.expires_at))+'</span></a>').join('')+(collaborations.length?'':'<p>No active property assignments.</p>');return;}
+  const assignment=collaborations.find(r=>r.building_id===buildingId);
+  if(!assignment){host.innerHTML='<p role="alert">You do not have active collaboration access to this property.</p>';return;}
+  const [detail,{registry}]=await Promise.all([api(endpoint+'/'+assignment.id),api('/lease/fields')]);
+  let r=detail.collaboration;
+  const editable=r.state==='draft',fields=registry.fields.filter(f=>f.source==='manager');
+  const property=()=>({...r.base_property,...r.property_patch});
+  const settings=()=>({...r.base_settings,...r.settings_patch});
+  host.innerHTML='<a href="#/properties">← All Properties</a><div class="pagehead"><div><h1>'+esc(assignment.name)+'</h1><p>'+esc(statusLabel(r))+' · Access Ends '+esc(time(r.expires_at))+'</p><p>Changes remain in draft until an Admin approves them.</p></div></div>'+
+   (r.note?'<p class="status">Admin Feedback: '+esc(r.note)+'</p>':'')+
+   '<div data-collaboration-editor></div><p class="status" data-draft-status role="status"></p>'+
+   (editable?'<div class="actions"><button type="button" class="primary" data-submit-draft>Submit for Review</button></div>':'')+
+   '<div data-collaboration-documents>'+documents(r)+'</div>'+
+   (editable?'<form class="desk-form" data-upload><label>Add Supporting Document<input name="file" type="file" accept=".pdf,.docx,.jpg,.jpeg,.png" required></label><button>Upload Document</button><p role="status"></p></form>':'')+
+   '<div data-collaboration-history>'+historyMarkup(detail.history,fields)+'</div>';
+  const editorHost=host.querySelector('[data-collaboration-editor]');
+  const setStatus=(message,tone='')=>{const status=host.querySelector('[data-draft-status]');status.textContent=message;status.dataset.tone=tone;};
+  // This transport never forwards a live settings/building write. It translates
+  // the shared editor's operations into the versioned collaboration draft.
+  let busy=false;
+  const draftApi=async(path,options={})=>{
+   const method=options.method||'GET';
+   if(method==='GET'&&path==='/lease/settings?scope=building&building_id='+encodeURIComponent(buildingId))return {field_values:settings()};
+   const layerWrite=path==='/lease/settings'&&method==='PUT';
+   const propertyWrite=path==='/buildings/'+encodeURIComponent(buildingId)&&method==='PATCH';
+   if(!editable||(!layerWrite&&!propertyWrite))throw Error('This operation is not available in a property draft.');
+   const body=JSON.parse(options.body);
+   if(layerWrite&&(body.scope!=='building'||body.building_id!==buildingId))throw Error('This draft belongs to a different property.');
+   const next={version:r.version,property_patch:{...r.property_patch},settings_patch:{...r.settings_patch}};
+   for(const [key,value] of Object.entries(layerWrite?body.field_values:body)){
+    const group=layerWrite?'settings':'property',normalized=typeof value==='string'?(value.trim()||null):value;
+    if(JSON.stringify(normalized)===JSON.stringify(r['base_'+group][key]??null))delete next[group+'_patch'][key];
+    else next[group+'_patch'][key]=normalized;
+   }
+   const result=await post(api,endpoint+'/'+r.id+'/save',next);r=result.collaboration;
+   return {building:property(),settings:{field_values:settings()}};
+  };
+  const editor=createPropertyDefaults({api:draftApi,setStatus,escapeHtml:esc,canEdit:()=>editable,buildingOf:()=>property(),draftMode:true});
+  const ui=editor.newDefaultsUi();
+  await editor.loadLayer(buildingId);
+  const rerender=async()=>{
+   editor.rememberDefaultsNavigation(editorHost,ui);
+   editorHost.innerHTML=editor.defaultsMarkup({fields,values:editor.layerOf(buildingId),ui,buildingId});
+   editor.syncDefaultsNavigation(editorHost,ui);
+  };
+  await rerender();
+  const refreshHistory=async()=>{
+   const current=await api(endpoint+'/'+r.id);
+   host.querySelector('[data-collaboration-history]').innerHTML=historyMarkup(current.history,fields);
+  };
+  editorHost.onclick=async event=>{
+   if(busy)return;
+   busy=true;
+   try{await editor.handleDefaultsClick(event,{host:editorHost,buildingId,fields,ui,rerender,onSaved:refreshHistory});}
+   catch(error){setStatus(error.message,'error');}
+   finally{busy=false;}
+  };
+  const pendingEdits=()=>ui.editingGroup||ui.addressOpen||ui.signerOpen;
+  const submit=host.querySelector('[data-submit-draft]');
+  if(submit)submit.onclick=async()=>{
+   if(busy)return;
+   if(pendingEdits()){setStatus('Save or cancel the open section before submitting.','error');return;}
+   busy=true;submit.disabled=true;
+   try{await post(api,endpoint+'/'+r.id+'/submit',{version:r.version});await renderAgentProperties(host,{api,buildingId});}
+   catch(error){setStatus(error.message,'error');submit.disabled=false;}
+   finally{busy=false;}
+  };
+  const upload=host.querySelector('[data-upload]');
+  if(upload)upload.onsubmit=async event=>{
+   event.preventDefault();if(busy)return;
+   if(pendingEdits()){setStatus('Save or cancel the open section before uploading.','error');return;}
+   const file=new FormData(upload).get('file'),button=upload.querySelector('button');busy=true;button.disabled=true;
+   try{
+    if(file.size>10*1024*1024)throw Error('Maximum file size is 10 MB.');
+    const response=await fetch('/api/admin'+endpoint+'/'+r.id+'/documents?name='+encodeURIComponent(file.name),{method:'POST',credentials:'same-origin',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
+    const result=await response.json();if(!response.ok)throw Error(result.error||'Upload failed.');
+    r=result.collaboration;
+    host.querySelector('[data-collaboration-documents]').innerHTML=documents(r);
+    await refreshHistory();upload.reset();upload.querySelector('[role=status]').textContent='Document uploaded.';
+   }catch(error){upload.querySelector('[role=status]').textContent=error.message;}
+   finally{busy=false;button.disabled=false;}
+  };
  }catch(error){host.innerHTML='<p role="alert">'+esc(error.message)+'</p>';}
 }

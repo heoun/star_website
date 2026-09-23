@@ -1470,7 +1470,7 @@ document.addEventListener("keydown", (event) => {
 // whole, so their events are delegated from that host rather than bound to
 // controls a re-render would replace.
 ROUTE_HOSTS.properties.addEventListener("click", async (event) => {
-  await handlePropertyClick(event, ROUTE_HOSTS.properties, routeId);
+  if(session.role !== "agent") await handlePropertyClick(event, ROUTE_HOSTS.properties, routeId);
 });
 
 

@@ -24,6 +24,10 @@ import { propertySetupDefaults } from "../shared/property-setup.js";
 import { formatSettingValue, isAnswered } from "../shared/lease-values.js";
 import { isOptionalSection, sectionsFor } from "./property-sections.js";
 
+// Each host owns its transport and caches. The collaboration instance can only
+// write drafts; the standard instance continues to use Admin's live endpoints.
+export function createPropertyDefaults(deps) {
+let draftMode = false;
 let api;
 let setStatus;
 let escapeHtml;
@@ -31,9 +35,10 @@ let isManager = () => false;
 let buildingOf = () => null;
 let onBuildingChanged = () => {};
 
-export function initPropertyDefaults(deps) {
+function initPropertyDefaults(deps) {
   ({ api, setStatus, escapeHtml } = deps);
-  isManager = deps.isManager || (() => false);
+  isManager = deps.canEdit || deps.isManager || (() => false);
+  draftMode = deps.draftMode === true;
   buildingOf = deps.buildingOf || (() => null);
   onBuildingChanged = deps.onBuildingChanged || (() => {});
 }
@@ -45,7 +50,7 @@ export function initPropertyDefaults(deps) {
 // route, which is the other moment these go stale — see forgetLayers.
 const layers = new Map();
 
-export async function loadLayer(buildingId, force = false) {
+async function loadLayer(buildingId, force = false) {
   if (!layers.has(buildingId) || force) {
     const payload = await api(`/lease/settings?scope=building&building_id=${encodeURIComponent(buildingId)}`);
     layers.set(buildingId, payload.field_values || {});
@@ -53,18 +58,18 @@ export async function loadLayer(buildingId, force = false) {
   return layers.get(buildingId);
 }
 
-export function layerOf(buildingId) {
+function layerOf(buildingId) {
   return layers.get(buildingId) || {};
 }
 
 // The property row itself — its name, its address, the address its signature
 // requests go to. Held by the properties screen, read through here so both
 // hosts see the same row after either of them writes to it.
-export function propertyOf(buildingId) {
+function propertyOf(buildingId) {
   return buildingOf(buildingId);
 }
 
-export function forgetLayers() {
+function forgetLayers() {
   layers.clear();
 }
 
@@ -72,13 +77,13 @@ export function forgetLayers() {
 
 // Every manager field, in registry order. They all answer at this one layer,
 // so there is nothing to filter by scope any more.
-export function managerFields(registry) {
+function managerFields(registry) {
   return registry.fields.filter((field) => field.source === "manager");
 }
 
 // `null` in the layer is how the database records "this property no longer
 // answers that field", so it is not an answer.
-export function resolve(field, values) {
+function resolve(field, values) {
   const value = values?.[field.id];
   if (isAnswered(field, value)) return { value, answered: true };
   return { value: field.type === "checkbox" ? false : "", answered: false };
@@ -87,7 +92,7 @@ export function resolve(field, values) {
 // What each host keeps for itself: which panel is open, whether the uncommon
 // terms are unfolded, and which dialog is up. One panel at a time — a page with
 // 125 inputs open is a page where nobody can say what they changed.
-export function newDefaultsUi() {
+function newDefaultsUi() {
   return { editingGroup: "", activeSection: "property", signerOpen: false, addressOpen: false };
 }
 
@@ -283,7 +288,7 @@ function sectionContext(id, ctx, building) {
   return "";
 }
 
-export function defaultsMarkup(ctx) {
+function defaultsMarkup(ctx) {
   const { fields, ui, buildingId } = ctx;
   const building = buildingOf(buildingId);
   const sections = sectionsFor(fields);
@@ -300,7 +305,7 @@ export function defaultsMarkup(ctx) {
     panel = `<article class="panel"><div class="phead"><div><h2>Properties</h2><p>${section.note}</p></div>${isManager() ? '<button type="button" class="link" id="property-address">Edit address</button>' : ''}</div><div class="pbody"><div class="line"><span class="lbl">Property address</span><b>${escapeHtml(address || "No address recorded")}</b></div><p class="note">The apartment number is added from the listing when preparing a lease.</p></div></article>`;
   } else panel = sectionContext(section.id, ctx, building) + (section.id === "signing" ? signingPanel(section, inner) : sectionPanel(section, inner));
   return `
-    <div class="property-flow-intro"><h2 class="section-title">Lease Information</h2><p class="note">Follow the lease from property details through its riders. ${isManager() ? "Save each section as you go." : "View only · Admin maintains property values."}</p></div>
+    <div class="property-flow-intro"><h2 class="section-title">Lease Information</h2><p class="note">Follow the lease from property details through its riders. ${isManager() ? "Save each section as you go." : draftMode ? "Submitted draft · awaiting Admin review." : "View only · Admin maintains property values."}</p></div>
     <div class="property-flow${ctx.docLinked ? " is-document" : ""}">
       <nav class="property-steps" aria-label="Lease Information Sections">
         ${sections.map((item, n) => {
@@ -322,7 +327,7 @@ export function defaultsMarkup(ctx) {
 // database cannot record one". The difference matters: blocking every property
 // on a value a manager has no way to supply would stop every agent sending,
 // and the fix is a migration, not a click.
-export function signerEmailKnown(building) {
+function signerEmailKnown(building) {
   return Boolean(building) && Object.prototype.hasOwnProperty.call(building, "landlord_signer_email");
 }
 
@@ -391,7 +396,7 @@ function addressDialog(building) {
 // An editor left open holds typing nobody has saved. Leaving it by clicking a
 // tab or the back button is easy to do by accident, so it asks — once, and
 // only when something is actually open.
-export function mayLeaveEditor(host, ui) {
+function mayLeaveEditor(host, ui) {
   if (!ui.editingGroup) return true;
   if (!host.querySelector(`[data-group-panel="${CSS.escape(ui.editingGroup)}"]`)) return true;
   return confirm("Leave without saving the values you changed?");
@@ -413,11 +418,11 @@ async function movePropertyStep(ctx, target) {
 }
 
 // Keep the selected horizontal step at the leading edge without scrolling the page.
-export function rememberDefaultsNavigation(host, ui) {
+function rememberDefaultsNavigation(host, ui) {
   const nav = host.querySelector(".property-steps");
   if (nav) ui.navigationScroll = {left:nav.scrollLeft, top:nav.scrollTop};
 }
-export function syncDefaultsNavigation(host, ui) {
+function syncDefaultsNavigation(host, ui) {
   const nav = host.querySelector(".property-steps");
   const active = nav?.querySelector('[aria-current="step"]');
   if (!active) return;
@@ -443,7 +448,7 @@ export function syncDefaultsNavigation(host, ui) {
 //                values (a document on screen) is now out of date
 //
 // Returns true when it handled the event, so a host can go on to its own.
-export async function handleDefaultsClick(event, ctx) {
+async function handleDefaultsClick(event, ctx) {
   const { host, ui, rerender } = ctx;
 
   const step = event.target.closest("[data-property-step]");
@@ -576,7 +581,7 @@ async function saveGroup(ctx, group) {
     const count = Object.keys(patch).length;
     await rerender();
     await onSaved();
-    setStatus(`Saved ${count} value${count === 1 ? "" : "s"} to this property.`);
+    setStatus(draftMode ? `Saved ${count} value${count === 1 ? "" : "s"} to the draft. Admin approval is required.` : `Saved ${count} value${count === 1 ? "" : "s"} to this property.`);
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -609,7 +614,7 @@ async function saveAddress(ctx) {
     ui.addressOpen = false;
     await rerender();
     await onSaved();
-    setStatus("Address saved. Every lease for this property prints it.");
+    setStatus(draftMode ? "Address saved to draft. Admin approval is required." : "Address saved. Every lease for this property prints it.");
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -661,7 +666,7 @@ async function saveSigner(ctx) {
     ui.signerOpen = false;
     await rerender();
     await onSaved();
-    setStatus(!canStoreEmail
+    setStatus(draftMode ? "Signer saved to draft. Admin approval is required." : !canStoreEmail
       ? `Signer set to ${name}. This database cannot record a signature address yet.`
       : email
         ? `Signer set. ${name} will receive every landlord signature request for this property.`
@@ -670,3 +675,23 @@ async function saveSigner(ctx) {
     setStatus(error.message, "error");
   }
 }
+
+if(deps) initPropertyDefaults(deps);
+return {initPropertyDefaults, loadLayer, layerOf, propertyOf, forgetLayers, managerFields, resolve, newDefaultsUi, defaultsMarkup, signerEmailKnown, mayLeaveEditor, rememberDefaultsNavigation, syncDefaultsNavigation, handleDefaultsClick};
+}
+
+const standardEditor = createPropertyDefaults();
+export const initPropertyDefaults = (...args) => standardEditor.initPropertyDefaults(...args);
+export const loadLayer = (...args) => standardEditor.loadLayer(...args);
+export const layerOf = (...args) => standardEditor.layerOf(...args);
+export const propertyOf = (...args) => standardEditor.propertyOf(...args);
+export const forgetLayers = (...args) => standardEditor.forgetLayers(...args);
+export const managerFields = (...args) => standardEditor.managerFields(...args);
+export const resolve = (...args) => standardEditor.resolve(...args);
+export const newDefaultsUi = (...args) => standardEditor.newDefaultsUi(...args);
+export const defaultsMarkup = (...args) => standardEditor.defaultsMarkup(...args);
+export const signerEmailKnown = (...args) => standardEditor.signerEmailKnown(...args);
+export const mayLeaveEditor = (...args) => standardEditor.mayLeaveEditor(...args);
+export const rememberDefaultsNavigation = (...args) => standardEditor.rememberDefaultsNavigation(...args);
+export const syncDefaultsNavigation = (...args) => standardEditor.syncDefaultsNavigation(...args);
+export const handleDefaultsClick = (...args) => standardEditor.handleDefaultsClick(...args);

@@ -4,6 +4,8 @@ An Admin opens a property and grants an active Agent temporary access (7 days by
 
 The Agent's server-rendered navigation includes Properties & Settings only while an open assignment is unexpired. The collaboration list and detail endpoints check active staff membership, assigned email, state and expiry on every request. Drafts and supporting files remain private; expired or ended assignments are readable only by Admin.
 
+Agent and Admin use the same 15-step property editor, including field controls, missing-value indicators, address and signer dialogs. Each editor instance owns its own cache and transport; the Agent transport only saves versioned collaboration drafts and cannot forward live settings writes. Submitted drafts use the same editor in read-only mode.
+
 Agents save proposed property details and manager-source lease fields in a separate record. They may upload PDF, DOCX, JPEG or PNG files (10 MB each, 20 per assignment). File downloads go through the same authorization check. Upload metadata is attached transactionally after storage and the object is removed if the assignment was revoked, expired or changed in the meantime.
 
 Submission locks Agent editing. Admin reviews a before/proposed comparison and supporting files, then approves, returns for correction, or ends access. Approval writes building fields, lease settings and audit history in one database transaction, then ends the assignment. An Admin cannot approve a draft they authored as an Agent. Admin can review previously submitted work after the Agent's access expires.

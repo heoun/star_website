@@ -6,6 +6,3 @@
 .collab-diff { overflow-x: auto; margin: 1rem 0; }
 .collab-diff table { width: 100%; border-collapse: collapse; }
 .collab-diff th, .collab-diff td { padding: .75rem; text-align: left; vertical-align: top; border-bottom: 1px solid #dce4eb; overflow-wrap: anywhere; min-width: 8rem; }
-[data-draft] details label { display: grid; gap: .4rem; margin: 1rem 0; }
-
-[data-draft] > details { margin-bottom: .85rem; }
