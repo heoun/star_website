@@ -11,7 +11,7 @@ const summary=rentalMembers({root:m,members:[m]})[0];
 assert.equal(summary.credit_score,null);assert.notEqual(summary.report_status,'Complete');
 const render=(person=m,s=summary)=>applicantColumns(person,ctx,s,v=>v??'Not stated');
 const out=render();
-assert(out.overview.includes('783')&&out.overview.includes('pending review'));
+assert(out.overview.includes('783') && !out.overview.includes('External report, pending review'));
 assert(out.overview.includes('/api/admin/documents/external-report'));
 assert(out.screening.includes('Example Bakery')&&out.screening.includes('09/2026'));
 assert.equal((out.screening.match(/class="rg-contact-card"/g)||[]).length,3);
