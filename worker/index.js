@@ -114,12 +114,7 @@ const application = {
 
     // Resolve the Supabase session and business role before serving workspace assets.
     if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-      const denied = await guardAdminPage(request, env);
-      if (denied) return denied;
-      const asset = await env.ASSETS.fetch(request);
-      const response = new Response(asset.body, asset);
-      response.headers.set("Cache-Control", "no-store");
-      return response;
+      return guardAdminPage(request, env);
     }
 
     // /contact-us/submit-inquiry.php is kept as an alias so cached pages that

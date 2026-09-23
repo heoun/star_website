@@ -1,3 +1,4 @@
+import {renderWorkspaceShell} from './workspace-shell.js';
 import { propertyAddress } from "../site/shared/property-address.js";
 import { parseDate as parseLeaseDate } from "../site/shared/lease-dates.js";
 import { handleAdministration } from "./administration.js";
@@ -699,12 +700,14 @@ export async function guardAdminPage(request, env) {
       if (authenticated.setCookie) response.headers.append("Set-Cookie", authenticated.setCookie);
       return response;
     }
-    // The caller may continue serving assets; refreshed cookies must survive page loads too.
-    if (!authenticated.setCookie) return null;
+    // Serve the authorized shell here, preserving refreshed session cookies.
     const asset = await env.ASSETS.fetch(request);
-    const response = new Response(asset.body, asset);
-    response.headers.set("Cache-Control", "no-store");
-    response.headers.append("Set-Cookie", authenticated.setCookie);
+    const isHtml = asset.ok && (asset.headers.get('Content-Type') || '').includes('text/html');
+    const response = new Response(isHtml ? renderWorkspaceShell(await asset.text(), {...resolved.identity, demo: resolved.identity.development === true && Boolean(env.LOCAL_EMAIL_SINK)}, describeEnvironment(request, env)) : asset.body, asset);
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("Vary", "Cookie");
+    if(isHtml){response.headers.delete('ETag');response.headers.delete('Content-Length');}
+    if(authenticated.setCookie)response.headers.append("Set-Cookie", authenticated.setCookie);
     return response;
   } catch { return deniedPage("The workspace could not check your account. Please try again.", 503); }
 }

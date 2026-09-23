@@ -1,3 +1,4 @@
+import {workspaceNavigation,workspaceHome,workspaceRoleLabel,workspaceGroups} from '../shared/workspace-navigation.js';
 import {propertyGroups, compareNames} from './property-groups.js';
 import { openNewProperty } from "./property-import.js";
 import "./sidebar.js";
@@ -48,7 +49,9 @@ const API = "/api/admin";
 // nothing here decides it, and nothing here enforces it — the Worker refuses a
 // write an agent should not make whatever this page renders. It exists so an
 // agent is shown a value rather than an input that will fail on Save.
-const session = { email: "", role: "", name: "" };
+const initialSession = document.getElementById('workspace-session');
+const bootstrapSession = initialSession ? JSON.parse(initialSession.textContent) : null;
+const session = { email: "", role: "", name: "", ...bootstrapSession };
 
 function isManager() {
   return session.role === "manager";
@@ -520,7 +523,7 @@ const ROUTES = new Set(["overview", "listings", "applications", "dossier", "leas
 
 function readHash() {
   const parts = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
-  const home = session.owner ? "staff" : session.role === "landlord" ? "overview" : "applications";
+  const home = workspaceHome(session);
   const name = ROUTES.has(parts[0]) ? parts[0] : home;
   let id = "";
   try { id = decodeURIComponent(parts[1] || ""); } catch { /* malformed URL: show list */ }
@@ -949,25 +952,20 @@ function showSession() {
   if(!document.querySelector('#account-security-link')){
     const link=document.createElement('a');link.id='account-security-link';link.href='/login/?security=1';link.textContent='Account security & roles';whoEl.parentElement.append(link);
   }
-  const label = session.owner ? "Platform owner" : { manager: "Admin", agent: "Agent", landlord: "Landlord" }[session.role] || "Account";
+  const label = workspaceRoleLabel(session);
   whoRoleEl.textContent = session.name || label;
   document.body.dataset.role = session.role;
-  const navigation = session.owner ? { staff: "Accounts & Access" } : session.role === "manager"
-    ? { applications: "Rentals", onboarding: "Landlord Onboarding", properties: "Properties & Settings", listings: "Listings", staff: "Accounts & Access", requests: "Change Requests" }
-    : session.role === "agent"
-      ? { applications: "My Rentals", listings: "Listings" }
-      : { overview: "Awaiting My Decision", properties: "My Properties", leases: "Lease Documents" };
+  const navigation = workspaceNavigation(session);
   document.querySelectorAll('.nav [data-route]').forEach(link => {
     const label = navigation[link.dataset.route]; link.hidden = !label;
     if (label) { link.querySelector("span").textContent = label; link.setAttribute("aria-label", label); link.title = label; link.querySelector("abbr")?.setAttribute("title", label); }
   });
   const nav = document.querySelector(".nav");
+  nav.hidden = false;
   document.querySelector('.side .brand').href = session.owner ? "#/staff" : session.role === "landlord" ? "#/overview" : "#/applications";
   document.querySelector('.side .brand').setAttribute("aria-label", session.owner ? "Star Real Estate access management" : session.role === "landlord" ? "Star Real Estate awaiting decisions" : "Star Real Estate rentals");
   nav.querySelectorAll('.nav-section').forEach(section => section.remove());
-  const groups = session.role === "manager"
-    ? {applications:"Workspace", properties:"Portfolio", staff:"Administration"}
-    : session.role === "agent" ? {applications:"Workspace"} : {overview:"Workspace"};
+  const groups = workspaceGroups(session);
   Object.keys(navigation).forEach(key => {
     if (groups[key]) {
       const section = document.createElement("div");
@@ -1006,10 +1004,9 @@ function showEnvironment(me) {
 }
 
 async function load() {
-  setStatus("Loading listings…");
+  setStatus("Loading workspace…");
   try {
-    const me = await api("/me");
-    listings = me.owner ? [] : (await api("/listings")).listings;
+    const me = bootstrapSession || await api("/me");
     if (me?.email) {
       session.email = me.email;
       session.role = me.role || "";
@@ -1020,6 +1017,7 @@ async function load() {
       showSession();
     }
     showEnvironment(me);
+    listings = me.owner ? [] : (await api("/listings")).listings;
     setStatus("");
     await goto(readHash());
   } catch (error) {
