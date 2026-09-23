@@ -144,7 +144,13 @@ function documentsPanel(state) {
 }
 function recipientsPanel(state) {
   return `<div data-workspace-recipients>${signingRecipients(state)}</div>`+
+    carbonCopyEditor(state)+
     `<div data-workspace-signing></div>`;
+}
+export function carbonCopyEditor(state){
+  const record=state.signing?.signing,locked=state.readOnly || (record && !['voided','declined'].includes(record.phase));
+  const copies=record?.carbonCopies || state.carbonCopies || [];
+  return `<div data-cc-editor>${section('CC Recipients',locked?copies.map(c=>textRow(c.name,c.email)).join('') || '<p>No CC recipients.</p>':`${copies.map(c=>`<div class="ws-review-row" data-cc-row><label>Name<input data-cc-name value="${esc(c.name)}" maxlength="100"></label><label>Email<input type="email" data-cc-email value="${esc(c.email)}"></label><button type="button" data-cc-action="remove">Remove</button></div>`).join('')}<div class="ws-editor-actions"><button type="button" data-cc-action="add">Add CC Recipient</button><button type="button" data-cc-action="save">Save CC Recipients</button></div>`,'Receives a copy after every tenant and the landlord have signed. No signature required.')}</div>`;
 }
 export function signingRecipients(state,signers) {
   const entity=state.values['landlord.entity_name'];

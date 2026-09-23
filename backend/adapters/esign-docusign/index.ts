@@ -68,7 +68,7 @@ export function envelopeDefinition(pkg: RentalSigningPackage, documents: {docume
       }
       const shared=s.role==='tenant' && tenantEmails.filter(e=>e===s.email.trim().toLowerCase()).length>1;
       return {recipientId:s.recipientId,name:s.name,email:s.email,routingOrder:String(s.routingOrder),emailNotification:{emailSubject:`${shared?`${clean(s.name)} `:''}${subject}`},tabs};
-    })},
+    }),...(pkg.carbonCopies?.length?{carbonCopies:pkg.carbonCopies.map(c=>({recipientId:c.recipientId,name:c.name,email:c.email,routingOrder:'3'}))}:{})},
     allowReassign:'false',
     eventNotification:{url:webhookUrl,requireAcknowledgment:'true',includeHMAC:'true',deliveryMode:'SIM',
       eventData:{version:'restv2.1',format:'json',includeData:['recipients']},

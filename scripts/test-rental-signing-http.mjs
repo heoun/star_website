@@ -13,7 +13,7 @@ globalThis.fetch=async(url,init={})=>{
   if(init.method==='POST'){records.set(body.id,{...body});return Response.json([body]);}
   const id=u.searchParams.get('id')?.slice(3),rental=u.searchParams.get('rental_id')?.slice(3);
   // JSONB preserves values, not the insertion order of object keys.
-  const persisted=[...records.values()].filter(r=>(!id || r.id===id)&&(!rental || r.rental_id===rental)&&(!u.searchParams.has('reserved') || !!r.reserved===(u.searchParams.get('reserved')==='eq.true')));
+  const persisted=[...records.values()].reverse().filter(r=>(!id || r.id===id)&&(!rental || r.rental_id===rental)&&(!u.searchParams.has('reserved') || !!r.reserved===(u.searchParams.get('reserved')==='eq.true')));
   return Response.json(persisted.map(r=>({...r,record:{...r.record,package:{...r.record.package,signers:r.record.package.signers.map(s=>Object.fromEntries(Object.entries(s).sort(([a],[b])=>a.localeCompare(b))))}}})));
  }
  if(name==='reserve_rental_signing') {
@@ -89,6 +89,14 @@ try {
  eq(reviewPayload.signing.signers.filter(s=>s.role==='tenant').map(s=>s.email),['shared@example.test','shared@example.test']);
  eq((await post({action:'send',packageId:reviewPayload.signing.id,version:row.workspace_version})).status,503);
  eq(row.status,'review');eq(row.workspace.landlord_decision,undefined);
+ const ccBody={action:'prepare',version:row.workspace_version,carbonCopies:[{name:'Agent Copy',email:'copy@example.test'}]};
+ const copied=await post(ccBody);eq(copied.status,200);const cp=await copied.json();
+ eq(cp.signing.carbonCopies,[{recipientId:'cc-1',name:'Agent Copy',email:'copy@example.test',routingOrder:3}]);
+ eq((await(await get()).json()).carbonCopies,cp.signing.carbonCopies);
+ eq((await post({...ccBody,carbonCopies:[{name:'Bad',email:'shared@example.test'}]})).status,422);
+ eq((await post({...ccBody,carbonCopies:[{name:'Bad',email:'not-an-email'}]})).status,422);
+ eq((await post({...ccBody,carbonCopies:Array.from({length:3},(_,i)=>({name:'Copy',email:`copy${i}@example.test`}))})).status,422);
+ eq(reserves,1);
  env.APP_ENV='production';
  eq((await post({action:'prepare',version:row.workspace_version})).status,409);
  env.APP_ENV='staging';env.LEASE_REVIEW_ONLY_CASE_IDS='another-case';

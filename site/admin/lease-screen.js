@@ -172,6 +172,7 @@ async function fetchValues() {
     ]);
     state.caseRow=caseRow;
     state.signing=signing;
+    state.carbonCopies=signing.carbonCopies || signing.signing?.carbonCopies || [];
     const phase=caseRow.workspace?.signing?.phase;
     state.readOnly=state.requestedReadOnly || ['lease_sent','lease_signed','declined'].includes(caseRow.status) || !!(phase && !['voided','declined'].includes(phase));
     state.landlordEmail=state.signing?.signing?.signers?.find(s=>s.role==='landlord')?.email || caseRow.workspace?.recommendation?.landlord_email || '';
@@ -1286,6 +1287,24 @@ function bindOnce() {
   });
 
   screen.addEventListener("click", async (event) => {
+    const cc=event.target.closest('[data-cc-action]');
+    if(cc){
+      const host=formHost.querySelector('[data-cc-editor]');
+      const rows=()=>[...host.querySelectorAll('[data-cc-row]')].map(r=>({name:r.querySelector('[data-cc-name]').value,email:r.querySelector('[data-cc-email]').value}));
+      if(cc.dataset.ccAction==='remove')cc.closest('[data-cc-row]').remove();
+      if(cc.dataset.ccAction==='add'){state.carbonCopies=[...rows(),{name:'',email:''}];host.outerHTML=workspace.carbonCopyEditor(state);}
+      if(cc.dataset.ccAction==='save'){
+        cc.disabled=true;
+        try{
+          if(state.dirty.size)throw new Error('Save lease corrections before saving CC recipients.');
+          const result=await api(`/cases/${encodeURIComponent(state.application.id)}/signing`,{method:'POST',body:JSON.stringify({action:'prepare',version:state.caseRow.workspace_version,carbonCopies:rows()})});
+          if(result.reserved)throw new Error('This signing package has already been sent. CC recipients are locked.');
+          invalidateSigningReview(state.application.id);clearSigningDocument();
+          await fetchValues();workspace.renderTab(formHost,state);renderSigningPanel();setStatus('CC recipients saved. No email has been sent.','ok');
+        }catch(error){setStatus(error.message,'error');}finally{cc.disabled=false;}
+      }
+      return;
+    }
     if(state?.mode==='lease' && state.dirty.size && event.target.closest('a[href^="#"]') && !window.confirm('Leave without saving these lease corrections?')){event.preventDefault();return;}
     // The property editor owns its panels, its two dialogs and its writes.
     // Asked first, because a dialog's backdrop is not a button.
