@@ -64,8 +64,8 @@ try {
  const leaseResponse=await handleAdminRequest(leaseRequest,{...fixture.env,DEV_ADMIN_ROLE:'agent',DEV_ADMIN_EMAIL:'agent-a@example.test'},{waitUntil:p=>p.catch(()=>{})},new URL(leaseRequest.url).pathname);
  eq(leaseResponse.status,200);
  const lease=await leaseResponse.json();
- eq(lease.values['rent.monthly'],'3100','lease inherits the agreed rent');
- eq(lease.values['deposit.amount'],'0','zero deposit is preserved');
+ eq(lease.values['rent.monthly'],'$3,100.00','lease inherits the agreed rent');
+ eq(lease.values['deposit.amount'],'$0.00','zero deposit is preserved');
  eq(lease.missing,[],'lease resolves all required fields without a second entry form');
  eq((await call('a',ids.a,null,'GET','')).body.case.allowed_actions.includes('prepare_lease'),true);
  await rejected('a',ids.a,{},403);
