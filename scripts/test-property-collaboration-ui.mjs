@@ -332,6 +332,36 @@ try{
  assert.equal(await a.frameLocator('[data-property-preview]').locator('#document').evaluate(el=>el.scrollTop),documentScroll,'Form scrolling does not move the lease');
  await a.screenshot({path:'/tmp/property-balanced-payments.png',fullPage:true});
 
+
+ // Defaults must remain saveable until persisted, including inherited contacts.
+ const prefilled=await a.evaluate(async()=>{
+  const {createPropertyDefaults}=await import('/admin/property-defaults.js');
+  const {fields}=window.propertyLayoutTest;
+  let values={'landlord.print_name':'Owner','landlord.signer_mailing_address':'Office'};
+  const writes=[];
+  const editor=createPropertyDefaults({api:async(path,options)=>{
+   if(options?.method==='PUT'){const patch=JSON.parse(options.body).field_values;writes.push(patch);values={...values,...patch};}
+   return {field_values:{...values}};
+  },setStatus:()=>{},escapeHtml:v=>String(v??''),isManager:()=>true,buildingOf:()=>({landlord_signer_email:'owner@example.test'})});
+  const host=document.querySelector('#test'),ui=editor.newDefaultsUi();
+  await editor.loadLayer('prefilled');
+  const render=async()=>{host.innerHTML=editor.defaultsMarkup({fields,values:editor.layerOf('prefilled'),ui,buildingId:'prefilled'});editor.syncDefaultsNavigation(host,ui);};
+  const result=[];
+  for(const section of ['payments','dhcr']){
+   ui.activeSection=section;ui.inputDraft=null;await render();
+   const enabled=!host.querySelector('[data-settings-save]').disabled;
+   await editor.handleDefaultsClick({target:host.querySelector('[data-settings-save]')},{host,fields,ui,buildingId:'prefilled',rerender:render});
+   result.push({section,enabled,clean:!ui.dirty});
+  }
+  ui.activeSection='property';await render();
+  return {result,writes,dhcrMissing:!!host.querySelector('[data-property-step="dhcr"] .property-step-missing')};
+ });
+ assert(prefilled.result.every(row=>row.enabled && row.clean),'Prefilled sections can save without retyping and become clean');
+ assert.equal(prefilled.writes[0]['lease.end_time'],'11:59 PM');
+ assert.equal(prefilled.writes[1]['owner_rep.email'],'owner@example.test');
+ assert.equal(prefilled.writes[1]['owner_rep.mailing_address'],'Office');
+ assert.equal(prefilled.dhcrMissing,false,'Saved inherited contacts stay complete after leaving the section');
+
  assert.deepEqual(errors,[]);
  assert(agentWrites.every(path=>path.startsWith('/api/admin/property-collaborations/')),'Agent editor must never call a live settings write');
  assert.equal((await db.query('select field_values from lease_settings')).rows[0].field_values['manager.name'],'Draft Property Manager');

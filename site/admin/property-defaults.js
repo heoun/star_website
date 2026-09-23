@@ -470,7 +470,16 @@ function syncDirectEditing(host, ui) {
   const inputs = [...host.querySelectorAll("[data-setting], [data-setting-pair]")];
   const key = el => el.dataset.setting || el.dataset.settingPair;
   const read = el => el.type === "checkbox" ? el.checked : el.value;
-  const baseline = Object.fromEntries(inputs.map(el => [key(el), read(el)]));
+  // Compare with persisted values, not the controls' prefilled defaults.
+  // Otherwise inherited contacts look complete but cannot be saved.
+  const stored=ui.previewContext.values;
+  const baseline = Object.fromEntries(inputs.map(el => {
+    if(el.dataset.settingPair) {
+      const pair=CHOICE_PAIRS.find(pair=>pair.positive===el.dataset.settingPair);
+      return [key(el),stored[pair.positive]===true?'yes':stored[pair.negative]===true?'no':''];
+    }
+    return [key(el),el.type==='checkbox'?stored[key(el)]===true:String(stored[key(el)]??'')];
+  }));
   ui.inputBaseline = baseline;
   if (ui.inputDraft) for (const el of inputs) {
     if (Object.hasOwn(ui.inputDraft, key(el))) {
