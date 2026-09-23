@@ -117,7 +117,14 @@ try{
  await g.locator('#address-save').click();
  await g.getByText('Address saved to draft. Admin approval is required.').waitFor();
  await g.locator('.property-steps [data-property-step="management"]').click();
- await g.locator('[data-settings-edit="management"]').click();
+ assert.equal(await g.locator('[data-settings-save="management"]').isDisabled(),true);
+ await g.locator('[data-setting="manager.name"]').fill('Temporary change');
+ await g.locator('.property-steps [data-property-step="payments"]').click();
+ await g.getByRole('button',{name:'Continue Editing',exact:true}).click();
+ assert.equal(await g.locator('[data-setting="manager.name"]').inputValue(),'Temporary change');
+ await g.locator('[data-settings-cancel]').click();
+ assert.equal(await g.locator('[data-setting="manager.name"]').inputValue(),'');
+ assert.equal(await g.locator('[data-settings-save="management"]').isDisabled(),true);
  await g.locator('[data-setting="manager.name"]').fill('Draft Property Manager');
  await g.frameLocator('[data-property-preview]').locator('#status').filter({hasText:'Unsaved Preview'}).waitFor();
  await g.frameLocator('[data-property-preview]').locator('.is-current-match').filter({hasText:'Draft Property Manager'}).first().waitFor();
@@ -126,7 +133,15 @@ try{
  await g.getByText('Save or cancel the open section before submitting.').waitFor();
  await g.locator('[data-settings-save="management"]').click();
  await g.getByText('Saved 1 value to the draft. Admin approval is required.').waitFor();
+ assert.equal(await g.locator('[data-setting="manager.name"]').inputValue(),'Draft Property Manager');
+ assert.equal(await g.locator('[data-settings-save="management"]').isDisabled(),true);
+ await g.locator('[data-setting="manager.name"]').fill('Discard this');
+ await g.locator('.property-steps [data-property-step="payments"]').click();
+ await g.getByRole('dialog').getByRole('button',{name:'Discard Changes',exact:true}).click();
+ await g.locator('[data-setting="rent.due_day"]').fill('5');
  await g.locator('.property-steps [data-property-step="signing"]').click();
+ await g.getByRole('button',{name:'Save & Continue',exact:true}).click();
+
  await g.screenshot({path:'/tmp/property-signer-fields.png',fullPage:true});
  await g.locator('#property-signer').click();
  await g.screenshot({path:'/tmp/property-signer-dialog.png',fullPage:true});

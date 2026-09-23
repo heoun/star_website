@@ -388,3 +388,4 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
  .property-edit-pane { height: min(640px, 80dvh); }
  .property-edit-preview > iframe { height: min(760px, 85dvh); }
 }
+.property-edit-actions [data-edit-state] { order: -1; margin-right: auto; align-self: center; color: var(--muted); font-size: 12px; }

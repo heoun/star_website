@@ -207,7 +207,7 @@ function signingPanel(section, ctx) {
         ${inline.map((field) => settingRow(field, values, editing, docLinked)).join("")}
       </div>
     </div>
-    ${editing && !docLinked ? `<div class="property-edit-actions">${editTools(section.id, true)}</div>` : ""}
+    ${editing && !docLinked ? `<div class="property-edit-actions">${editTools(section.id, true).replace(">Cancel<", ">Discard Changes<")}<span data-edit-state role="status"></span></div>` : ""}
   </article>`;
 }
 
@@ -239,7 +239,7 @@ function sectionPanel(section, ctx) {
         ${sectionRows(section, values, editing, docLinked)}
       </div>
     </div>
-    ${editing && !docLinked ? `<div class="property-edit-actions">${editTools(section.id, true)}</div>` : ""}
+    ${editing && !docLinked ? `<div class="property-edit-actions">${editTools(section.id, true).replace(">Cancel<", ">Discard Changes<")}<span data-edit-state role="status"></span></div>` : ""}
   </article>`;
 }
 
@@ -313,6 +313,8 @@ function defaultsMarkup(ctx) {
   if (index < 0) index = 0;
   const section = sections[index];
   ui.activeSection = section.id;
+  ui.directEditing = !ctx.docLinked;
+  if (ui.directEditing) ui.editingGroup = isManager() && section.id !== "property" ? section.id : "";
   ui.previewContext={fields,values:ctx.values,building,section:section.id,ids:section.id==='property'?['property.address_full','property.street','property.city','property.state','property.state_abbr','property.zip']:section.fields.map(f=>f.id)};
   const signerEmail = building?.landlord_signer_email || "";
   const emailKnown = signerEmailKnown(building);
@@ -414,7 +416,7 @@ function addressDialog(building) {
 // tab or the back button is easy to do by accident, so it asks — once, and
 // only when something is actually open.
 function mayLeaveEditor(host, ui) {
-  if (!ui.editingGroup) return true;
+  if (!ui.editingGroup || (ui.directEditing && !ui.dirty)) return true;
   if (!host.querySelector(`[data-group-panel="${CSS.escape(ui.editingGroup)}"]`)) return true;
   return confirm("Leave without saving the values you changed?");
 }
@@ -423,11 +425,16 @@ async function movePropertyStep(ctx, target) {
   const {host,ui,rerender} = ctx;
   if (!target || !sectionsFor(ctx.fields).some(section=>section.id===target)) return;
   if (target === ui.activeSection) { syncDefaultsNavigation(host, ui); return; }
-  if (ui.editingGroup) {
-    setStatus("Save or cancel this section before moving to another step.", "error");
-    host.querySelector("[data-settings-save]")?.focus();
-    return;
+  if (ui.editingGroup && (!ui.directEditing || ui.dirty)) {
+    if (!ui.directEditing) {
+      setStatus("Save or cancel this section before moving to another step.", "error");
+      return;
+    }
+    const choice = await confirmSectionChange(host);
+    if (choice === "stay") return;
+    if (choice === "save" && !await saveGroup(ctx, ui.editingGroup)) return;
   }
+  ui.dirty = false; ui.inputDraft = null; ui.saved = false;
   ui.activeSection = target;
   setStatus("");
   await rerender();
@@ -439,7 +446,47 @@ function rememberDefaultsNavigation(host, ui) {
   const nav = host.querySelector(".property-steps");
   if (nav) ui.navigationScroll = {left:nav.scrollLeft, top:nav.scrollTop};
 }
+function confirmSectionChange(host) {
+  return new Promise(resolve => {
+    const sheet = document.createElement("div");
+    sheet.className = "sheet";
+    sheet.innerHTML = `<div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="unsaved-title"><div class="sheet-head"><h2 id="unsaved-title">Unsaved Changes</h2></div><div class="sheet-body">Save your changes before moving to another section?</div><div class="sheet-foot"><button data-choice="stay">Continue Editing</button><button data-choice="discard">Discard Changes</button><button class="primary" data-choice="save">Save & Continue</button></div></div>`;
+    const finish = choice => { sheet.remove(); resolve(choice); };
+    sheet.addEventListener("click", event => { const button=event.target.closest("[data-choice]"); if(button) finish(button.dataset.choice); });
+    sheet.addEventListener("keydown", event => { if(event.key === "Escape") finish("stay"); });
+    host.append(sheet); sheet.querySelector("button").focus();
+  });
+}
+const editBindings = new WeakMap();
+function syncDirectEditing(host, ui) {
+  if (!ui.directEditing) return;
+  const inputs = [...host.querySelectorAll("[data-setting], [data-setting-pair]")];
+  const key = el => el.dataset.setting || el.dataset.settingPair;
+  const read = el => el.type === "checkbox" ? el.checked : el.value;
+  const baseline = Object.fromEntries(inputs.map(el => [key(el), read(el)]));
+  ui.inputBaseline = baseline;
+  if (ui.inputDraft) for (const el of inputs) {
+    if (Object.hasOwn(ui.inputDraft, key(el))) {
+      if(el.type === "checkbox") el.checked=ui.inputDraft[key(el)]; else el.value=ui.inputDraft[key(el)];
+    }
+  }
+  const update = () => {
+    const current=Object.fromEntries(inputs.map(el=>[key(el),read(el)]));
+    ui.dirty=inputs.some(el=>read(el)!==baseline[key(el)]);
+    ui.inputDraft=ui.dirty ? current : null;
+    host.querySelectorAll("[data-settings-save], [data-settings-cancel]").forEach(el=>el.disabled=!ui.dirty);
+    const state=host.querySelector("[data-edit-state]");
+    if(state) state.textContent=ui.dirty ? "Unsaved Changes" : ui.saved ? "Saved" : "";
+    const position=host.querySelector(".property-step-position > span");
+    if(position) position.textContent=ui.dirty ? "Unsaved Changes" : "Property lease information";
+  };
+  const old=editBindings.get(host);
+  if(old) {host.removeEventListener("input",old);host.removeEventListener("change",old);}
+  host.addEventListener("input",update);host.addEventListener("change",update);editBindings.set(host,update);
+  update();
+}
 function syncDefaultsNavigation(host, ui) {
+  syncDirectEditing(host,ui);
   syncPropertyPreview(host,ui);
   const nav = host.querySelector(".property-steps");
   const active = nav?.querySelector('[aria-current="step"]');
@@ -487,6 +534,7 @@ async function handleDefaultsClick(event, ctx) {
 
   if (event.target.closest("[data-settings-cancel]")) {
     ui.editingGroup = "";
+    ui.dirty=false; ui.inputDraft=null; ui.saved=false;
     setStatus("");
     await rerender();
     return true;
@@ -554,6 +602,7 @@ async function saveGroup(ctx, group) {
   for (const input of panel.querySelectorAll("[data-setting]")) {
     const field = byId(ctx.fields, input.dataset.setting);
     if (!field) continue;
+    if (ui.directEditing && ui.inputBaseline && Object.hasOwn(ui.inputBaseline, field.id) && ui.inputBaseline[field.id] === (input.type === "checkbox" ? input.checked : input.value)) continue;
     const resolved = resolve(field, values);
     const before = resolved.answered ? resolved.value : undefined;
 
@@ -572,6 +621,7 @@ async function saveGroup(ctx, group) {
   }
 
   for (const input of panel.querySelectorAll("[data-setting-pair]")) {
+    if (ui.directEditing && ui.inputBaseline && ui.inputBaseline[input.dataset.settingPair] === input.value) continue;
     const pair = CHOICE_PAIRS.find(item => item.positive === input.dataset.settingPair);
     if (!pair || !["yes", "no"].includes(input.value)) continue;
     for (const [id, value] of [[pair.positive,input.value === "yes"],[pair.negative,input.value === "no"]]) {
@@ -583,7 +633,7 @@ async function saveGroup(ctx, group) {
     ui.editingGroup = "";
     await rerender();
     setStatus("Nothing changed.");
-    return;
+    return true;
   }
 
   setStatus("Saving…");
@@ -594,12 +644,14 @@ async function saveGroup(ctx, group) {
     });
 
     ui.editingGroup = "";
+    ui.dirty=false; ui.inputDraft=null; ui.saved=true;
     await loadLayer(buildingId, true);
 
     const count = Object.keys(patch).length;
     await rerender();
     await onSaved();
     setStatus(draftMode ? `Saved ${count} value${count === 1 ? "" : "s"} to the draft. Admin approval is required.` : `Saved ${count} value${count === 1 ? "" : "s"} to this property.`);
+    return true;
   } catch (error) {
     setStatus(error.message, "error");
   }

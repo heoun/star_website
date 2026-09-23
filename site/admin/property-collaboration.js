@@ -138,7 +138,7 @@ export async function renderAgentProperties(host,{api,buildingId}) {
    catch(error){setStatus(error.message,'error');}
    finally{busy=false;}
   };
-  const pendingEdits=()=>ui.editingGroup||ui.addressOpen||ui.signerOpen;
+  const pendingEdits=()=>ui.dirty||ui.addressOpen||ui.signerOpen;
   const submit=host.querySelector('[data-submit-draft]');
   if(submit)submit.onclick=async()=>{
    if(busy)return;
