@@ -35,7 +35,6 @@ export function mockPropertyDefaults(building, landlord, index = 0, supplied = {
     "deposit.bank_name": "Example Deposit Bank", "deposit.bank_address": "500 Example Bank Avenue, New York, NY 10001",
     "payee.name": entity, "payee.address": address, "payee.phone": "212-555-0110",
     "manager.name": `Property Manager ${alphabet(index)}`, "manager.address": address, "manager.phone": "212-555-0120",
-    "manager.contact_name": `Management Contact ${alphabet(index)}`, "manager.email": `management-${alphabet(index).toLowerCase()}@example.test`,
     "legal_notice.name": `Authorized Recipient ${alphabet(index)}`, "legal_notice.address": address, "legal_notice.phone": "212-555-0130",
     "emergency.phone": "212-555-0140", "owner_rep.name": signer, "owner_rep.email": landlord.email, "owner_rep.mailing_address": address,
     "gas.provider_name": "Example Energy Service", "gas.provider_phone": "212-555-0150",
