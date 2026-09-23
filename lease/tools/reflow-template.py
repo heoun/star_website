@@ -3075,6 +3075,23 @@ def fix_document_identity(doc):
     return changed
 
 
+def fix_smoking_checkboxes(doc):
+    """Use real centering instead of the PDF conversion's per-row offsets."""
+    changed = 0
+    for table in doc.body.iter(WNS + "tbl"):
+        if not any("{{smoking." in (node.text or "") for node in table.iter(WNS + "t")):
+            continue
+        for row in table.findall(WNS + "tr"):
+            cell = row.find(WNS + "tc")
+            for paragraph in cell.findall(WNS + "p"):
+                before = ET.tostring(paragraph)
+                set_indent(paragraph, left=0, right=0, firstLine=0)
+                set_property(paragraph, "jc", {"val": "center"})
+                if ET.tostring(paragraph) != before:
+                    changed += 1
+    return changed
+
+
 FIXES = [
     ("sections", fix_sections),
     ("payment details", fix_payment_details),
@@ -3118,6 +3135,7 @@ FIXES = [
     ("page footers", fix_page_footers),
     ("logo artwork", fix_logo_artwork),
     ("document identity", fix_document_identity),
+    ("smoking checkboxes", fix_smoking_checkboxes),
 ]
 
 
