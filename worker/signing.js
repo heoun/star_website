@@ -62,9 +62,10 @@ async function recipients(env,g,request,reviewOnly=false) {
   const tenants=g.members.map((m,i)=>({recipientId:String(i+1),memberId:m.id,role:'tenant',routingOrder:1,name:String(m.name || '').trim(),email:email(m.email)}));
   const w=g.root.workspace,approvedEmail=email(w?.recommendation?.landlord_email);
   const [allStaff,building]=await Promise.all([fetchStaff(env),fetchBuilding(env,g.root.listings?.building_id)]);
-  const landlordEmail=approvedEmail || (reviewOnly?email(building?.landlord_signer_email):'');
+  // An authorized preview uses today's property signer, not an old recommendation.
+  const landlordEmail=reviewOnly?email(building?.landlord_signer_email):approvedEmail;
   const staff=allStaff.filter(s=>s.active && s.role==='landlord' && s.property_ids?.includes(g.root.listings?.building_id));
-  if(!staff.some(s=>email(s.email)===landlordEmail) || (building?.landlord_signer_email && email(building.landlord_signer_email)!==landlordEmail))throw error('The approved landlord is no longer this property’s signer. Review the landlord assignment.');
+  if(!reviewOnly && (!staff.some(s=>email(s.email)===landlordEmail) || (building?.landlord_signer_email && email(building.landlord_signer_email)!==landlordEmail)))throw error('The approved landlord is no longer this property’s signer. Review the landlord assignment.');
   const signers=[...tenants,{recipientId:String(tenants.length+1),memberId:null,role:'landlord',routingOrder:2,name:String(g.root.lease_snapshot?.['landlord.print_name'] || '').trim(),email:landlordEmail}];
   // Sandbox envelopes hold five recipients, so an internal run signs with at
   // most four tenants, every one of them a designated test inbox.

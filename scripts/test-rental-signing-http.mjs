@@ -78,12 +78,14 @@ try {
  delete row.workspace.signing;delete row.workspace.recommendation;delete row.workspace.landlord_decision;delete row.workspace.lease_preparation;delete row.workspace.test_run;
  const group=await flow.store.group(ids.b);
  const building=fixture.state.buildings.find(b=>b.id===group.root.listings.building_id);
- building.landlord_signer_email=landlord.email;
+ building.landlord_signer_email='current-property-signer@example.test';
+ row.workspace.recommendation={landlord_email:'previous-signer@example.test',revision:1};
  for(const member of group.members){const source=fixture.state.applications.find(a=>a.id===member.id);source.email='shared@example.test';}
  env.APP_ENV='staging';env.LEASE_REVIEW_ONLY_CASE_IDS=ids.b;
  const reviewResponse=await post({action:'prepare',version:row.workspace_version});
  const reviewPayload=await reviewResponse.json();assert.equal(reviewResponse.status,200,JSON.stringify(reviewPayload));checks++;
  eq(reviewPayload.configuration.reviewOnly,true);eq(reviewPayload.configuration.canSend,false);
+ eq(reviewPayload.signing.signers.find(s=>s.role==='landlord').email,building.landlord_signer_email);
  eq(reviewPayload.signing.signers.filter(s=>s.role==='tenant').map(s=>s.email),['shared@example.test','shared@example.test']);
  eq((await post({action:'send',packageId:reviewPayload.signing.id,version:row.workspace_version})).status,503);
  eq(row.status,'review');eq(row.workspace.landlord_decision,undefined);
