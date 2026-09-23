@@ -1,6 +1,7 @@
 
 /* Scoped collaboration controls and review tables. */
 [data-property-collaboration] { margin: 1.5rem 0; }
+[data-draft-status]:empty { display: none; }
 .collab-assignments { display: grid; gap: .75rem; margin: 1.25rem 0; }
 .collab-assignments button { text-align: left; }
 .collab-diff { overflow-x: auto; margin: 1rem 0; }
