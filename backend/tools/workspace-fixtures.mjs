@@ -49,6 +49,7 @@ export function createWorkspaceFixtures(saved) {
     if (u.hostname !== "workspace-fixture.test") throw new Error("Network disabled in isolated workspace fixtures.");
     const table = u.pathname.split("/").at(-1), q = u.searchParams, method = init.method || "GET", id = q.get("id")?.replace(/^eq\./, "");
     const body = init.body ? JSON.parse(init.body) : {};
+    if (table === "property_collaboration_command" && body.p_action === "list") return response({collaborations:[]});
     if (method !== "GET") writes.push({ table, method, body });
     const adminResponse = administrationFixture(state, table, method, q, body, response);
     if (adminResponse) return adminResponse;

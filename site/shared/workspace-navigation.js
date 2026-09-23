@@ -1,7 +1,7 @@
 export function workspaceNavigation(session) {
   return session.owner ? {staff:'Accounts & Access'} : session.role==='manager'
     ? {applications:'Rentals',onboarding:'Landlord Onboarding',properties:'Properties & Settings',listings:'Listings',staff:'Accounts & Access',requests:'Change Requests'}
-    : session.role==='agent' ? {applications:'My Rentals',listings:'Listings'}
+    : session.role==='agent' ? {applications:'My Rentals',listings:'Listings',...(session.property_collaboration_ids?.length?{properties:'Properties & Settings'}:{})}
     : {overview:'Awaiting My Decision',properties:'My Properties',leases:'Lease Documents'};
 }
 export const workspaceHome=session=>session.owner?'staff':session.role==='landlord'?'overview':'applications';

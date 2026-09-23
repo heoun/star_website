@@ -1,0 +1,20 @@
+# Temporary property collaboration
+
+An Admin opens a property and grants an active Agent temporary access (7 days by default, 1–90 days in the UI). This does not change the Agent's role or marketing property assignments.
+
+The Agent's server-rendered navigation includes Properties & Settings only while an open assignment is unexpired. The collaboration list and detail endpoints check active staff membership, assigned email, state and expiry on every request. Drafts and supporting files remain private; expired or ended assignments are readable only by Admin.
+
+Agents save proposed property details and manager-source lease fields in a separate record. They may upload PDF, DOCX, JPEG or PNG files (10 MB each, 20 per assignment). File downloads go through the same authorization check. Upload metadata is attached transactionally after storage and the object is removed if the assignment was revoked, expired or changed in the meantime.
+
+Submission locks Agent editing. Admin reviews a before/proposed comparison and supporting files, then approves, returns for correction, or ends access. Approval writes building fields, lease settings and audit history in one database transaction, then ends the assignment. An Admin cannot approve a draft they authored as an Agent. Admin can review previously submitted work after the Agent's access expires.
+
+Each draft has optimistic version checks. Approval also locks and compares the live building/settings with the grant-time snapshot; changed live values cause a conflict. End the old assignment and create a fresh one in that case; the prior proposal remains available in Admin history. No automatic merge or overwrite is attempted.
+
+The database RPC is executable only by the existing service role; Worker authentication supplies the actor. The database independently checks current staff role and active status. Granting, reviewing and ending access require recent MFA when account security is enabled. Platform Owner and Landlord do not receive business collaboration access.
+
+Validation:
+- `node scripts/test-property-collaboration.mjs`: database state transitions, access boundaries, stale drafts, conflicts, public database restrictions and field validation.
+- `npm run test:property:collaboration:ui`: isolated browser grant → draft → upload → submit → approve workflow, access closure and mobile layout.
+- `npm run test:identity:ui`: existing authentication and server-side workspace shell regression checks.
+
+Apply `supabase/property-collaboration.sql` after the existing schema. It is included in the release schema bundle. Dev and production require separate migrations and releases.

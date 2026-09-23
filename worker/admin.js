@@ -1,3 +1,4 @@
+import {handlePropertyCollaboration,propertyCollaborationAccess} from './property-collaboration.js';
 import {renderWorkspaceShell} from './workspace-shell.js';
 import { propertyAddress } from "../site/shared/property-address.js";
 import { parseDate as parseLeaseDate } from "../site/shared/lease-dates.js";
@@ -280,6 +281,7 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
         demo: identity.development === true && Boolean(env.LOCAL_EMAIL_SINK),
         name: identity.name || "",
         property_ids: identity.property_ids || [],
+        property_collaboration_ids: await propertyCollaborationAccess(env,identity),
         ...describeEnvironment(request, env)
       });
     }
@@ -294,6 +296,8 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
       }
       return json({ error: "Platform Owner manages accounts and permissions only. Business operations require an Admin account." }, 403);
     }
+
+    if(resource === "property-collaborations") return await handlePropertyCollaboration(request,env,identity,segments);
 
     if (resource === "requests" && !subresource) {
       return await handleChangeRequests(request, env, identity, id);
@@ -703,7 +707,7 @@ export async function guardAdminPage(request, env) {
     // Serve the authorized shell here, preserving refreshed session cookies.
     const asset = await env.ASSETS.fetch(request);
     const isHtml = asset.ok && (asset.headers.get('Content-Type') || '').includes('text/html');
-    const response = new Response(isHtml ? renderWorkspaceShell(await asset.text(), {...resolved.identity, demo: resolved.identity.development === true && Boolean(env.LOCAL_EMAIL_SINK)}, describeEnvironment(request, env)) : asset.body, asset);
+    const response = new Response(isHtml ? renderWorkspaceShell(await asset.text(), {...resolved.identity, property_collaboration_ids: await propertyCollaborationAccess(env,resolved.identity), demo: resolved.identity.development === true && Boolean(env.LOCAL_EMAIL_SINK)}, describeEnvironment(request, env)) : asset.body, asset);
     response.headers.set("Cache-Control", "private, no-store");
     response.headers.set("Vary", "Cookie");
     if(isHtml){response.headers.delete('ETag');response.headers.delete('Content-Length');}

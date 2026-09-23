@@ -1,3 +1,4 @@
+import {renderAgentProperties} from './property-collaboration.js';
 import {workspaceNavigation,workspaceHome,workspaceRoleLabel,workspaceGroups} from '../shared/workspace-navigation.js';
 import {propertyGroups, compareNames} from './property-groups.js';
 import { openNewProperty } from "./property-import.js";
@@ -677,6 +678,7 @@ async function goto({ name, id }) {
   }
 
   if (name === "properties") {
+    if(session.role==="agent"){showRoute("properties",{rows:false});crumbs([{label:"Properties & Settings"}]);return renderAgentProperties(ROUTE_HOSTS.properties,{api,buildingId:id});}
     // The Worker refuses these routes for an agent; this keeps the browser from
     // asking in the first place.
     showRoute("properties", { rows: false });

@@ -1,3 +1,4 @@
+import {renderCollaborationAdmin} from './property-collaboration.js';
 // Property-level lease configuration.
 //
 // A landlord value is not a property of one apartment. It is a property of the
@@ -216,6 +217,7 @@ export async function renderProperty(host, target, { keepStatus = false } = {}) 
     await loadLayer(target);
     host.innerHTML = renderPropertyShell({ building, target });
     syncDefaultsNavigation(host, ui);
+    if(isManager()) await renderCollaborationAdmin(host.querySelector("[data-property-collaboration]"),{api,buildingId:target,onApproved:async()=>{forgetLayers();await renderProperty(host,target);}});
     if (!keepStatus) setStatus("");
   } catch (error) {
     host.innerHTML = "";
@@ -249,6 +251,7 @@ function renderPropertyShell({ building, target }) {
 
     <div class="property-completion"><span class="pill is-${ready.state === "ready" ? "good" : "warn"}">${escapeHtml(ready.label)}</span><span>${escapeHtml(ready.detail)}</span></div>
 
+    <div data-property-collaboration></div>
     <div id="property-defaults">${defaultsMarkup({fields, values, ui, buildingId: building.id})}</div>`;
 }
 
@@ -280,6 +283,7 @@ export async function handlePropertyClick(event, host, target) {
       const building = buildings.find(row => row.id === target);
       host.innerHTML = renderPropertyShell({building, target});
       syncDefaultsNavigation(host, ui);
+      if(isManager()) await renderCollaborationAdmin(host.querySelector("[data-property-collaboration]"),{api,buildingId:target,onApproved:async()=>{forgetLayers();await renderProperty(host,target);}});
     }
   })) return true;
 

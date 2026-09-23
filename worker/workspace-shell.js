@@ -2,7 +2,7 @@ import {workspaceNavigation,workspaceHome,workspaceRoleLabel,workspaceGroups} fr
 const esc=value=>String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 export function renderWorkspaceShell(html,identity,environment={}) {
   // Explicit allowlist: never serialize cookies, auth tokens, or provider claims.
-  const session={email:identity.email,role:identity.role,name:identity.name||'',owner:identity.owner===true,property_ids:identity.property_ids||[],demo:identity.demo===true,...environment};
+  const session={email:identity.email,role:identity.role,name:identity.name||'',owner:identity.owner===true,property_ids:identity.property_ids||[],property_collaboration_ids:identity.property_collaboration_ids||[],demo:identity.demo===true,...environment};
   const navigation=workspaceNavigation(session),groups=workspaceGroups(session),label=workspaceRoleLabel(session);
   html=html.replace(/<nav\b[^>]*id="sidebar-navigation"[^>]*>[\s\S]*?<\/nav>/,nav=>{
     const links=new Map([...nav.matchAll(/<a\b[^>]*data-route="([^"]+)"[^>]*>[\s\S]*?<\/a>/g)].map(m=>[m[1],m[0]]));
