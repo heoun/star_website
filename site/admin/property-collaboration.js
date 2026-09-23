@@ -43,7 +43,7 @@ export async function renderCollaborationAdmin(host,{api,buildingId,onApproved})
  try {
  const [{collaborations},{staff}]=await Promise.all([api(endpoint+'?building_id='+encodeURIComponent(buildingId)),api('/staff')]);
  const agents=staff.filter(s=>s.active&&s.role==='agent');
- host.innerHTML='<details class="case-disclosure" open><summary>Temporary Property Collaboration</summary><p>Assign an Agent to prepare changes for this property. Your approval is required before settings take effect. Marketing access is separate.</p>'+
+ host.innerHTML='<details class="case-disclosure"><summary>Temporary Property Collaboration</summary><p>Assign an Agent to prepare changes for this property. Your approval is required before settings take effect. Marketing access is separate.</p>'+
  '<form class="desk-form" data-grant><label>Agent<select name="agent_email" required><option value="">Select an Agent</option>'+agents.map(s=>'<option value="'+esc(s.email)+'">'+esc(s.name||s.email)+'</option>').join('')+'</select></label><label>Access Duration (Days)<input type="number" name="days" value="7" min="1" max="90" required></label><button class="primary">Grant Temporary Access</button><p role="status"></p></form>'+
  '<div class="collab-assignments">'+collaborations.map(r=>'<button type="button" data-review-id="'+esc(r.id)+'">'+esc(r.agent_email)+' · '+esc(statusLabel(r))+' · '+esc(time(r.expires_at))+'</button>').join('')+'</div><div data-review-host></div></details>';
  const refresh=async()=>{if(onApproved){await onApproved();return;}await renderCollaborationAdmin(host,{api,buildingId,onApproved});};
