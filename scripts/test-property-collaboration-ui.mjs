@@ -199,6 +199,14 @@ try{
  await g.locator('[data-settings-save="smoking"]').click();
  await g.locator('.property-steps [data-property-step="signing"]').click();
  await g.locator('.property-steps [data-property-step="good_cause"]').click();
+ const coverage=g.locator('[data-setting-pair="good_cause.mark_yes"]');
+ await coverage.selectOption('yes');
+ await g.locator('[data-settings-save="good_cause"]').click();
+ await g.getByText('Saved 2 values to the draft. Admin approval is required.',{exact:true}).waitFor();
+ await coverage.selectOption('no');
+ await g.locator('[data-settings-save="good_cause"]').click();
+ await g.getByText('Saved 2 values to the draft. Admin approval is required.',{exact:true}).waitFor();
+ assert.equal(await coverage.inputValue(),'no');
  const increase=g.locator('[data-setting-pair="good_cause.increase_above_threshold"]');
  const justification=g.locator('[data-setting="good_cause.increase_justification"]');
  await increase.selectOption('yes');
