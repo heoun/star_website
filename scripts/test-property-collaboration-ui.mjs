@@ -207,7 +207,13 @@ try{
  for (const height of [720, 1080, 1400]) {
   await a.setViewportSize({width:1920,height});
   const workbench=await a.locator('.property-flow').boundingBox();
-  assert(Math.abs(workbench.height-(height-32))<2,'Desktop workbench fills the viewport with 16px top/bottom margins');
+  assert(workbench.height<=height-32+2,'Workbench never exceeds the available viewport');
+  const nav=await a.locator('.property-steps').boundingBox();
+  const last=await a.locator('.property-steps [data-property-step]').last().boundingBox();
+  const preview=await a.locator('[data-property-preview]').boundingBox();
+  assert(Math.abs(nav.height-preview.height)<2,'Three columns remain equal height');
+  if(height>=1080) assert(Math.abs(nav.y+nav.height-last.y-last.height-17)<2,'Large screens stop 16px after the fifteenth step plus the border');
+  else assert(Math.abs(workbench.height-(height-32))<2,'Small screens use all available height');
   const footer=await a.locator('.property-step-footer').boundingBox();
   assert(Math.abs(footer.y+footer.height-workbench.y-workbench.height)<2,'Step navigation remains at the bottom of the workbench');
  }

@@ -390,9 +390,9 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 }
 .property-edit-actions [data-edit-state] { order: -1; margin-right: auto; align-self: center; color: var(--muted); font-size: 12px; }
 
-/* Once the step bar reaches the top, the entire desktop workbench fits below it. */
+/* Let the full step list set the desktop height, capped by the viewport. */
 @media(min-width:1121px) {
- .property-flow:not(.is-document) { height: calc(100dvh - 32px); min-height: 0; scroll-margin-top: 16px; }
- .property-flow:not(.is-document) > .property-steps,
- .property-flow:not(.is-document) .property-edit-preview { height: 100%; min-height: 0; }
+ .property-flow:not(.is-document) { height: auto; max-height: calc(100dvh - 32px); min-height: 0; scroll-margin-top: 16px; }
+ .property-flow:not(.is-document) > .property-steps { height: auto; min-height: 0; align-self: stretch; padding-bottom: 16px; }
+ .property-flow:not(.is-document) .property-edit-preview { height: auto; min-height: 0; align-self: stretch; contain: size; }
 }
