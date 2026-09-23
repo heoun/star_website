@@ -2,7 +2,6 @@ import {propertyGroups, compareNames} from './property-groups.js';
 import { openNewProperty } from "./property-import.js";
 import "./sidebar.js";
 import { syncListingKind, syncListingProperty } from "./listing-editor.js";
-import { renderAdminDashboard } from "./admin-dashboard.js";
 import { renderOnboarding } from "./onboarding.js";
 import { renderLandlordProperties } from "./landlord-properties.js";
 import { readDocxText } from "./docx.js";
@@ -521,7 +520,8 @@ const ROUTES = new Set(["overview", "listings", "applications", "dossier", "leas
 
 function readHash() {
   const parts = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
-  const name = ROUTES.has(parts[0]) ? parts[0] : "overview";
+  const home = session.owner ? "staff" : session.role === "landlord" ? "overview" : "applications";
+  const name = ROUTES.has(parts[0]) ? parts[0] : home;
   let id = "";
   try { id = decodeURIComponent(parts[1] || ""); } catch { /* malformed URL: show list */ }
   return { name, id };
@@ -558,8 +558,8 @@ async function goto({ name, id }) {
     location.replace("#/staff");
     return;
   }
-  // Agent tasks are a filter of My Rentals, not a second destination.
-  if (session.role === "agent" && name === "overview") {
+  // Retired Admin Dashboard links and Agent overview links open the rental queue.
+  if (["agent", "manager"].includes(session.role) && name === "overview") {
     location.replace("#/applications");
     return;
   }
@@ -571,10 +571,6 @@ async function goto({ name, id }) {
   // has to put it away first, or it stays on top of whatever loads behind it.
   if (name !== "leases" || !id) closeLeaseScreen();
 
-  if (name === "overview" && session.role === "manager") {
-    showRoute("overview", { rows: false }); crumbs([{ label: "Dashboard" }]);
-    return renderAdminDashboard(ROUTE_HOSTS.overview, { api, session });
-  }
   if (name === "onboarding") {
     showRoute("onboarding", { rows: false }); crumbs([{ label: "Landlord Onboarding", href: "#/onboarding" }, ...(id ? [{ label: id === "new" ? "Invite landlord" : "Review submission" }] : [])]);
     if (!isManager()) { ROUTE_HOSTS.onboarding.innerHTML = '<p role="alert">Only Admin can manage landlord onboarding.</p>'; return; }
@@ -957,7 +953,7 @@ function showSession() {
   whoRoleEl.textContent = session.name || label;
   document.body.dataset.role = session.role;
   const navigation = session.owner ? { staff: "Accounts & Access" } : session.role === "manager"
-    ? { overview: "Dashboard", applications: "Rentals", onboarding: "Landlord Onboarding", properties: "Properties & Settings", listings: "Listings", staff: "Accounts & Access", requests: "Change Requests" }
+    ? { applications: "Rentals", onboarding: "Landlord Onboarding", properties: "Properties & Settings", listings: "Listings", staff: "Accounts & Access", requests: "Change Requests" }
     : session.role === "agent"
       ? { applications: "My Rentals", listings: "Listings" }
       : { overview: "Awaiting My Decision", properties: "My Properties", leases: "Lease Documents" };
@@ -966,11 +962,11 @@ function showSession() {
     if (label) { link.querySelector("span").textContent = label; link.setAttribute("aria-label", label); link.title = label; link.querySelector("abbr")?.setAttribute("title", label); }
   });
   const nav = document.querySelector(".nav");
-  document.querySelector('.side .brand').href = session.owner ? "#/staff" : session.role === "agent" ? "#/applications" : "#/overview";
-  document.querySelector('.side .brand').setAttribute("aria-label", session.owner ? "Star Real Estate access management" : session.role === "agent" ? "Star Real Estate my rentals" : "Star Real Estate dashboard");
+  document.querySelector('.side .brand').href = session.owner ? "#/staff" : session.role === "landlord" ? "#/overview" : "#/applications";
+  document.querySelector('.side .brand').setAttribute("aria-label", session.owner ? "Star Real Estate access management" : session.role === "landlord" ? "Star Real Estate awaiting decisions" : "Star Real Estate rentals");
   nav.querySelectorAll('.nav-section').forEach(section => section.remove());
   const groups = session.role === "manager"
-    ? {overview:"Workspace", properties:"Portfolio", staff:"Administration"}
+    ? {applications:"Workspace", properties:"Portfolio", staff:"Administration"}
     : session.role === "agent" ? {applications:"Workspace"} : {overview:"Workspace"};
   Object.keys(navigation).forEach(key => {
     if (groups[key]) {
