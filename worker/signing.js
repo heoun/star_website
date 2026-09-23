@@ -128,6 +128,7 @@ export async function handleRentalSigning(request,env,identity,id,ctx) {
       await Promise.all(Array.from({length:4},async()=>{while(cursor<sources.length){const i=cursor++;stored[i]=await files.put(packageId,'source_docx',new Response(sources[i].bytes).body);}}));
       const file=stored[0],documents=document.documents.map((d,i)=>({documentId:d.documentId,layout:d.layout,tenantRecipientId:d.tenantRecipientId,name:d.name,file:stored[i+1]}));
       const pkg={id:packageId,rentalId:id,approvalRevision:revision,templateVersion:document.templateVersion,
+        propertyLabel:[g.root.listings?.property_name || g.root.listings?.title,g.root.listings?.unit && `Unit ${g.root.listings.unit}`].filter(Boolean).join(' '),
         values,reviewFile:file,documents,signers,tabs:document.tabs,createdAt:new Date().toISOString(),createdBy:identity.email};
       const record=await flow.store.preview(pkg,versions);
       return json({configuration:config,signing:safeRecord(record),preview:true});
