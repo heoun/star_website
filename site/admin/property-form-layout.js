@@ -8,7 +8,7 @@ export const CHOICE_PAIRS = [
  {positive:'good_cause.increase_above_threshold',negative:'good_cause.increase_below_threshold',label:'Rent Increase',yes:'B — Above the threshold',no:'A — Not above the threshold'},
  {positive:'insurance.required_yes',negative:'insurance.required_no',label:'Renters Insurance',yes:'IS required',no:'IS NOT required'},
  {positive:'smoking.in_unit_yes',negative:'smoking.in_unit_no',label:'Smoking Allowance',yes:'IS allowed',no:'IS NOT allowed'},
- {positive:'sprinkler.mark_option2',negative:'sprinkler.mark_option1',label:'Sprinkler System',yes:'Present and maintained',no:'No sprinkler system in the unit'}
+ {positive:'sprinkler.mark_option2',negative:'sprinkler.mark_option1',label:'Sprinkler System',order:['no','yes'],yes:'Option 2 — Present and maintained',no:'Option 1 — No maintained and operative sprinkler system'}
 ];
 export const KEY_TYPES=[['unit','Unit Key'],['building','Building Key'],['mailbox','Mailbox Key'],['fob','Keyless Entry Remote / FOB'],['garage','Garage Door Remote'],['other','Other']];
 export const GOOD_CAUSE_QUESTIONS=[

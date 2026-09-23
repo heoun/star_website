@@ -266,7 +266,7 @@ function pairedRow(pair, fields, values, editing) {
   const yes = values[pair.positive] === true, no = values[pair.negative] === true;
   const value = yes !== no ? (yes ? "yes" : "no") : "";
   const display = value === "yes" ? pair.yes : value === "no" ? pair.no : yes ? "Conflicting choices — select one" : "Not selected";
-  return `<div class="line" data-setting-row="${pair.positive}"><label class="lbl" for="pair-${pair.positive}">${pair.label}</label><div>${editing ? `<select id="pair-${pair.positive}" data-setting-pair="${pair.positive}"><option value="" ${!value ? 'selected' : ''} disabled>Choose one…</option><option value="yes" ${value === "yes" ? 'selected' : ''}>${pair.yes}</option><option value="no" ${value === "no" ? 'selected' : ''}>${pair.no}</option></select><span class="panel-hint">Selecting one clears the other mark on the lease.</span>` : `<b>${display}</b>`}</div></div>`;
+  return `<div class="line" data-setting-row="${pair.positive}"><label class="lbl" for="pair-${pair.positive}">${pair.label}</label><div>${editing ? `<select id="pair-${pair.positive}" data-setting-pair="${pair.positive}"><option value="" ${!value ? 'selected' : ''} disabled>Choose one…</option>${(pair.order || ['yes','no']).map(option => `<option value="${option}" ${value === option ? 'selected' : ''}>${pair[option]}</option>`).join('')}</select><span class="panel-hint">Selecting one clears the other mark on the lease.</span>` : `<b>${display}</b>`}</div></div>`;
 }
 
 function sectionRows(section, values, editing, docLinked) {
