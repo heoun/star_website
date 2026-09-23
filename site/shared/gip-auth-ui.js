@@ -45,7 +45,7 @@ export async function mountGipAuth(host,{scope,post,enter,email:initialEmail='',
     });
   }
   function renderMfa(factors){
-    host.innerHTML=`<h2>Two-step verification</h2><p>Enter the current code from your authenticator.</p><form class="portal-login"><label>Authenticator<select name="factor_id">${factors.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('')}</select></label><label>Verification code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button type="submit" class="primary submit">Verify & sign in</button><p role="status"></p></form><div class="links gip-auth-links"><button type="button" id="gip-back">Back to sign in</button></div>`;
+    host.innerHTML=`<h2>Two-step verification</h2><p class="intro">Enter the current code from your authenticator.</p><form class="portal-login"><label>Authenticator<select name="factor_id">${factors.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('')}</select></label><label>Verification code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button type="submit" class="primary submit">Verify & Sign In</button><p class="status form-error" role="status"></p></form><div class="links gip-auth-links"><button type="button" id="gip-back">Back to Sign In</button></div>`;
     host.querySelector('#gip-back').onclick=()=>render('login');
     bind(async data=>{await send('mfa-login',data);await entered();});
   }

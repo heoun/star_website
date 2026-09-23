@@ -49,8 +49,8 @@ try{
  await page.getByLabel('Confirm password').fill('changed-workspace-password');await page.getByRole('button',{name:'Save password'}).click();await page.getByRole('heading',{name:'Welcome back'}).waitFor();assert.equal(signed,false);checks++;
  await page.getByLabel('Password',{exact:true}).fill('wrong-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByText('Email or password is incorrect.',{exact:true}).waitFor();checks++;
  await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByRole('heading',{name:'Two-step verification'}).waitFor();assert.equal(accepted,false);checks++;
- await page.getByLabel('Verification code').fill('000000');await page.getByRole('button',{name:'Verify & sign in'}).click();await page.getByText('Enter a valid authenticator code.',{exact:true}).waitFor();checks++;
- await page.getByLabel('Verification code').fill('123456');await page.getByRole('button',{name:'Verify & sign in'}).click();await page.waitForURL('**/admin/**');assert.equal(accepted,true);checks++;
+ await page.getByLabel('Verification code').fill('000000');await page.getByRole('button',{name:'Verify & Sign In'}).click();await page.getByText('Enter a valid authenticator code.',{exact:true}).waitFor();checks++;
+ await page.getByLabel('Verification code').fill('123456');await page.getByRole('button',{name:'Verify & Sign In'}).click();await page.waitForURL('**/admin/**');assert.equal(accepted,true);checks++;
  // Expired invitation cannot pin subsequent sign-in to an unusable token.
  await page.goto(base+'/login/#invite='+'b'.repeat(64));await page.getByText('This invitation is expired, replaced or already accepted.',{exact:true}).waitFor();assert.equal(await page.getByLabel('Email address').getAttribute('readonly'),null);checks++;
  // Applicant UI mounts GIP; workspace password cannot enter it.
