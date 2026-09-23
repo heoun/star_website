@@ -24,7 +24,7 @@ export async function mountGipAuth(host,{scope,post,enter,email:initialEmail='',
       ${password?`<label>${confirm?'New password':'Password'}<input name="password" type="password" autocomplete="${confirm?'new-password':'current-password'}" ${confirm?'minlength="8"':''} maxlength="200" required></label>`:''}
       ${confirm?'<label>Confirm password<input name="confirm" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>':''}
       <button type="submit" class="primary submit">${mode==='login'?'Sign in':mode==='register'?'Create account':mode==='verify-confirm'?'Confirm email':confirm?'Save password':'Send email link'}</button><p class="status form-error" role="status">${esc(notice)}</p></form>
-      <div class="links">${mode==='login'?`${workspace?'<button type="button" data-mode="activate">Activate an invited account</button>':'<button type="button" data-mode="register">Create an account</button><button type="button" data-mode="resend">Resend confirmation</button>'}<button type="button" data-mode="reset">Forgot password?</button>`:'<button type="button" data-mode="login">Back to sign in</button>'}</div>`;
+      <div class="links gip-auth-links">${mode==='login'?`${workspace?'<button type="button" data-mode="activate">Activate an invited account</button>':'<button type="button" data-mode="register">Create an account</button><button type="button" data-mode="resend">Resend confirmation</button>'}<button type="button" data-mode="reset">Forgot password?</button>`:'<button type="button" data-mode="login">Back to sign in</button>'}</div>`;
     host.querySelectorAll('[data-mode]').forEach(button=>button.onclick=()=>{email=host.querySelector('[name=email]').value.trim();code='';render(button.dataset.mode);});
     bind(async data=>{
       email=data.email.trim().toLowerCase();
@@ -45,7 +45,7 @@ export async function mountGipAuth(host,{scope,post,enter,email:initialEmail='',
     });
   }
   function renderMfa(factors){
-    host.innerHTML=`<h2>Two-step verification</h2><p>Enter the current code from your authenticator.</p><form class="portal-login"><label>Authenticator<select name="factor_id">${factors.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('')}</select></label><label>Verification code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button type="submit" class="primary submit">Verify & sign in</button><p role="status"></p></form><button type="button" id="gip-back">Back to sign in</button>`;
+    host.innerHTML=`<h2>Two-step verification</h2><p>Enter the current code from your authenticator.</p><form class="portal-login"><label>Authenticator<select name="factor_id">${factors.map(f=>`<option value="${esc(f.id)}">${esc(f.name)}</option>`).join('')}</select></label><label>Verification code<input name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required></label><button type="submit" class="primary submit">Verify & sign in</button><p role="status"></p></form><div class="links gip-auth-links"><button type="button" id="gip-back">Back to sign in</button></div>`;
     host.querySelector('#gip-back').onclick=()=>render('login');
     bind(async data=>{await send('mfa-login',data);await entered();});
   }
