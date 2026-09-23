@@ -124,7 +124,9 @@ try{
  await g.locator('[data-settings-save="management"]').click();
  await g.getByText('Saved 1 value to the draft. Admin approval is required.').waitFor();
  await g.locator('.property-steps [data-property-step="signing"]').click();
+ await g.screenshot({path:'/tmp/property-signer-fields.png',fullPage:true});
  await g.locator('#property-signer').click();
+ await g.screenshot({path:'/tmp/property-signer-dialog.png',fullPage:true});
  await g.locator('#signer-name').fill('Test Signer');
  await g.locator('#signer-email').fill('signer@example.test');
  await g.locator('#signer-save').click();

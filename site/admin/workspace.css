@@ -245,7 +245,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .property-step-content .line > .src { grid-column: 2; justify-self: start; }
 .property-step-content .line > button { grid-column: 2; justify-self: start; }
 .property-step-content .line > div { min-width: 0; }
-.property-step-content .panel-hint { line-height: 1.6; margin-top: 6px; }
+.property-step-content .panel-hint { display: block; line-height: 1.6; margin-top: 6px; }
 .property-step-content .line input:not([type="checkbox"]), .property-step-content .line select, .property-step-content .line textarea { width: 100%; }
 .property-step-footer { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 12px; margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--line); }
 .property-step-footer > span { color: var(--soft); font-size: 12px; }
@@ -369,3 +369,7 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 @container (max-width: 800px) {
   .property-edit-preview { grid-template-columns: minmax(0, 1fr); }
 }
+
+.property-field-missing { color: var(--bad); font-weight: 600; }
+
+.property-field-empty { font-size: inherit; }

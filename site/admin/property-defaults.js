@@ -101,7 +101,7 @@ function newDefaultsUi() {
 
 function valueCell(field, resolved) {
   if (!resolved.answered) {
-    return `<span class="empty${field.required ? " is-needed" : ""}">${
+    return `<span class="property-field-empty${field.required ? " property-field-missing" : ""}">${
       field.required ? "Needed — no answer for this property" : "Not answered"}</span>`;
   }
   return `<b>${escapeHtml(formatSettingValue(field, resolved.value))}</b>`;
@@ -192,19 +192,19 @@ function signingPanel(section, ctx) {
     </div>
     <div class="pbody">
       <div class="lines">
-        <div class="line${set ? "" : " is-needed"}" data-setting-row="landlord.print_name">
+        <div class="line" data-setting-row="landlord.print_name">
           <span class="lbl">Landlord signer’s name<span class="required-mark" aria-hidden="true"></span></span>
           <div>
             ${signer.answered
               ? `<b>${escapeHtml(signer.value)}</b>`
-              : '<span class="empty is-needed">Required — choose a signer</span>'}
+              : '<span class="property-field-missing">Not Entered</span>'}
           </div>
           ${isManager()
             ? `<button type="button" class="small${set ? "" : " primary"}" id="property-signer">${
-                set ? "Change signer" : "Set signer"}</button>`
-            : '<span class="locked">Manager only</span>'}
+                set ? "Change Signer" : "Set Signer"}</button>`
+            : '<span class="locked">View Only</span>'}
         </div>
-        <div class="line" data-setting-row="landlord_signer_email"><span class="lbl">Landlord signer’s email<span class="required-mark" aria-hidden="true"></span></span><div><b>${escapeHtml(signerEmail || "Not entered")}</b><span class="panel-hint">Receives the landlord signature request. Use Change signer to update.</span></div></div>
+        <div class="line" data-setting-row="landlord_signer_email"><span class="lbl">Landlord signer’s email<span class="required-mark" aria-hidden="true"></span></span><div><b>${escapeHtml(signerEmail || "Not entered")}</b><span class="panel-hint">Receives the DocuSign invitation to sign the lease.</span></div></div>
         ${inline.map((field) => settingRow(field, values, editing, docLinked)).join("")}
       </div>
     </div>
@@ -337,25 +337,24 @@ function signerDialog(signer, signerEmail, emailKnown) {
   return `<div class="sheet" data-signer-sheet>
     <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="signer-title">
       <div class="sheet-head">
-        <h2 id="signer-title">Set landlord signer</h2>
+        <h2 id="signer-title">Set Landlord Signer</h2>
         <button type="button" class="small" data-signer-close aria-label="Close">Close</button>
       </div>
       <div class="sheet-body">
-        <label for="signer-name">Authorised signer</label>
+        <label for="signer-name">Signer Name</label>
         <input type="text" required id="signer-name" value="${escapeHtml(signer.value || "")}"
                placeholder="The name printed above the signature line">
-        <label for="signer-email" style="margin-top:12px">Signature address</label>
+        <label for="signer-email" style="margin-top:12px">Signer Email</label>
         <input type="email" required id="signer-email" value="${escapeHtml(signerEmail)}"
-               placeholder="where the signature request is sent"${emailKnown ? "" : " disabled"}>
+               placeholder="name@example.com"${emailKnown ? "" : " disabled"}>
         ${emailKnown ? "" : `<p class="note" style="color:var(--warn)">This database cannot store a
           signature address yet. Run supabase/schema.sql on it and the field opens.</p>`}
-        <p class="note">The name is printed on every lease for this property. The address never
-           appears in the document — it is where the request goes. Both are fixed here: an agent
-           can read them and cannot change them.</p>
+        <p class="note">The name appears on the lease. The email receives the DocuSign signing invitation.</p>
+        <p class="note">${draftMode ? "Changes are saved to your draft and require Admin approval." : "Saving updates the property's landlord signer for future lease preparation."}</p>
       </div>
       <div class="sheet-foot">
         <button type="button" data-signer-close>Cancel</button>
-        <button type="button" class="primary" id="signer-save">Save signer</button>
+        <button type="button" class="primary" id="signer-save">Save Signer</button>
       </div>
     </div>
   </div>`;
