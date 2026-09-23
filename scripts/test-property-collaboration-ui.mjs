@@ -168,6 +168,7 @@ try{
   const host=document.querySelector('#test'),ui=editor.newDefaultsUi();
   host.innerHTML=editor.defaultsMarkup({fields:registry.fields.filter(f=>f.source==='manager'),values:{},ui,buildingId:'test'});
   editor.syncDefaultsNavigation(host,ui);
+  window.propertyLayoutTest={editor,host,ui,fields:registry.fields.filter(f=>f.source==='manager')};
  });
  await a.frameLocator('[data-property-preview]').locator('.is-current-match').filter({hasText:'123 Test Street'}).first().waitFor();
  await a.setViewportSize({width:1920,height:1080});
@@ -176,6 +177,25 @@ try{
  assert(previewBox.x>=formBox.x+formBox.width,'Desktop preview belongs to the right of the settings');
  assert(Math.abs(previewBox.y-formBox.y)<2,'Desktop panels should align at the top');
  await a.screenshot({path:'/tmp/property-admin-lease-preview.png',fullPage:true});
+ const navBox=await a.locator('.property-steps').boundingBox();
+ assert(Math.abs(navBox.y-formBox.y)<2 && Math.abs(navBox.height-previewBox.height)<2 && Math.abs(formBox.height-previewBox.height)<2,'All three columns align and have equal height');
+ await a.evaluate(async()=>{
+  const {editor,host,ui,fields}=window.propertyLayoutTest;
+  const {renderWithPropertyPreview}=await import('/admin/property-preview.js');
+  ui.activeSection='payments';ui.editingGroup='payments';
+  renderWithPropertyPreview(host,editor.defaultsMarkup({fields,values:{},ui,buildingId:'test'}));
+  editor.syncDefaultsNavigation(host,ui);
+ });
+ const saveBefore=await a.locator('[data-settings-save]').boundingBox();
+ const headingBefore=await a.locator('.property-edit-pane .phead').boundingBox();
+ const documentScroll=await a.frameLocator('[data-property-preview]').locator('#document').evaluate(el=>el.scrollTop);
+ const scroll=await a.locator('.property-edit-pane .pbody').evaluate(el=>{el.scrollTop=el.scrollHeight;return {top:el.scrollTop,height:el.clientHeight,total:el.scrollHeight};});
+ assert(scroll.top>0 && scroll.total>scroll.height,'Long form scrolls inside its panel');
+ assert.deepEqual(await a.locator('[data-settings-save]').boundingBox(),saveBefore,'Save stays visible while the form scrolls');
+ assert.deepEqual(await a.locator('.property-edit-pane .phead').boundingBox(),headingBefore,'Form heading stays fixed');
+ assert.equal(await a.frameLocator('[data-property-preview]').locator('#document').evaluate(el=>el.scrollTop),documentScroll,'Form scrolling does not move the lease');
+ await a.screenshot({path:'/tmp/property-balanced-payments.png',fullPage:true});
+
  assert.deepEqual(errors,[]);
  assert(agentWrites.every(path=>path.startsWith('/api/admin/property-collaborations/')),'Agent editor must never call a live settings write');
  assert.equal((await db.query('select field_values from lease_settings')).rows[0].field_values['manager.name'],'Draft Property Manager');

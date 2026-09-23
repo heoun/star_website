@@ -101,8 +101,7 @@ function newDefaultsUi() {
 
 function valueCell(field, resolved) {
   if (!resolved.answered) {
-    return `<span class="property-field-empty${field.required ? " property-field-missing" : ""}">${
-      field.required ? "Needed — no answer for this property" : "Not answered"}</span>`;
+    return `<span class="property-field-empty${field.required ? " property-field-missing" : ""}">Not Entered</span>`;
   }
   return `<b>${escapeHtml(formatSettingValue(field, resolved.value))}</b>`;
 }
@@ -144,14 +143,14 @@ function settingRow(field, values, editing, docLinked) {
   const resolved = resolve(field, values);
   const needed = field.required && !resolved.answered;
 
-  return `<div class="line${needed && !editing ? " is-needed" : ""}"
+  return `<div class="line${needed && !editing && docLinked ? " is-needed" : ""}"
     data-setting-row="${escapeHtml(field.id)}">
     <label class="lbl" for="set-${escapeHtml(field.id)}">${escapeHtml(PROPERTY_LABELS[field.id] || field.label)}${field.required?'<span class="required-mark" aria-hidden="true"></span>':''}</label>
     <div>
       ${editing ? control(field, resolved, docLinked) : valueCell(field, resolved)}
       ${field.note ? `<span class="panel-hint">${escapeHtml(field.note)}</span>` : ""}
     </div>
-    ${editing || resolved.answered ? "" : '<span class="src src-computed">Unanswered</span>'}
+    ${!docLinked || editing || resolved.answered ? "" : '<span class="src src-computed">Unanswered</span>'}
   </div>`;
 }
 
@@ -187,7 +186,7 @@ function signingPanel(section, ctx) {
       </div>
       <div class="phead-tools">
         ${set ? '<span class="pill is-good">Complete</span>' : '<span class="pill is-bad">1 required</span>'}
-        ${editTools(section.id, editing)}
+        ${!editing || docLinked ? editTools(section.id, editing) : ""}
       </div>
     </div>
     <div class="pbody">
@@ -208,6 +207,7 @@ function signingPanel(section, ctx) {
         ${inline.map((field) => settingRow(field, values, editing, docLinked)).join("")}
       </div>
     </div>
+    ${editing && !docLinked ? `<div class="property-edit-actions">${editTools(section.id, true)}</div>` : ""}
   </article>`;
 }
 
@@ -230,14 +230,16 @@ function sectionPanel(section, ctx) {
           : short > 0
             ? `<span class="pill is-bad">${short} required</span>`
             : '<span class="pill is-good">Complete</span>'}
-        ${editTools(section.id, editing)}
+        ${!editing || docLinked ? editTools(section.id, editing) : ""}
       </div>
     </div>
     <div class="pbody">
+      ${!docLinked ? sectionContext(section.id, ctx) : ""}
       <div class="lines">
         ${sectionRows(section, values, editing, docLinked)}
       </div>
     </div>
+    ${editing && !docLinked ? `<div class="property-edit-actions">${editTools(section.id, true)}</div>` : ""}
   </article>`;
 }
 
@@ -270,6 +272,20 @@ function sectionRows(section, values, editing, docLinked) {
       return field ? settingRow({...field,label:suffix === "qty" ? "Quantity issued" : "Replacement charge per key / FOB"},values,editing,docLinked) : "";
     }).join("")}</div></section>`).join("");
     return rows + section.fields.filter(field => field.id.endsWith("_label")).map(field => settingRow(field,values,editing,docLinked)).join("");
+  }
+
+  if (!docLinked && ["payments", "management"].includes(section.id)) {
+    const groups = section.id === "payments"
+      ? [["Lease Timing & Rent", f => /^(lease\.|rent\.)/.test(f.id)],
+         ["Payments & Deposits", f => /^(payee\.|deposit\.)/.test(f.id)],
+         ["Fees & Policies", f => !/^(lease\.|rent\.|payee\.|deposit\.)/.test(f.id)]]
+      : [["Property Management", f => f.id.startsWith("manager.")],
+         ["Legal Notices", f => f.id.startsWith("legal_notice.")],
+         ["Emergency Contact", f => !/^(manager\.|legal_notice\.)/.test(f.id)]];
+    return groups.map(([label, match]) => {
+      const fields = section.fields.filter(match);
+      return fields.length ? `<h3 class="property-question">${label}</h3>${sectionRows({...section, id:"group", fields}, values, editing, docLinked)}` : "";
+    }).join("");
   }
 
   if (section.id !== "good_cause") return section.fields.map(field => {
@@ -305,7 +321,7 @@ function defaultsMarkup(ctx) {
   if (section.id === "property") {
     const address = [building?.street, building?.city, building?.state_abbr, building?.zip].filter(Boolean).join(", ");
     panel = `<article class="panel"><div class="phead"><div><h2>Properties</h2><p>${section.note}</p></div>${isManager() ? '<button type="button" class="link" id="property-address">Edit address</button>' : ''}</div><div class="pbody"><div class="line"><span class="lbl">Property address</span><b>${escapeHtml(address || "No address recorded")}</b></div><p class="note">The apartment number is added from the listing when preparing a lease.</p></div></article>`;
-  } else panel = sectionContext(section.id, ctx, building) + (section.id === "signing" ? signingPanel(section, inner) : sectionPanel(section, inner));
+  } else panel = (ctx.docLinked ? sectionContext(section.id, ctx, building) : "") + (section.id === "signing" ? signingPanel(section, inner) : sectionPanel(section, inner));
   return `
     <div class="property-flow-intro"><h2 class="section-title">Lease Information</h2><p class="note">Follow the lease from property details through its riders. ${isManager() ? "Save each section as you go." : draftMode ? "Submitted draft · awaiting Admin review." : "View only · Admin maintains property values."}</p></div>
     <div class="property-flow${ctx.docLinked ? " is-document" : ""}">

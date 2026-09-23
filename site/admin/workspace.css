@@ -359,17 +359,32 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .account-invitation-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;width:100%;margin-top:12px}
 .account-invitation-actions button{width:100%;min-width:0;white-space:normal}
 
-/* Keep the current settings beside their lease location on desktop. */
-.property-step-content { container-type: inline-size; }
-.property-edit-preview { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 20px; align-items: start; }
-.property-edit-pane { min-width: 0; }
-.property-edit-preview > iframe { display: block; width: 100%; height: 760px; border: 1px solid #dce4eb; border-radius: 16px; background: white; }
-.property-edit-pane .line { grid-template-columns: minmax(0, 1fr); gap: 6px; overflow-wrap: anywhere; }
+/* One shared workbench for Admin settings and Agent drafts. */
+.property-flow:not(.is-document) { gap: 12px 20px; grid-template-rows: auto minmax(0,1fr) auto; }
+.property-flow:not(.is-document) > .property-step-content { display: contents; }
+.property-flow:not(.is-document) .property-step-position { grid-column: 1 / -1; grid-row: 1; margin: 0; }
+.property-flow:not(.is-document) > .property-steps { grid-column: 1; grid-row: 2; position: static; height: clamp(440px, calc(100dvh - 220px), 1000px); max-height: none; overflow: auto; align-content: start; box-sizing: border-box; }
+.property-edit-preview { grid-column: 2; grid-row: 2; display: grid; grid-template-columns: minmax(0,.85fr) minmax(0,1.15fr); gap: 20px; height: clamp(440px, calc(100dvh - 220px), 1000px); min-width: 0; }
+.property-edit-pane { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.property-edit-pane > .panel { margin: 0; flex: 1; min-height: 0; display: flex; flex-direction: column; overflow: hidden; border-radius: 12px; }
+.property-edit-pane > .panel > .phead { flex: none; padding: 16px 20px; }
+.property-edit-pane > .panel > .pbody { flex: 1; min-height: 0; overflow: auto; padding: 8px 20px 20px; overscroll-behavior: contain; scrollbar-gutter: stable; }
+.property-edit-pane .line { grid-template-columns: minmax(0,1fr); gap: 4px; padding: 12px 0; overflow-wrap: anywhere; }
 .property-edit-pane .line > .src, .property-edit-pane .line > button { grid-column: 1; }
-@container (max-width: 800px) {
-  .property-edit-preview { grid-template-columns: minmax(0, 1fr); }
-}
-
+.property-edit-pane .property-question { margin: 18px 0 4px; font-size: 13px; }
+.property-edit-pane .property-question:first-child { margin-top: 8px; }
+.property-edit-actions { display: flex; justify-content: flex-end; gap: 10px; padding: 12px 20px; border-top: 1px solid var(--line); background: white; flex: none; }
+.property-edit-preview > iframe { display: block; width: 100%; height: 100%; min-width: 0; min-height: 0; box-sizing: border-box; border: 1px solid #dce4eb; border-radius: 12px; background: white; }
+.property-flow:not(.is-document) .property-step-footer { grid-column: 1 / -1; grid-row: 3; margin-top: 0; padding-top: 12px; }
 .property-field-missing { color: var(--bad); font-weight: 600; }
-
 .property-field-empty { font-size: inherit; }
+@media(max-width:1120px) {
+ .property-flow:not(.is-document) > .property-steps { grid-column: 1 / -1; grid-row: 2; height: auto; display: flex; overflow-x: auto; }
+ .property-edit-preview { grid-column: 1 / -1; grid-row: 3; }
+ .property-flow:not(.is-document) .property-step-footer { grid-row: 4; }
+}
+@media(max-width:760px) {
+ .property-edit-preview { grid-template-columns: minmax(0,1fr); height: auto; }
+ .property-edit-pane { height: min(640px, 80dvh); }
+ .property-edit-preview > iframe { height: min(760px, 85dvh); }
+}
