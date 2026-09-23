@@ -8,7 +8,7 @@ const fact = (label,v) => `<div class="rg-fact"><span>${e(label)}</span><b>${e(v
 const facts = entries => `<div class="rg-fields">${entries.map(([label,v])=>fact(label,v)).join('')}</div>`;
 const sub = (title,body) => `<div class="rg-subsection"><h4>${e(title)}</h4>${body}</div>`;
 const empty = text => `<p class="rg-empty">${e(text)}</p>`;
-const employment = (x={},income) => facts([['Employer',x.employer],['Position',x.position],['Employed since',x.start],...(x.end ? [['Employed until',x.end]] : []),['Annual income',income ?? x.income],['Supervisor',x.supervisor_name],['Supervisor phone',x.supervisor_phone],['Supervisor email',x.supervisor_email]]);
+const employment = (x,income) => { x ??= {}; return facts([['Employer',x.employer],['Position',x.position],['Employed since',x.start],...(x.end ? [['Employed until',x.end]] : []),['Annual income',income ?? x.income],['Supervisor',x.supervisor_name],['Supervisor phone',x.supervisor_phone],['Supervisor email',x.supervisor_email]]); };
 const rental = (x={}) => facts([['Address',x.address],['From',x.start],['Until',x.end],['Monthly rent',x.monthly_rent],['Landlord',x.landlord_name],['Contact',x.contact],['Landlord phone',x.landlord_phone],['Landlord email',x.landlord_email]]);
 const contactCard = (x,i,label) => `<article class="rg-contact-card" aria-label="${e(label)} ${i+1}"><header><span>${e(label)} ${i+1}</span><h4>${e(x.name || 'Name not provided')}</h4></header>${facts([['Relationship',x.relationship],['Phone',x.phone],['Email',x.email]])}</article>`;
 const descriptor = (name,label,v,type='text')=>({name,label,value:v,type});

@@ -11,6 +11,14 @@ const summary=rentalMembers({root:m,members:[m]})[0];
 assert.equal(summary.credit_score,null);assert.notEqual(summary.report_status,'Complete');
 const render=(person=m,s=summary)=>applicantColumns(person,ctx,s,v=>v??'Not stated');
 const out=render();
+// Imported co-tenants can have no employment record yet. Database nulls
+// must render the missing fields rather than break the whole rental group.
+for(const current_employer of [null,undefined]) {
+ const partial=render({...m,employment_status:null,current_employer,employment_history:null,rental_history:null,reference_contacts:null,emergency_contacts:null,pets:null});
+ assert(partial.screening.includes('Current employment'));
+ assert(partial.screening.includes('Not provided'));
+ assert(partial.lease.includes(m.name));
+}
 assert(out.overview.includes('783') && !out.overview.includes('External report, pending review'));
 assert(out.overview.includes('/api/admin/documents/external-report'));
 assert(out.screening.includes('Example Bakery')&&out.screening.includes('09/2026'));
