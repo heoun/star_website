@@ -27,7 +27,9 @@ export function syncPropertyPreview(host,ui){
   const sync=event=>{
    const input=event.target;if(!input.matches('[data-setting],[data-setting-pair],[id^="address-"],#signer-name,#signer-email'))return;
    const address={'address-abbr':'property.state_abbr'};
-   const id=input.dataset.setting||input.dataset.settingPair||address[input.id]||(input.id.startsWith('address-')?'property.'+input.id.slice(8):input.id==='signer-name'?'landlord.print_name':'landlord_signer_email');
+   const pair=CHOICE_PAIRS.find(pair=>pair.positive===input.dataset.settingPair);
+   const pairId=pair?(input.value==='no'?pair.negative:pair.positive):input.dataset.settingPair;
+   const id=input.dataset.setting||pairId||address[input.id]||(input.id.startsWith('address-')?'property.'+input.id.slice(8):input.id==='signer-name'?'landlord.print_name':'landlord_signer_email');
    update(host,host.propertyPreviewUi,id);
   };
   host.addEventListener('input',sync);host.addEventListener('change',sync);host.addEventListener('focusin',sync);bindings.add(host);

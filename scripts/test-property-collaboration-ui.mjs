@@ -171,7 +171,13 @@ try{
  await g.screenshot({path:'/tmp/property-bedbug-preview.png',fullPage:true});
  await g.locator('[data-settings-cancel]').click();
  await g.locator('.property-steps [data-property-step="sprinkler"]').click();
- await g.locator('[data-setting-pair="sprinkler.mark_option2"]').selectOption('yes');
+ const sprinklerChoice=g.locator('[data-setting-pair="sprinkler.mark_option2"]');
+ await sprinklerChoice.selectOption('no');
+ await g.frameLocator('[data-property-preview]').locator('[data-lease-slot="sprinkler.mark_option1"].is-current-match').waitFor();
+ assert.match(await g.frameLocator('[data-property-preview]').locator('[data-lease-slot="sprinkler.mark_option1"]').first().textContent(),/X/);
+ assert.doesNotMatch(await g.frameLocator('[data-property-preview]').locator('[data-lease-slot="sprinkler.mark_option2"]').first().textContent(),/X/);
+ await sprinklerChoice.selectOption('yes');
+ await g.frameLocator('[data-property-preview]').locator('[data-lease-slot="sprinkler.mark_option2"].is-current-match').waitFor();
  const inspection=g.locator('[data-setting="sprinkler.last_inspection"]');
  assert.equal(await inspection.getAttribute('aria-required'),'true');
  const writes=agentWrites.length;
