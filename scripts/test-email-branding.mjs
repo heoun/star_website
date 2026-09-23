@@ -62,7 +62,8 @@ try {
   globalThis.fetch=async(url,init={})=>{
     const path=new URL(url).pathname;
     if(path==='/rest/v1/staff')return Response.json([{email:invited,role:'agent',active}]);
-    if(path==='/rest/v1/workspace_invitations'){stored.push(JSON.parse(init.body));return Response.json([]);}
+    if(path==='/rest/v1/app_users')return Response.json([]);
+    if(path==='/rest/v1/workspace_invitations'){if(init.method==='POST')stored.push(JSON.parse(init.body));return Response.json([]);}
     assert.equal(url,'https://api.resend.com/emails');delivered.push(JSON.parse(init.body));return Response.json({id:'fixture-invitation'});
   };
   assert.equal(await sendEmail(request,dev,{...base,to:[invited]}),false);
