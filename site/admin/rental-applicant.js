@@ -10,8 +10,7 @@ const sub = (title,body) => `<div class="rg-subsection"><h4>${e(title)}</h4>${bo
 const empty = text => `<p class="rg-empty">${e(text)}</p>`;
 const employment = (x={},income) => facts([['Employer',x.employer],['Position',x.position],['Employed since',x.start],...(x.end ? [['Employed until',x.end]] : []),['Annual income',income ?? x.income],['Supervisor',x.supervisor_name],['Supervisor phone',x.supervisor_phone],['Supervisor email',x.supervisor_email]]);
 const rental = (x={}) => facts([['Address',x.address],['From',x.start],['Until',x.end],['Monthly rent',x.monthly_rent],['Landlord',x.landlord_name],['Contact',x.contact],['Landlord phone',x.landlord_phone],['Landlord email',x.landlord_email]]);
-const contact = x => facts([['Name',x.name],['Relationship',x.relationship],['Phone',x.phone],['Email',x.email]]);
-const emergencyContact = (x,i) => `<article class="rg-contact-card" aria-label="Emergency contact ${i+1}"><header><span>Emergency contact ${i+1}</span><h4>${e(x.name || 'Name not provided')}</h4></header>${facts([['Relationship',x.relationship],['Phone',x.phone],['Email',x.email]])}</article>`;
+const contactCard = (x,i,label) => `<article class="rg-contact-card" aria-label="${e(label)} ${i+1}"><header><span>${e(label)} ${i+1}</span><h4>${e(x.name || 'Name not provided')}</h4></header>${facts([['Relationship',x.relationship],['Phone',x.phone],['Email',x.email]])}</article>`;
 const descriptor = (name,label,v,type='text')=>({name,label,value:v,type});
 export function correctionFields(m,key) {
  const d=descriptor;
@@ -63,6 +62,6 @@ export function applicantColumns(m,ctx,summary,money) {
  +section('employment','Employment and income',employmentBody)
  +section('history','Rental history',sub("Tenant’s current address",rental(current || {address:m.current_address}))+sub("Tenant’s previous address",previous.length?previous.map(rental).join(''):empty('No previous address history provided.')))
  +section('documents','Documents',documents)
- +section('contacts','References and contacts',sub(`References · ${(m.reference_contacts || []).length} / 2 minimum`,(m.reference_contacts || []).length?m.reference_contacts.map((x,i)=>sub(`Reference ${i+1}`,contact(x))).join(''):empty('References not provided.'))+sub(`Emergency contacts · ${(m.emergency_contacts || []).length}`,(m.emergency_contacts || []).length?`<div class="rg-contact-list">${m.emergency_contacts.map(emergencyContact).join('')}</div>`:empty('Emergency contact not provided.')));
+ +section('contacts','References and contacts',sub(`References · ${(m.reference_contacts || []).length}`,(m.reference_contacts || []).length?`<div class="rg-contact-list">${m.reference_contacts.map((x,i)=>contactCard(x,i,'Reference')).join('')}</div>`:empty('References not provided.'))+sub(`Emergency contacts · ${(m.emergency_contacts || []).length}`,(m.emergency_contacts || []).length?`<div class="rg-contact-list">${m.emergency_contacts.map((x,i)=>contactCard(x,i,'Emergency contact')).join('')}</div>`:empty('Emergency contact not provided.')));
  return {lease,screening,overview};
 }
