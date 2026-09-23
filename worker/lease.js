@@ -202,6 +202,9 @@ export function fieldProvenance(layers) {
 // Resolves every placeholder, and reports what is still unanswered rather than
 // quietly substituting a blank.
 export function resolveValues({ layers, deal, overrides = {} }) {
+  // An omitted optional rental due day inherits the property's standing term.
+  overrides={...overrides};
+  if(overrides['rent.due_day']==null || String(overrides['rent.due_day']).trim()==='')delete overrides['rent.due_day'];
   const settings = mergeLayers(layers);
   // Property-level choices provide starting values; explicit rental overrides win.
   deal={...deal};

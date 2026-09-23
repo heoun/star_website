@@ -169,14 +169,14 @@ async function fetchValues() {
     const phase=caseRow.workspace?.signing?.phase;
     state.readOnly=state.requestedReadOnly || ['lease_sent','lease_signed','declined'].includes(caseRow.status) || !!(phase && !['voided','declined'].includes(phase));
     state.landlordEmail=state.signing?.signing?.signers?.find(s=>s.role==='landlord')?.email || caseRow.workspace?.recommendation?.landlord_email || '';
-    if(!state.landlordEmail){
+    if(!state.landlordEmail || signing?.configuration?.reviewOnly){
       const [{landlords=[]},buildingData]=await Promise.all([
         api(`/cases/${id}/participants`).catch(()=>({})),
         buildings.length?Promise.resolve({buildings}):api('/buildings').catch(()=>({buildings:[]}))
       ]);
       buildings=buildingData.buildings;
       const building=buildings.find(b=>b.id===caseRow.listings?.building_id);
-      state.landlordEmail=landlords.find(l=>l.email===building?.landlord_signer_email)?.email || (landlords.length===1?landlords[0].email:'');
+      state.landlordEmail=signing?.configuration?.reviewOnly ? (building?.landlord_signer_email || '') : (landlords.find(l=>l.email===building?.landlord_signer_email)?.email || (landlords.length===1?landlords[0].email:''));
     }
     state.values = payload.values;
     state.frozen=payload.frozen;

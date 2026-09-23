@@ -118,7 +118,7 @@ export async function handleRentalSigning(request,env,identity,id,ctx) {
       }
       const [signers,previews]=await Promise.all([recipients(env,reviewOnly?{...g,root:{...g.root,lease_snapshot:values}}:g,request,reviewOnly),flow.store.previews(id)]);
       const versions=Object.fromEntries(g.members.map(m=>[m.id,m.workspace_version || 0]));
-      const saved=previews.find(p=>p.record.package.templateVersion===SIGNING_TEMPLATE_VERSION && p.record.package.approvalRevision===revision && sameSigners(signers,p.record.package.signers) && Object.keys(p.member_versions).length===g.members.length && g.members.every(m=>p.member_versions[m.id]===versions[m.id]));
+      const saved=previews.find(p=>p.record.package.templateVersion===SIGNING_TEMPLATE_VERSION && p.record.package.approvalRevision===revision && Object.keys(values).every(key=>p.record.package.values[key]===values[key]) && sameSigners(signers,p.record.package.signers) && Object.keys(p.member_versions).length===g.members.length && g.members.every(m=>p.member_versions[m.id]===versions[m.id]));
       if(saved)return json({configuration:config,signing:safeRecord(saved.record),preview:true});
       const packageId=crypto.randomUUID();
       let document;try{document=await buildSigningLease(env,request,values,signers,Object.fromEntries(g.members.map(m=>[m.id,{'tenant.mailing_address':m.current_address || ''}])));}catch(e){throw error(e.message,409);}

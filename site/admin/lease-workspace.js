@@ -37,7 +37,7 @@ export function reviewIssues(state) {
   if(state.signing?.configuration?.enabled && !state.landlordEmail)issues.push({tab:'recipients',label:'Assign a landlord signer email'});
   const emails=[...tenantSigners(state).map(t=>t.email),state.landlordEmail].filter(Boolean).map(e=>String(e).toLowerCase());
   if(emails.some(e=>!/^\S+@[^\s@]+\.[^\s@]+$/.test(e)))issues.push({tab:'recipients',label:'Check signer email addresses'});
-  if(new Set(emails).size!==emails.length)issues.push({tab:'recipients',label:'Each signer needs a different email address'});
+  if(!state.signing?.configuration?.reviewOnly && new Set(emails).size!==emails.length)issues.push({tab:'recipients',label:'Each signer needs a different email address'});
   for(const id of state.dirty){
     const field=state.byId.get(id),v=state.values[id];
     if(field?.type==='date' && v && !parseDate(v))issues.push({id,label:`Check ${label(field)}`});
