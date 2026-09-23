@@ -298,6 +298,39 @@
       "then": "utility.other2",
       "idle": "N/A",
       "why": "As above, for the second spare row."
+    },
+    {
+      "id": "bedbug.building_eradicated_floors",
+      "kind": "required_when",
+      "label": "Affected floors — eradication carried out",
+      "where": "Bedbug Infestation History",
+      "when": "bedbug.mark_building_eradicated",
+      "then": [
+        "bedbug.building_eradicated_floors"
+      ],
+      "why": "Complete the blank for the selected disclosure."
+    },
+    {
+      "id": "bedbug.building_not_eradicated_floors",
+      "kind": "required_when",
+      "label": "Affected floors — no eradication",
+      "where": "Bedbug Infestation History",
+      "when": "bedbug.mark_building_not_eradicated",
+      "then": [
+        "bedbug.building_not_eradicated_floors"
+      ],
+      "why": "Complete the blank for the selected disclosure."
+    },
+    {
+      "id": "bedbug.other_details",
+      "kind": "required_when",
+      "label": "Other infestation history",
+      "where": "Bedbug Infestation History",
+      "when": "bedbug.mark_other",
+      "then": [
+        "bedbug.other_details"
+      ],
+      "why": "Complete the blank for the selected disclosure."
     }
   ],
   "fields": [
@@ -868,7 +901,8 @@
       "required": false,
       "default": null,
       "note": "Prints only when the attorney fee cap is checked.",
-      "scope": "building"
+      "scope": "building",
+      "required_when": "attorney_fees.cap_enabled"
     },
     {
       "id": "utility.water",
@@ -1367,7 +1401,8 @@
       "required": false,
       "default": null,
       "note": "Required by RPL 231-a when a maintained sprinkler system is selected.",
-      "scope": "building"
+      "scope": "building",
+      "required_when": "sprinkler.mark_option2"
     },
     {
       "id": "bedbug.mark_none",
@@ -1398,6 +1433,17 @@
       "scope": "building"
     },
     {
+      "id": "bedbug.building_eradicated_floors",
+      "label": "Affected floors — eradication carried out",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "scope": "building",
+      "required_when": "bedbug.mark_building_eradicated"
+    },
+    {
       "id": "bedbug.mark_building_not_eradicated",
       "label": "Building had an infestation; no eradication",
       "group": "building_disclosures",
@@ -1410,6 +1456,17 @@
       "required": false,
       "default": false,
       "scope": "building"
+    },
+    {
+      "id": "bedbug.building_not_eradicated_floors",
+      "label": "Affected floors — no eradication",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "scope": "building",
+      "required_when": "bedbug.mark_building_not_eradicated"
     },
     {
       "id": "bedbug.mark_apartment_eradicated",
@@ -1452,6 +1509,17 @@
       "required": false,
       "default": false,
       "scope": "building"
+    },
+    {
+      "id": "bedbug.other_details",
+      "label": "Other infestation history",
+      "group": "building_disclosures",
+      "source": "manager",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "scope": "building",
+      "required_when": "bedbug.mark_other"
     },
     {
       "id": "gas.provider_name",

@@ -154,6 +154,32 @@ try{
  await g.locator('.property-steps [data-property-step="signing"]').click();
  await g.getByRole('button',{name:'Save & Continue',exact:true}).click();
 
+ await g.locator('.property-steps [data-property-step="bedbug"]').click();
+ for(const [toggle,id] of [['bedbug.mark_building_eradicated','bedbug.building_eradicated_floors'],['bedbug.mark_building_not_eradicated','bedbug.building_not_eradicated_floors'],['bedbug.mark_other','bedbug.other_details']]) {
+  await g.locator(`[data-setting="${toggle}"]`).check();
+  const input=g.locator(`[data-setting="${id}"]`);
+  assert.equal(await input.getAttribute('aria-required'),'true');
+  const writes=agentWrites.length;
+  await g.locator('[data-settings-save="bedbug"]').click();
+  assert.equal(agentWrites.length,writes,'Missing bedbug details prevent saving');
+  await input.fill(id.endsWith('other_details')?'Example history':'2, 3');
+  await input.focus();
+  await g.frameLocator('[data-property-preview]').locator('.is-current-match').filter({hasText:id.endsWith('other_details')?'Example history':'2, 3'}).first().waitFor();
+  await g.locator(`[data-setting="${toggle}"]`).uncheck();
+  assert.equal(await input.getAttribute('aria-required'),'false');
+ }
+ await g.screenshot({path:'/tmp/property-bedbug-preview.png',fullPage:true});
+ await g.locator('[data-settings-cancel]').click();
+ await g.locator('.property-steps [data-property-step="sprinkler"]').click();
+ await g.locator('[data-setting-pair="sprinkler.mark_option2"]').selectOption('yes');
+ const inspection=g.locator('[data-setting="sprinkler.last_inspection"]');
+ assert.equal(await inspection.getAttribute('aria-required'),'true');
+ const writes=agentWrites.length;
+ await g.locator('[data-settings-save="sprinkler"]').click();
+ assert.equal(agentWrites.length,writes,'Actual inspection date required');
+ await inspection.fill('09/01/2026');
+ await g.locator('[data-settings-save="sprinkler"]').click();
+ await g.locator('.property-steps [data-property-step="signing"]').click();
  await g.screenshot({path:'/tmp/property-signer-fields.png',fullPage:true});
  await g.locator('#property-signer').click();
  await g.screenshot({path:'/tmp/property-signer-dialog.png',fullPage:true});

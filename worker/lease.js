@@ -211,9 +211,7 @@ export function resolveValues({ layers, deal, overrides = {} }) {
     deal['dhcr.mark_renewal']=settings['dhcr.lease_type']==='Renewal lease';
   }
   const sprinkler={...settings,...overrides};
-  if(sprinkler['sprinkler.mark_option2']===true && sprinkler['sprinkler.mark_option1']!==true){
-    if(!settings['sprinkler.last_inspection'])settings['sprinkler.last_inspection']=deal['lease.vacancy_lease_date'] || '';
-  } else settings['sprinkler.last_inspection']='';
+  if(sprinkler['sprinkler.mark_option2']!==true || sprinkler['sprinkler.mark_option1']===true) settings['sprinkler.last_inspection']='';
   const values = {};
   const missing = [];
 
@@ -249,7 +247,7 @@ export function resolveValues({ layers, deal, overrides = {} }) {
       if (parts) text = shortDate(parts);
     }
 
-    if (text === "" && field.required) missing.push(field.id);
+    if (text.trim() === "" && (field.required || (field.required_when && sprinkler[field.required_when] === true))) missing.push(field.id);
     values[field.id] = text;
   }
 

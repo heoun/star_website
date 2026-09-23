@@ -140,7 +140,7 @@ function control(field, resolved, docLinked) {
 }
 
 function fieldRequired(field, values) {
-  return field.required || (field.id === "attorney_fees.cap_amount" && values["attorney_fees.cap_enabled"] === true);
+  return field.required || (field.required_when && values[field.required_when] === true);
 }
 
 function settingRow(field, values, editing, docLinked) {
@@ -305,7 +305,7 @@ function sectionRows(section, values, editing, docLinked) {
 function sectionContext(id, ctx, building) {
   if (id === "bedbug") return `<div class="property-context"><b>Date of vacancy lease</b><p>Defaults to the listing release date when preparing each lease. The infestation history below is saved for this property.</p></div>`;
   if (id === "smoking") return `<div class="property-context"><b>Complaint procedure</b><p>Property manager: ${escapeHtml(ctx.values["manager.name"] || "Not entered")} · ${escapeHtml(ctx.values["manager.phone"] || "Phone not entered")}</p><button type="button" class="link" data-property-step="management">Edit management contact →</button></div>`;
-  if (id === "sprinkler") return `<div class="property-context"><b>Last Date Maintained</b><p>If a maintained system is selected and no date is entered, the listing release date is used when preparing the lease. Otherwise the date stays blank.</p></div>`;
+  if (id === "sprinkler") return `<div class="property-context"><b>Last Date Maintained</b><p>Enter the actual maintenance and inspection date when a maintained system is selected.</p></div>`;
   if (id === "dhcr") return `<div class="property-context"><b>Owner Consent Contact</b><p>New entries default to the landlord signer’s name, email and mailing address. You can enter a different consent contact.</p></div>`;
   return "";
 }
@@ -477,17 +477,23 @@ function syncDirectEditing(host, ui) {
   }
   const update = () => {
     const current=Object.fromEntries(inputs.map(el=>[key(el),read(el)]));
-    const cap=host.querySelector('[data-setting="attorney_fees.cap_amount"]');
-    const enabled=host.querySelector('[data-setting="attorney_fees.cap_enabled"]');
-    if(cap && enabled) {
-      cap.required=enabled.checked;
-      cap.setAttribute("aria-required",String(enabled.checked));
-      const label=cap.closest('[data-setting-row]').querySelector('.lbl');
+    const values={...ui.previewContext.values,...current};
+    for(const input of inputs.filter(el=>el.dataset.settingPair)) {
+      const pair=CHOICE_PAIRS.find(pair=>pair.positive===input.dataset.settingPair);
+      if(pair){values[pair.positive]=input.value==='yes';values[pair.negative]=input.value==='no';}
+    }
+    for(const field of ui.previewContext.fields.filter(field=>field.required_when)) {
+      const input=inputs.find(el=>el.dataset.setting===field.id);
+      if(!input) continue;
+      const required=!!fieldRequired(field,values);
+      input.required=required;input.setAttribute('aria-required',String(required));
+      const label=input.closest('[data-setting-row]').querySelector('.lbl');
       const mark=label.querySelector('.required-mark');
-      if(enabled.checked && !mark) label.insertAdjacentHTML('beforeend','<span class="required-mark" aria-hidden="true"></span>');
-      if(!enabled.checked) mark?.remove();
-      if(!enabled.checked || cap.value.trim()) { cap.setCustomValidity(""); cap.removeAttribute("aria-invalid"); }
-      const values={...ui.previewContext.values,...current};
+      if(required && !mark)label.insertAdjacentHTML('beforeend','<span class="required-mark" aria-hidden="true"></span>');
+      if(!required)mark?.remove();
+      if(!required || input.value.trim()){input.setCustomValidity('');input.removeAttribute('aria-invalid');}
+    }
+    {
       const section=sectionsFor(ui.previewContext.fields).find(item=>item.id===ui.activeSection);
       const missing=section.fields.filter(field=>fieldRequired(field,values)&&!resolve(field,values).answered).length;
       const step=host.querySelector('.property-steps [aria-current="step"]');
@@ -623,13 +629,19 @@ async function saveGroup(ctx, group) {
   const panel = host.querySelector(`[data-group-panel="${CSS.escape(group)}"]`);
   if (!panel) return;
 
-  const cap=panel.querySelector?.('[data-setting="attorney_fees.cap_amount"]');
-  const capEnabled=panel.querySelector?.('[data-setting="attorney_fees.cap_enabled"]');
-  if(capEnabled?.checked && !cap?.value.trim()) {
-    const message="Enter the attorneys’ fees cap amount when the cap is selected.";
-    if(cap){cap.required=true;cap.setAttribute("aria-invalid","true");cap.setCustomValidity(message);cap.reportValidity();cap.focus();}
-    setStatus(message,"error");
-    return false;
+  const entered={...values};
+  for(const input of panel.querySelectorAll('[data-setting]'))entered[input.dataset.setting]=input.type==='checkbox'?input.checked:input.value;
+  for(const input of panel.querySelectorAll('[data-setting-pair]')) {
+    const pair=CHOICE_PAIRS.find(pair=>pair.positive===input.dataset.settingPair);
+    if(pair){entered[pair.positive]=input.value==='yes';entered[pair.negative]=input.value==='no';}
+  }
+  for(const field of ctx.fields.filter(field=>field.required_when)) {
+    const input=panel.querySelector?.(`[data-setting="${field.id}"]`);
+    if(input && fieldRequired(field,entered) && !input.value.trim()) {
+      const message=field.id==='attorney_fees.cap_amount' ? "Enter the attorneys’ fees cap amount when the cap is selected." : `Enter ${field.label} for the selected option.`;
+      input.required=true;input.setAttribute('aria-invalid','true');input.setCustomValidity(message);input.reportValidity();input.focus();
+      setStatus(message,'error');return false;
+    }
   }
 
   // Only what actually changed, so a save writes what a person typed and

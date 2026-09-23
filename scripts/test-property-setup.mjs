@@ -25,7 +25,7 @@ assert.equal(resolve({'concession.default_terms':'One month free'})['concession.
 assert.equal(resolve({'concession.default_terms':'One month free'},{'concession.terms':'Agreed offer'})['concession.terms'],'Agreed offer');
 assert.equal(resolve({'concession.default_terms':'One month free'},{},{'concession.terms':''})['concession.terms'],'');
 const renewal=resolve({'dhcr.lease_type':'Renewal lease'});assert.notEqual(renewal['dhcr.mark_renewal'],renewal['dhcr.mark_vacancy']);
-assert.equal(resolve({'sprinkler.mark_option2':true},{'lease.vacancy_lease_date':'09/14/2026'})['sprinkler.last_inspection'],'09/14/2026');
+assert.equal(resolve({'sprinkler.mark_option2':true},{'lease.vacancy_lease_date':'09/14/2026'})['sprinkler.last_inspection'],'');
 assert.equal(resolve({'sprinkler.mark_option2':true,'sprinkler.last_inspection':'08/01/2026'},{'lease.vacancy_lease_date':'09/14/2026'})['sprinkler.last_inspection'],'08/01/2026');
 assert.equal(resolve({'sprinkler.mark_option1':true},{},{'sprinkler.last_inspection':'08/01/2026'})['sprinkler.last_inspection'],'');
 // A spare Other utility row parks at N/A until it is named; a named row needs a payer.
@@ -41,3 +41,10 @@ assert.equal(resolveValues({layers:{building:{'utility.other2':'Landlord'}},deal
 assert.equal(resolveValues({layers:{building:{'utility.other1_label':'Bicycle storage','utility.other1':'Tenant'}},deal:{}}).missing.includes('utility.other1'),false);
 assert.equal(LEASE_REGISTRY.fields.filter(f=>['utility.other1','utility.other2'].includes(f.id)).every(f=>!f.required && f.default==='N/A'),true);
 console.log('PASS property setup: 15 sections, full layout coverage, initial choices, linked contacts, overrides, concession and lease-type defaults, conditional dates, spare utility rows parked at N/A.');
+
+for(const [toggle,dependent] of [['bedbug.mark_building_eradicated','bedbug.building_eradicated_floors'],['bedbug.mark_building_not_eradicated','bedbug.building_not_eradicated_floors'],['bedbug.mark_other','bedbug.other_details'],['sprinkler.mark_option2','sprinkler.last_inspection']]) {
+ const check=values=>resolveValues({layers:{building:values,unit:{}},deal:{'lease.vacancy_lease_date':'09/14/2026'}});
+ assert(check({[toggle]:true}).missing.includes(dependent),'Selected disclosure requires its detail in final lease validation');
+ assert(!check({[toggle]:false}).missing.includes(dependent),'Unselected disclosure does not require details');
+ assert(!check({[toggle]:true,[dependent]:'09/01/2026'}).missing.includes(dependent),'Completed disclosure is accepted');
+}
