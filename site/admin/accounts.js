@@ -1,5 +1,14 @@
 import {renderAccountHistory} from './account-history.js';
-import { esc, heading as pageHeading, empty, send, generation } from "./admin-ui.js";
+import { esc, heading as pageHeading, empty, send as sendRequest, generation } from "./admin-ui.js";
+import {verifyWorkspaceIdentity} from '../shared/workspace-verify.js';
+async function send(api,path,body,method) {
+  try { return await sendRequest(api,path,body,method); }
+  catch(error) {
+    if(error.code!=='mfa_required')throw error;
+    await verifyWorkspaceIdentity();
+    return sendRequest(api,path,body,method);
+  }
+}
 const titles = { manager: "Admins", agent: "Agents", landlord: "Landlords" };
 const invitationMessage = invitation => invitation?.status === "sent" ? "Account saved. An invitation has been emailed." : invitation?.status === "failed" ? "Account saved, but the invitation email failed. Use Send Invitation to retry." : invitation?.status === "preview" ? "Account saved in the local demo. No invitation email was sent." : "Account saved.";
 const nameOf = role => ({ manager: "Admin", agent: "Agent", landlord: "Landlord" }[role]);
