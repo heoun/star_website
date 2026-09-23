@@ -37,7 +37,7 @@ try {
     equal(Object.keys(values).sort(),LEASE_REGISTRY.fields.filter(f=>f.source==="manager").map(f=>f.id).sort(),"Every property has all 125 stored lease defaults");
     for (const f of LEASE_REGISTRY.fields.filter(f=>f.source==="manager")) {
       if(f.type==="checkbox")assert.equal(typeof values[f.id],"boolean");
-      else assert(String(values[f.id]).trim(),f.id);
+      else if(!f.required_when || values[f.required_when]===true) assert(String(values[f.id]).trim(),f.id);
       if(f.type==="choice")assert(f.options.includes(values[f.id]),f.id);
       assert(!String(values[f.id]).includes("(mock)"),"Labels must not contaminate stored values");
     }

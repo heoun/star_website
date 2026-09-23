@@ -43,6 +43,7 @@ export function mockPropertyDefaults(building, landlord, index = 0, supplied = {
     "guest.consecutive_days": "4", "guest.total_days": "8", "guest.window_days": "30",
     "utility.other1_label": "Common laundry service", "utility.other2_label": "Package locker service",
     "key.other_label": "Storage room key", "sprinkler.mark_option2": true, "sprinkler.last_inspection": "08/15/2026",
+    "bedbug.building_eradicated_floors": "", "bedbug.building_not_eradicated_floors": "", "bedbug.other_details": "",
     "bedbug.mark_none": true, "smoking.inside_units": true, "smoking.in_unit_no": true,
     "smoking.other_areas": true, "smoking.other_areas_text": "The shared roof terrace is smoke-free in this example.",
     "good_cause.mark_yes": true, "good_cause.increase_below_threshold": true,
