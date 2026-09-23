@@ -40,7 +40,7 @@ const browser=await chromium.launch({headless:true}),context=await browser.newCo
 page.on('pageerror',e=>errors.push(e.message));
 if(process.env.DEBUG_REVIEW){page.on('response',r=>{if(r.status()>=400)console.log('HTTP',r.status(),r.url());});page.on('console',m=>{if(m.type()==='error')console.log(m.text());});}
 const out='/tmp/star-lease-review-ui';await mkdir(out,{recursive:true});let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
-const login=async email=>{await page.goto(`${base}/login/`);await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/admin/**');};
+const login=async email=>{await page.goto(`${base}/login/`);await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign In',exact:true}).click();await page.waitForURL('**/admin/**');};
 try{
  const flow=rentalWorkflow(env,new Request(base));await flow.reconcile(ids.b);
  const row=fixture.state.applications.find(a=>a.id===ids.b);

@@ -21,7 +21,7 @@ await new Promise(r=>server.listen(0,'127.0.0.1',r));
 const base=`http://127.0.0.1:${server.address().port}`,browser=await chromium.launch({headless:true}),context=await browser.newContext({viewport:{width:1600,height:1080},reducedMotion:'reduce'}),page=await context.newPage(),errors=[];
 page.on('pageerror',e=>errors.push(e.message));
 const out='/tmp/star-rental-ui';await mkdir(out,{recursive:true});let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
-const login=async email=>{await page.goto(`${base}/login/`);await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/admin/**');};
+const login=async email=>{await page.goto(`${base}/login/`);await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign In',exact:true}).click();await page.waitForURL('**/admin/**');};
 try{
  await login('admin@example.test');await page.goto(`${base}/admin/#/applications`);await page.locator('.rg-property').first().waitFor();
  for(const width of [1600,1280]){

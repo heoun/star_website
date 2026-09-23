@@ -33,7 +33,7 @@ try{
   else if(path.endsWith('/security'))data={provider:'gip',email:'member@example.invalid',factors:[{id:'totp',status:'verified'}],verified:mfa,recent_mfa:mfa,mfa_required:true};
   else if(path==='/api/admin/me')data={role:'agent'};
   else if(path==='/api/portal/login'){if(body.password!=='applicant-password'){status=401;data={error:'Email or password is incorrect.'};}else{appSigned=true;data={ok:true};}}
-  else if(path==='/api/portal/applications'){if(!appSigned){status=401;data={error:'Sign in.',auth_realm:'applicant'};}else data={email:'member@example.invalid',applications:[],document_types:[]};}
+  else if(path==='/api/portal/applications'){if(!appSigned){status=401;data={error:'Sign In.',auth_realm:'applicant'};}else data={email:'member@example.invalid',applications:[],document_types:[]};}
   else if(path==='/api/portal/sign-out'){appSigned=false;data={ok:true};}
   else{status=404;data={error:'Unsupported synthetic route'};}
   await route.fulfill({status,contentType:'application/json',body:JSON.stringify(data)});
@@ -41,24 +41,24 @@ try{
  // An invitation opens activation, not a generic welcome screen.
  await page.goto(base+'/login/#invite='+'a'.repeat(64));await page.getByRole('heading',{name:'Activate your account',exact:true}).waitFor();checks++;
  assert.equal(await page.getByLabel('Email address').inputValue(),'member@example.invalid');assert.equal(new URL(page.url()).hash,'');checks++;
- await page.getByRole('button',{name:'Send email link'}).click();await page.getByText('If this email is eligible',{exact:false}).waitFor();checks++;
+ await page.getByRole('button',{name:'Send Email Link'}).click();await page.getByText('If this email is eligible',{exact:false}).waitFor();checks++;
  // New action in the same tab reloads correctly and must not consume a link on GET.
  await page.goto(base+'/login/#action=activate&oob=synthetic-action&invite='+'a'.repeat(64));
  await page.getByLabel('New password',{exact:true}).fill('changed-workspace-password');await page.getByLabel('Confirm password').fill('mismatch-password');
- await page.getByRole('button',{name:'Save password'}).click();await page.getByText('The passwords do not match.',{exact:true}).waitFor();assert.equal(reset,false);checks++;
- await page.getByLabel('Confirm password').fill('changed-workspace-password');await page.getByRole('button',{name:'Save password'}).click();await page.getByRole('heading',{name:'Welcome back'}).waitFor();assert.equal(signed,false);checks++;
- await page.getByLabel('Password',{exact:true}).fill('wrong-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByText('Email or password is incorrect.',{exact:true}).waitFor();checks++;
- await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByRole('heading',{name:'Two-step verification'}).waitFor();assert.equal(accepted,false);checks++;
+ await page.getByRole('button',{name:'Save Password'}).click();await page.getByText('The passwords do not match.',{exact:true}).waitFor();assert.equal(reset,false);checks++;
+ await page.getByLabel('Confirm password').fill('changed-workspace-password');await page.getByRole('button',{name:'Save Password'}).click();await page.getByRole('heading',{name:'Welcome back'}).waitFor();assert.equal(signed,false);checks++;
+ await page.getByLabel('Password',{exact:true}).fill('wrong-password');await page.getByRole('button',{name:'Sign In',exact:true}).click();await page.getByText('Email or password is incorrect.',{exact:true}).waitFor();checks++;
+ await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Sign In',exact:true}).click();await page.getByRole('heading',{name:'Two-step verification'}).waitFor();assert.equal(accepted,false);checks++;
  await page.getByLabel('Verification code').fill('000000');await page.getByRole('button',{name:'Verify & Sign In'}).click();await page.getByText('Enter a valid authenticator code.',{exact:true}).waitFor();checks++;
  await page.getByLabel('Verification code').fill('123456');await page.getByRole('button',{name:'Verify & Sign In'}).click();await page.waitForURL('**/admin/**');assert.equal(accepted,true);checks++;
  // Expired invitation cannot pin subsequent sign-in to an unusable token.
  await page.goto(base+'/login/#invite='+'b'.repeat(64));await page.getByText('This invitation is expired, replaced or already accepted.',{exact:true}).waitFor();assert.equal(await page.getByLabel('Email address').getAttribute('readonly'),null);checks++;
  // Applicant UI mounts GIP; workspace password cannot enter it.
- await page.goto(base+'/portal/');await page.getByRole('button',{name:'Sign in',exact:true}).waitFor();
- await page.getByLabel('Email address').fill('member@example.invalid');await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByText('Email or password is incorrect.',{exact:true}).waitFor();checks++;
- await page.getByLabel('Password',{exact:true}).fill('applicant-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.getByRole('button',{name:'Sign out',exact:true}).waitFor();checks++;
- await page.getByRole('button',{name:'Sign out',exact:true}).click();await page.getByRole('button',{name:'Sign in',exact:true}).waitFor();assert.equal(signed,true);checks++;
- await page.getByRole('button',{name:'Forgot password?',exact:true}).click();await page.getByText('reset only your applicant password',{exact:false}).waitFor();checks++;
+ await page.goto(base+'/portal/');await page.getByRole('button',{name:'Sign In',exact:true}).waitFor();
+ await page.getByLabel('Email address').fill('member@example.invalid');await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Sign In',exact:true}).click();await page.getByText('Email or password is incorrect.',{exact:true}).waitFor();checks++;
+ await page.getByLabel('Password',{exact:true}).fill('applicant-password');await page.getByRole('button',{name:'Sign In',exact:true}).click();await page.getByRole('button',{name:'Sign Out',exact:true}).waitFor();checks++;
+ await page.getByRole('button',{name:'Sign Out',exact:true}).click();await page.getByRole('button',{name:'Sign In',exact:true}).waitFor();assert.equal(signed,true);checks++;
+ await page.getByRole('button',{name:'Forgot Password?',exact:true}).click();await page.getByText('reset only your applicant password',{exact:false}).waitFor();checks++;
  assert.deepEqual(errors,[]);checks++;
  assert.equal(await page.evaluate(()=>Object.values(localStorage).some(v=>/synthetic-action|workspace-password|applicant-password/.test(v))),false);checks++;
  console.log(`PASS ${checks} GIP browser activation, action-link navigation, password/MFA, invitation and applicant form checks.`);

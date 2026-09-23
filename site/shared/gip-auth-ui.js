@@ -17,14 +17,14 @@ export async function mountGipAuth(host,{scope,post,enter,email:initialEmail='',
   function render(mode='login',notice=''){
     const password=['login','register','reset-confirm','activate-confirm'].includes(mode),confirm=password&&mode!=='login';
     const titles={login:workspace?'Welcome back':'Applicant Portal',register:'Create your applicant account',activate:'Activate your account',reset:'Reset your password',resend:'Confirm your email','reset-confirm':'Choose a new password','activate-confirm':'Activate your account','verify-confirm':'Confirm your email'};
-    const intros={login:workspace?'Sign in with the email your team invited.':'Sign in to manage your rental applications.',register:'Your applicant account and password are separate from the team workspace.',activate:'Enter your invited email to receive an activation link.',reset:`We’ll send a link to reset only your ${workspace?'workspace':'applicant'} password.`,resend:'We’ll send a new email confirmation link.','reset-confirm':'Choose a new password. You will sign in afterwards and verify your authenticator if one is enrolled.','activate-confirm':'Choose a password for your workspace account.','verify-confirm':'Confirm that this is your email address, then sign in with your password.'};
+    const intros={login:workspace?'Sign In with the email your team invited.':'Sign In to manage your rental applications.',register:'Your applicant account and password are separate from the team workspace.',activate:'Enter your invited email to receive an activation link.',reset:`We’ll send a link to reset only your ${workspace?'workspace':'applicant'} password.`,resend:'We’ll send a new email confirmation link.','reset-confirm':'Choose a new password. You will sign in afterwards and verify your authenticator if one is enrolled.','activate-confirm':'Choose a password for your workspace account.','verify-confirm':'Confirm that this is your email address, then sign in with your password.'};
     const fixed=!!code||!!invite;
     host.innerHTML=`<h2>${titles[mode]}</h2><p class="intro">${intros[mode]}</p><form class="portal-login">
       <label>Email address<input name="email" type="email" autocomplete="username" maxlength="180" value="${esc(email)}" ${fixed?'readonly':''} required></label>
       ${password?`<label>${confirm?'New password':'Password'}<input name="password" type="password" autocomplete="${confirm?'new-password':'current-password'}" ${confirm?'minlength="8"':''} maxlength="200" required></label>`:''}
       ${confirm?'<label>Confirm password<input name="confirm" type="password" autocomplete="new-password" minlength="8" maxlength="200" required></label>':''}
-      <button type="submit" class="primary submit">${mode==='login'?'Sign in':mode==='register'?'Create account':mode==='verify-confirm'?'Confirm email':confirm?'Save password':'Send email link'}</button><p class="status form-error" role="status">${esc(notice)}</p></form>
-      <div class="links gip-auth-links">${mode==='login'?`${workspace?'<button type="button" data-mode="activate">Activate an invited account</button>':'<button type="button" data-mode="register">Create an account</button><button type="button" data-mode="resend">Resend confirmation</button>'}<button type="button" data-mode="reset">Forgot password?</button>`:'<button type="button" data-mode="login">Back to sign in</button>'}</div>`;
+      <button type="submit" class="primary submit">${mode==='login'?'Sign In':mode==='register'?'Create Account':mode==='verify-confirm'?'Confirm Email':confirm?'Save Password':'Send Email Link'}</button><p class="status form-error" role="status">${esc(notice)}</p></form>
+      <div class="links gip-auth-links">${mode==='login'?`${workspace?'<button type="button" data-mode="activate">Activate an Invited Account</button>':'<button type="button" data-mode="register">Create an Account</button><button type="button" data-mode="resend">Resend Confirmation</button>'}<button type="button" data-mode="reset">Forgot Password?</button>`:'<button type="button" data-mode="login">Back to Sign In</button>'}</div>`;
     host.querySelectorAll('[data-mode]').forEach(button=>button.onclick=()=>{email=host.querySelector('[name=email]').value.trim();code='';render(button.dataset.mode);});
     bind(async data=>{
       email=data.email.trim().toLowerCase();
@@ -35,12 +35,12 @@ export async function mountGipAuth(host,{scope,post,enter,email:initialEmail='',
       }else if(mode==='register'){
         await send('register',{email,password:data.password});render('login','Check your email and open the confirmation link before signing in.');
       }else if(mode==='verify-confirm'){
-        await send('verify-register',{code});code='';render('login','Email confirmed. Sign in with your password.');
+        await send('verify-register',{code});code='';render('login','Email confirmed. Sign In with your password.');
       }else if(mode==='reset-confirm'||mode==='activate-confirm'){
-        await send('verify-reset',{code,password:data.password,activation:mode==='activate-confirm'});code='';render('login','Password saved. Sign in with your new password.');
+        await send('verify-reset',{code,password:data.password,activation:mode==='activate-confirm'});code='';render('login','Password saved. Sign In with your new password.');
       }else{
         const result=await send(mode==='activate'?'workspace-code':mode==='reset'?'request-reset':'resend',{email});
-        render('login',result.existing_account?'Your account is already activated. Sign in with your current password.':'If this email is eligible, a link is on its way. Open it to continue.');
+        render('login',result.existing_account?'Your account is already activated. Sign In with your current password.':'If this email is eligible, a link is on its way. Open it to continue.');
       }
     });
   }

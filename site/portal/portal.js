@@ -134,21 +134,21 @@ import {mountGipAuth} from '../shared/gip-auth-ui.js';
       <h1>Applicant Portal</h1>
       ${accountNote()}
       <p class="lede">${invitedEmail
-        ? `This invitation was sent to ${escapeHtml(invitedEmail)}. Sign in with that address, or create your account with it, to continue the application.`
+        ? `This invitation was sent to ${escapeHtml(invitedEmail)}. Sign In with that address, or create your account with it, to continue the application.`
         : nextPath.startsWith("/apply/")
-          ? "Sign in, or create your account, to continue your application. Your account is where you follow its progress and upload your documents afterwards."
-          : "Follow your rental application and upload your supporting documents. Sign in with your applicant account."}</p>
+          ? "Sign In, or create your account, to continue your application. Your account is where you follow its progress and upload your documents afterwards."
+          : "Follow your rental application and upload your supporting documents. Sign In with your applicant account."}</p>
       <form class="portal-login" id="signin-form" novalidate>
         <label for="login-email">Email</label>
         <input id="login-email" type="email" maxlength="180" autocomplete="email" required
                value="${escapeHtml(state.email)}" ${invitedEmail ? 'readonly' : ''}>
         <label for="login-password">Password</label>
         <input id="login-password" type="password" maxlength="200" autocomplete="current-password" required>
-        <button type="submit" class="submit">Sign in</button>
+        <button type="submit" class="submit">Sign In</button>
         <p class="form-error" hidden></p>
       </form>
       <p class="portal-note">
-        <a href="#" id="to-register">Create an account</a> ·
+        <a href="#" id="to-register">Create an Account</a> ·
         <a href="#" id="to-reset">Forgot your password?</a>
       </p>
       <p class="portal-note">Haven’t applied yet? <a href="../rental/">Browse the rentals</a>
@@ -168,7 +168,7 @@ import {mountGipAuth} from '../shared/gip-auth-ui.js';
       const email = document.getElementById("login-email").value.trim();
       const password = document.getElementById("login-password").value;
       if (!validEmail(email)) throw new Error("Please enter a valid email address.");
-      if (invitedEmail && email.toLowerCase() !== invitedEmail) throw new Error("Sign in with the email this invitation was sent to.");
+      if (invitedEmail && email.toLowerCase() !== invitedEmail) throw new Error("Sign In with the email this invitation was sent to.");
       if (!password) throw new Error("Please enter your password.");
 
       state.email = email.toLowerCase();
@@ -198,10 +198,10 @@ import {mountGipAuth} from '../shared/gip-auth-ui.js';
           <label for="website">Website</label>
           <input id="website" tabindex="-1" autocomplete="off">
         </div>
-        <button type="submit" class="submit">Send confirmation code</button>
+        <button type="submit" class="submit">Send Confirmation Code</button>
         <p class="form-error" hidden></p>
       </form>
-      <p class="portal-note">Already have an account? <a href="#" id="to-signin">Sign in</a></p>
+      <p class="portal-note">Already have an account? <a href="#" id="to-signin">Sign In</a></p>
     `;
 
     document.getElementById("to-signin").addEventListener("click", (event) => {
@@ -242,7 +242,7 @@ import {mountGipAuth} from '../shared/gip-auth-ui.js';
         <label for="login-code">Code</label>
         <input id="login-code" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="8"
                placeholder="Email code" required>
-        <button type="submit" class="submit">Create account</button>
+        <button type="submit" class="submit">Create Account</button>
         <p class="form-error" hidden></p>
       </form>
       <p class="portal-note">
@@ -289,10 +289,10 @@ import {mountGipAuth} from '../shared/gip-auth-ui.js';
         <label for="reset-email">Email</label>
         <input id="reset-email" type="email" maxlength="180" autocomplete="email" required
                value="${escapeHtml(state.email)}" ${invitedEmail ? 'readonly' : ''}>
-        <button type="submit" class="submit">Email me a code</button>
+        <button type="submit" class="submit">Email Me a Code</button>
         <p class="form-error" hidden></p>
       </form>
-      <p class="portal-note"><a href="#" id="to-signin">Back to sign in</a></p>
+      <p class="portal-note"><a href="#" id="to-signin">Back to Sign In</a></p>
     `;
 
     document.getElementById("to-signin").addEventListener("click", (event) => {
@@ -324,12 +324,12 @@ import {mountGipAuth} from '../shared/gip-auth-ui.js';
         <input id="new-password" type="password" maxlength="200" autocomplete="new-password" required>
         <label for="new-confirm">New password, again</label>
         <input id="new-confirm" type="password" maxlength="200" autocomplete="new-password" required>
-        <button type="submit" class="submit">Set password</button>
+        <button type="submit" class="submit">Set Password</button>
         <p class="form-error" hidden></p>
       </form>
       <p class="portal-note">
         <a href="#" id="resend">Send a new code</a> ·
-        <a href="#" id="to-signin">Back to sign in</a>
+        <a href="#" id="to-signin">Back to Sign In</a>
       </p>
     `;
     document.getElementById("login-code").focus();
@@ -540,7 +540,7 @@ import {mountGipAuth} from '../shared/gip-auth-ui.js';
     container.innerHTML = `
       <div class="portal-bar">
         <span>Signed in as <b>${escapeHtml(data.email)}</b></span>
-        <button type="button" id="sign-out">Sign out</button>
+        <button type="button" id="sign-out">Sign Out</button>
       </div>
       <h1>Your application${apps.length === 1 ? "" : "s"}</h1>
       ${pending.length

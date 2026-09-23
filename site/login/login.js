@@ -37,14 +37,14 @@ function render(mode = "login", notice = "") {
   const verify = mode === "activate" || mode === "reset-confirm";
   const passwordStep=verify && !secure;
   const title = {login:"Welcome back",code:"Activate your account",activate:secure?"Verify your email":"Set up your sign in",reset:"Reset your password","reset-confirm":secure?"Verify your reset code":"Choose a new password"}[mode];
-  const intro = {login:"Sign in with the email your team invited.",code:"Enter your invited email. We’ll send a code to activate your workspace access.",activate:secure?"Enter your email code to accept your invitation. Existing accounts keep their current password.":"Enter your email code and choose a password. Your access is set by your administrator.",reset:"We’ll email a code so you can choose a new password.","reset-confirm":secure?"Enter the code from your reset email. We’ll verify your authenticator next if one is linked, then you can choose a new password.":"Enter the code from your reset email and choose a new password."}[mode];
+  const intro = {login:"Sign In with the email your team invited.",code:"Enter your invited email. We’ll send a code to activate your workspace access.",activate:secure?"Enter your email code to accept your invitation. Existing accounts keep their current password.":"Enter your email code and choose a password. Your access is set by your administrator.",reset:"We’ll email a code so you can choose a new password.","reset-confirm":secure?"Enter the code from your reset email. We’ll verify your authenticator next if one is linked, then you can choose a new password.":"Enter the code from your reset email and choose a new password."}[mode];
   host.innerHTML = `<h2>${title}</h2><p class="intro">${intro}</p><form>
     <label for="email">Email address</label><input id="email" name="email" type="email" autocomplete="username" ${invitation?'readonly':''} maxlength="180" value="${esc(email)}" required>
     ${verify ? '<label for="code">Email code</label><input id="code" name="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6,8}" minlength="6" maxlength="8" required>' : ""}
     ${mode === "login" || passwordStep ? `<label for="password">${verify ? "New password" : "Password"}</label><input id="password" name="password" type="password" autocomplete="${verify ? "new-password" : "current-password"}" ${verify ? 'minlength="8"' : ''} maxlength="200" required>` : ""}
     ${passwordStep ? '<label for="confirm">Confirm password</label><input id="confirm" name="confirm" type="password" autocomplete="new-password" minlength="8" maxlength="200" required>' : ""}
-    <button class="primary">${mode === "login" ? "Sign in" : verify ? (passwordStep?"Save password & sign in":"Verify & continue") : "Send email code"}</button><p class="status" role="status" aria-live="polite">${esc(notice)}</p>
-    </form><div class="links">${mode === "login" ? '<button type="button" data-mode="code">Activate an invited account</button><button type="button" data-mode="reset">Forgot password?</button>' : '<button type="button" data-mode="login">Back to sign in</button>'}${verify ? `<button type="button" data-mode="${mode === "activate" ? "code" : "reset"}">Request another code</button>` : ""}</div>`;
+    <button class="primary">${mode === "login" ? "Sign In" : verify ? (passwordStep?"Save Password & Sign In":"Verify & Continue") : "Send Email Code"}</button><p class="status" role="status" aria-live="polite">${esc(notice)}</p>
+    </form><div class="links">${mode === "login" ? '<button type="button" data-mode="code">Activate an Invited Account</button><button type="button" data-mode="reset">Forgot Password?</button>' : '<button type="button" data-mode="login">Back to Sign In</button>'}${verify ? `<button type="button" data-mode="${mode === "activate" ? "code" : "reset"}">Request Another Code</button>` : ""}</div>`;
   host.querySelectorAll("[data-mode]").forEach(button => button.onclick = () => { email = host.querySelector("#email").value.trim(); render(button.dataset.mode); });
   host.querySelector("form").onsubmit = async event => {
     event.preventDefault();
@@ -64,11 +64,11 @@ function render(mode = "login", notice = "") {
     } catch (error) { status.textContent = error.message; button.disabled = false; }
   };
 }
-render(new URLSearchParams(location.search).has('reset')?'reset':'login', new URLSearchParams(location.search).get('error') === 'workspace-access' ? 'This account does not have workspace access. Sign in with an invited staff or landlord account. ' : '');
+render(new URLSearchParams(location.search).has('reset')?'reset':'login', new URLSearchParams(location.search).get('error') === 'workspace-access' ? 'This account does not have workspace access. Sign In with an invited staff or landlord account. ' : '');
 
 if(secure && invitation){
   try{const inv=await post('workspace-invitation',{});email=inv.email;render('code','Verify your invited email to accept. If you already have an account, your existing password stays the same. Use Forgot password if you need to change it.');}
-  catch(e){host.innerHTML=`<h2>Invitation unavailable</h2><p>${esc(e.message)}</p><a href="/login/">Sign in</a>`;}
+  catch(e){host.innerHTML=`<h2>Invitation unavailable</h2><p>${esc(e.message)}</p><a href="/login/">Sign In</a>`;}
 } else if(secure && new URLSearchParams(location.search).has('security')){
   try{await enterWorkspace();}catch(e){render('login',e.message);}
 }
