@@ -121,7 +121,19 @@ export async function handleGipAuth(request,env,resource,scope){
     const identity=resolved.identity;if(identity.access_state==='invited')return json({error:'Accept your latest invitation first.'},403);
     let response;
     if(resource==='security')response=json({provider:'gip',email:identity.email,reset_password:false,setup_password:identity.has_password===false,recent_mfa:recentMfa(session),mfa_required:identity.role==='manager',verified:session.aal==='aal2',factors:session.factors,owner_account:identity.is_owner===true,admin_enabled:identity.admin_enabled===true,owner_version:identity.version,onboarding_pending:identity.onboarding_pending===true});
-    else if(resource==='mfa-enroll'){
+    else if(resource==='reauth-start'){
+      if(typeof body.password!=='string'||!body.password||body.password.length>200)return json({error:'Enter your current password.'},422);
+      const result=await client.signIn(session.email,body.password);
+      if(!result.mfaPendingCredential||!result.factors?.length)return json({error:'An enrolled authenticator is required.'},403);
+      response=json({factors:result.factors});
+      response.headers.append('Set-Cookie',await writeGipChallenge(request,env,scope,'reauth',{subject:session.subject,email:session.email,pending:result.mfaPendingCredential,factors:result.factors.map(f=>f.id)}));
+    }else if(resource==='reauth-verify'){
+      const challenge=await readGipChallenge(request,env,scope,'reauth');
+      if(!challenge||challenge.subject!==session.subject||challenge.email!==session.email||!challenge.factors?.includes(body.factor_id))return json({error:'Verification expired or the account changed. Start verification again.'},403);
+      const result=await client.finishMfa(challenge.pending,body.factor_id,body.code);
+      if(result.user.localId!==session.subject||result.user.email.toLowerCase()!==session.email||result.claims.firebase?.sign_in_second_factor!=='totp')return json({error:'Verification did not match your current account.'},403);
+      return await finishGipSignIn(request,env,scope,result);
+    }else if(resource==='mfa-enroll'){
       const setup=await client.startTotp(session.token);
       response=json({factor_id:'new-totp',secret:setup.sharedSecretKey,uri:setup.uri});
       response.headers.append('Set-Cookie',await writeGipChallenge(request,env,scope,'enroll',{subject:session.subject,session:setup.sessionInfo}));

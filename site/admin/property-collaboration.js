@@ -1,3 +1,4 @@
+import {verifyWorkspaceIdentity} from "../shared/workspace-verify.js";
 import {propertyDirectory, propertyDirectoryRow} from "./property-directory.js";
 import {readiness} from "./property-sections.js";
 import {resolve, signerEmailKnown} from "./property-defaults.js";
@@ -8,7 +9,14 @@ const endpoint='/property-collaborations';
 const propertyFields={name:'Property Name',street:'Street',city:'City',state:'State',state_abbr:'State Abbreviation',zip:'ZIP Code',landlord_signer_email:'Landlord Signing Email'};
 const time=value=>new Date(value).toLocaleString();
 const display=value=>value===null||value===undefined||value===''?'Not Provided':typeof value==='boolean'?(value?'Yes':'No'):String(value);
-const post=(api,path,body)=>api(path,{method:'POST',body:JSON.stringify(body)});
+const post=async(api,path,body)=>{
+ const send=()=>api(path,{method:'POST',body:JSON.stringify(body)});
+ try{return await send();}catch(error){
+  if(error.code!=='mfa_required')throw error;
+  await verifyWorkspaceIdentity();
+  return send();
+ }
+};
 const statusLabel=r=>['draft','submitted'].includes(r.state)&&Date.parse(r.expires_at)<=Date.now()?'Expired':({draft:'Draft',submitted:'Awaiting Review',approved:'Approved · Access Ended',revoked:'Access Ended'}[r.state]||r.state);
 const label=(id,fields)=>propertyFields[id]||PROPERTY_LABELS[id]||fields.find(f=>f.id===id)?.label||id;
 function changes(r,fields) {

@@ -36,7 +36,7 @@ const server=http.createServer(async(req,res)=>{
   res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return;
  }
  if(url.pathname==='/admin/test'){
-  res.setHeader('Content-Type','text/html');res.end('<html><head>'+head+'</head><body><main style="padding:24px;max-width:1000px;margin:auto" id="test"></main><script type="module">import {renderCollaborationAdmin,renderAgentProperties} from "./property-collaboration.js";const api=async(path,options={})=>{const r=await fetch("/api/admin"+path,options),b=await r.json();if(!r.ok)throw Error(b.error);return b;};const host=document.querySelector("#test");'+
+  res.setHeader('Content-Type','text/html');res.end('<html><head>'+head+'</head><body><main style="padding:24px;max-width:1000px;margin:auto" id="test"></main><script type="module">import {renderCollaborationAdmin,renderAgentProperties} from "./property-collaboration.js";const api=async(path,options={})=>{const r=await fetch("/api/admin"+path,options),b=await r.json();if(!r.ok)throw Object.assign(Error(b.error),{code:b.code,status:r.status});return b;};const host=document.querySelector("#test");'+
    (role==='agent'?'await renderAgentProperties(host,{api,buildingId:"'+property.id+'"});':'await renderCollaborationAdmin(host,{api,buildingId:"'+property.id+'"});')+'</script></body></html>');return;
  }
  const path=resolve(root,'.'+url.pathname);if(!path.startsWith(root+'/'))throw Error('Invalid path');
@@ -52,7 +52,35 @@ try{
  const a=await admin.newPage(),g=await agent.newPage();
  g.on('request',request=>{if(request.method()==='POST'||request.method()==='PUT'||request.method()==='PATCH')agentWrites.push(new URL(request.url()).pathname);});
  for(const page of [a,g])page.on('pageerror',e=>errors.push(e.message));
- await a.goto(base+'/admin/test');await a.getByText('Temporary Property Collaboration',{exact:true}).click();await a.locator('[name=agent_email]').selectOption('agent@example.test');await a.getByRole('button',{name:'Grant Temporary Access',exact:true}).click();
+ let verified=false;
+ await a.route('**/api/auth/workspace/*',async route=>{
+  const action=new URL(route.request().url()).pathname.split('/').at(-1),body=route.request().postDataJSON();
+  if(action==='security')return route.fulfill({json:{provider:'gip',email:'admin@example.test',factors:[]}});
+  if(action==='reauth-start'){assert.equal(body.password,'test-password');return route.fulfill({json:{factors:[{id:'test-factor',name:'Test Authenticator'}]}});}
+  assert.equal(action,'reauth-verify');assert.equal(body.factor_id,'test-factor');
+  if(body.code!=='123456')return route.fulfill({status:401,json:{error:'Invalid code.'}});
+  verified=true;return route.fulfill({json:{ok:true}});
+ });
+ await a.route('**/api/admin/property-collaborations',async route=>{
+  if(route.request().method()==='POST'&&!verified)return route.fulfill({status:403,json:{error:'Verify again.',code:'mfa_required'}});
+  return route.continue();
+ });
+ await a.goto(base+'/admin/test');await a.getByText('Temporary Property Collaboration',{exact:true}).click();await a.locator('[name=agent_email]').selectOption('agent@example.test');
+ await a.locator('[name=days]').fill('5');
+ await a.getByRole('button',{name:'Grant Temporary Access',exact:true}).click();
+ await a.getByRole('dialog').getByRole('button',{name:'Cancel',exact:true}).click();
+ assert.equal(await a.locator('[name=days]').inputValue(),'5');
+ assert.equal(await a.locator('[name=agent_email]').inputValue(),'agent@example.test');
+ await a.getByRole('button',{name:'Grant Temporary Access',exact:true}).click();
+ await a.getByRole('dialog').locator('[name=password]').fill('test-password');
+ await a.getByRole('dialog').getByRole('button',{name:'Continue',exact:true}).click();
+ await a.getByRole('dialog').locator('[name=code]').fill('000000');
+ await a.getByRole('dialog').getByRole('button',{name:'Verify & Continue',exact:true}).click();
+ await a.getByText('Invalid code.',{exact:true}).waitFor();
+ await a.getByRole('dialog').locator('[name=code]').fill('123456');
+ await a.getByRole('dialog').getByRole('button',{name:'Verify & Continue',exact:true}).click();
+ await a.getByRole('dialog').waitFor({state:'detached'});
+ assert.equal(a.url(),base+'/admin/test');
  await a.locator('[data-review-id]').waitFor({state:'attached'});await a.getByText('Temporary Property Collaboration',{exact:true}).click();
  await g.goto(base+'/admin/test');await g.locator('.property-steps').waitFor();
  await g.evaluate(async()=>{

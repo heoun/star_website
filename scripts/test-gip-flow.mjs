@@ -5,6 +5,7 @@ import {PGlite} from '@electric-sql/pglite';
 import {generateKeyPair,exportJWK,SignJWT,exportPKCS8} from 'jose';
 import {schemaBundle} from './release-schema.mjs';
 import worker from '../worker/index.js';
+import {gipSessionCookie} from '../worker/gip-session.js';
 import {hashInvitation} from '../worker/account-security.js';
 const db=new PGlite(),nativeFetch=globalThis.fetch;let checks=0;
 const {privateKey,publicKey}=await generateKeyPair('RS256',{extractable:true});
@@ -88,6 +89,23 @@ try{
  eq((await call('workspace','mfa-login',{factor_id:mfa.factors[0].id,code:'123456'})).status,200);
  eq(jars.get('shared').has('star_workspace_gip_challenge'),false);
  let security=await (await call('workspace','security')).json();eq(security.owner_account,true);eq(security.verified,true);eq(security.setup_password,false);
+ // Inline step-up preserves the existing session until password + TOTP pass.
+ cookies(new Response(null,{headers:{'Set-Cookie':gipSessionCookie(new Request('https://site.example.test'),'workspace',await issue(owner,true,1800))}}),jars.get('shared'));
+ eq((await (await call('workspace','security')).json()).recent_mfa,false);
+ const oldSession=jars.get('shared').get('star_workspace');
+ eq((await call('workspace','reauth-start',{password:'wrong'})).status,401);
+ eq(jars.get('shared').get('star_workspace'),oldSession);
+ eq((await call('workspace','reauth-start',{password:owner.password},'anonymous')).status,401);
+ eq((await call('workspace','reauth-start',{password:owner.password},'shared',{Origin:'https://evil.example'})).status,403);
+ const step=await (await call('workspace','reauth-start',{email:'ignored@example.test',password:owner.password})).json();
+ eq(jars.get('shared').get('star_workspace'),oldSession);
+ eq((await call('workspace','mfa-login',{factor_id:step.factors[0].id,code:'123456'})).status,401);
+ eq((await call('workspace','reauth-verify',{factor_id:'unlisted',code:'123456'})).status,403);
+ eq((await call('workspace','reauth-verify',{factor_id:step.factors[0].id,code:'000000'})).status,401);
+ eq((await (await call('workspace','security')).json()).recent_mfa,false);
+ eq((await call('workspace','reauth-verify',{factor_id:step.factors[0].id,code:'123456'})).status,200);
+ eq((await (await call('workspace','security')).json()).recent_mfa,true);
+ eq((await call('workspace','reauth-verify',{factor_id:step.factors[0].id,code:'123456'})).status,403);
  eq((await call('workspace','owner-admin',{enabled:true,version:security.owner_version,reason:'Test separate role'})).status,200);
  eq((await call('applicant','login',{email:same,password:applicant.password})).status,200);
  eq((await (await call('applicant','me',null)).json()).email,same);
@@ -103,6 +121,11 @@ try{
  eq((await call('workspace','login',{email:same,password:'member-password'},'member')).status,200);
  eq((await call('workspace','security',{},'member')).status,403);
  eq((await call('workspace','workspace-accept',{invite},'member')).status,200);
+ eq((await call('workspace','reauth-start',{password:owner.password})).status,200);
+ jars.get('member').set('star_workspace_gip_challenge',jars.get('shared').get('star_workspace_gip_challenge'));
+ eq((await call('workspace','reauth-verify',{factor_id:'factor-owner-google',code:'123456'},'member')).status,403);
+ eq((await (await call('workspace','security',{},'member')).json()).email,same);
+
  eq((await call('workspace','workspace-accept',{invite},'member')).status,403);
  eq((await call('workspace','security',{},'member')).status,200);
  eq((await call('workspace','workspace-code',{email:same},'member')).status,403);

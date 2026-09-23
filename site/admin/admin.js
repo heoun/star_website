@@ -154,7 +154,7 @@ async function api(path, options = {}) {
 
   if (!response.ok) {
     if (response.status === 401) location.assign(`/login/?next=admin${location.hash}`);
-    throw new Error(payload?.error || `Request failed (${response.status})`);
+    throw Object.assign(new Error(payload?.error || `Request failed (${response.status})`), {code:payload?.code,status:response.status});
   }
 
   return payload;
