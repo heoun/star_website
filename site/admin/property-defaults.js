@@ -1,3 +1,4 @@
+import {syncPropertyPreview} from "./property-preview.js";
 // The landlord's own values for one property, and the only editor for them.
 //
 // A landlord value is not a property of one apartment. It is a property of the
@@ -296,6 +297,7 @@ function defaultsMarkup(ctx) {
   if (index < 0) index = 0;
   const section = sections[index];
   ui.activeSection = section.id;
+  ui.previewContext={fields,values:ctx.values,building,section:section.id,ids:section.id==='property'?['property.address_full','property.street','property.city','property.state','property.state_abbr','property.zip']:section.fields.map(f=>f.id)};
   const signerEmail = building?.landlord_signer_email || "";
   const emailKnown = signerEmailKnown(building);
   const inner = { ...ctx, signerEmail, emailKnown };
@@ -315,6 +317,7 @@ function defaultsMarkup(ctx) {
       </nav>
       <div class="property-step-content"><div class="property-step-position" tabindex="-1">Step ${index + 1} of ${sections.length}<span>${ui.editingGroup ? "Editing · changes not saved" : "Property lease information"}</span></div>
         ${panel}
+        ${ctx.docLinked ? '' : '<iframe data-property-preview title="Property Lease Preview" src="./property-preview.html" style="display:block;width:100%;height:760px;border:1px solid #dce4eb;border-radius:16px;margin-top:20px;background:white"></iframe>'}
         <div class="property-step-footer"><button type="button" data-property-step="${sections[index - 1]?.id || ''}" ${index === 0 ? "disabled" : ""}>← Previous</button><span>${index + 1} / ${sections.length}</span>${index < sections.length - 1 ? `<button type="button" data-property-step="${sections[index + 1].id}">Next: ${escapeHtml(sections[index + 1].label)} →</button>` : '<span class="soft">End of lease information</span>'}</div>
       </div>
     </div>
@@ -423,6 +426,7 @@ function rememberDefaultsNavigation(host, ui) {
   if (nav) ui.navigationScroll = {left:nav.scrollLeft, top:nav.scrollTop};
 }
 function syncDefaultsNavigation(host, ui) {
+  syncPropertyPreview(host,ui);
   const nav = host.querySelector(".property-steps");
   const active = nav?.querySelector('[aria-current="step"]');
   if (!active) return;

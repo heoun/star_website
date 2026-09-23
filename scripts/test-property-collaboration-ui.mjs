@@ -35,12 +35,13 @@ const server=http.createServer(async(req,res)=>{
   }
   res.writeHead(response.status,Object.fromEntries(response.headers));res.end(Buffer.from(await response.arrayBuffer()));return;
  }
+ if(url.pathname==='/admin/lease-template.docx'){res.end(readFileSync('lease/template/lease-template.docx'));return;}
  if(url.pathname==='/admin/test'){
   res.setHeader('Content-Type','text/html');res.end('<html><head>'+head+'</head><body><main style="padding:24px;max-width:1000px;margin:auto" id="test"></main><script type="module">import {renderCollaborationAdmin,renderAgentProperties} from "./property-collaboration.js";const api=async(path,options={})=>{const r=await fetch("/api/admin"+path,options),b=await r.json();if(!r.ok)throw Object.assign(Error(b.error),{code:b.code,status:r.status});return b;};const host=document.querySelector("#test");'+
    (role==='agent'?'await renderAgentProperties(host,{api,buildingId:"'+property.id+'"});':'await renderCollaborationAdmin(host,{api,buildingId:"'+property.id+'"});')+'</script></body></html>');return;
  }
  const path=resolve(root,'.'+url.pathname);if(!path.startsWith(root+'/'))throw Error('Invalid path');
- res.setHeader('Content-Type',extname(path)==='.js'?'text/javascript':extname(path)==='.css'?'text/css':'text/plain');res.end(readFileSync(path));
+ res.setHeader('Content-Type',extname(path)==='.js'?'text/javascript':extname(path)==='.css'?'text/css':extname(path)==='.html'?'text/html':extname(path)==='.mjs'?'text/javascript':'text/plain');res.end(readFileSync(path));
  }catch(e){res.writeHead(500);res.end(e.message);}
 });
 await new Promise(r=>server.listen(0,'127.0.0.1',r));
@@ -96,6 +97,16 @@ try{
  await g.setViewportSize({width:1280,height:720});
  await g.goto(base+'/admin/test');await g.locator('.property-steps').waitFor();
  assert.equal(await g.locator('.property-steps [data-property-step]').count(),15);
+ const preview=g.frameLocator('[data-property-preview]');
+ await preview.locator('#position').filter({hasText:'Template Section'}).waitFor({timeout:15000}).catch(async error=>{console.error('PREVIEW',await preview.locator('body').innerText(),errors);throw error;});
+ const total=await preview.locator('#count').innerText();assert.match(total,/1 \/ [1-9]/);
+ assert.equal(await preview.locator('section.docx:not([data-doc-hidden])').count(),1);
+ if(!await preview.locator('#next').isDisabled()){
+  await preview.locator('#next').click();assert.match(await preview.locator('#count').innerText(),/^2 \/ /);
+ }
+ await preview.locator('summary').click();assert(await preview.locator('#locations button').count()>0);
+ await g.screenshot({path:'/tmp/property-lease-preview.png',fullPage:true});
+
  await g.locator('#property-address').click();
  await g.locator('#address-street').fill('123 Test Street');
  await g.locator('#address-city').fill('New York');
@@ -105,6 +116,9 @@ try{
  await g.locator('.property-steps [data-property-step="management"]').click();
  await g.locator('[data-settings-edit="management"]').click();
  await g.locator('[data-setting="manager.name"]').fill('Draft Property Manager');
+ await g.frameLocator('[data-property-preview]').locator('#status').filter({hasText:'Unsaved Preview'}).waitFor();
+ await g.frameLocator('[data-property-preview]').locator('.is-current-match').filter({hasText:'Draft Property Manager'}).first().waitFor();
+
  await g.getByRole('button',{name:'Submit for Review',exact:true}).click();
  await g.getByText('Save or cancel the open section before submitting.').waitFor();
  await g.locator('[data-settings-save="management"]').click();
@@ -138,6 +152,17 @@ try{
  await g.setViewportSize({width:390,height:844});
  await g.screenshot({path:'/tmp/property-collaboration-agent.png',fullPage:true});
  assert.equal(await g.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ // Admin uses the same preview in the shared editor, with live-save controls.
+ await a.evaluate(async()=>{
+  const {createPropertyDefaults}=await import('/admin/property-defaults.js');
+  const {registry}=await fetch('/api/admin/lease/fields').then(r=>r.json());
+  const editor=createPropertyDefaults({api:async()=>({field_values:{}}),setStatus:()=>{},escapeHtml:value=>String(value??''),isManager:()=>true,buildingOf:()=>({street:'123 Test Street',city:'New York',state:'New York',zip:'10001'})});
+  const host=document.querySelector('#test'),ui=editor.newDefaultsUi();
+  host.innerHTML=editor.defaultsMarkup({fields:registry.fields.filter(f=>f.source==='manager'),values:{},ui,buildingId:'test'});
+  editor.syncDefaultsNavigation(host,ui);
+ });
+ await a.frameLocator('[data-property-preview]').locator('.is-current-match').filter({hasText:'123 Test Street'}).first().waitFor();
+ await a.screenshot({path:'/tmp/property-admin-lease-preview.png',fullPage:true});
  assert.deepEqual(errors,[]);
  assert(agentWrites.every(path=>path.startsWith('/api/admin/property-collaborations/')),'Agent editor must never call a live settings write');
  assert.equal((await db.query('select field_values from lease_settings')).rows[0].field_values['manager.name'],'Draft Property Manager');

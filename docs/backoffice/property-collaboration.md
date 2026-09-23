@@ -22,3 +22,5 @@ Validation:
 Apply `supabase/property-collaboration.sql` after the existing schema. It is included in the release schema bundle. Dev and production require separate migrations and releases.
 
 When recent MFA is required, grant and review actions open an in-page verification dialog and preserve the form. GIP verifies the current workspace password followed by an enrolled TOTP factor. The encrypted five-minute challenge is bound to the current subject and email; failed or cancelled verification does not clear the session. A successful check retries the requested operation once, with server permissions and version checks still applied.
+
+Property settings in both roles include a read-only template preview below the current step. One occurrence is shown at a time, with previous/next and a location directory. The preview patches unsaved input locally without saving or calling signing services. Tenant/listing fields remain source-labelled placeholders. Locations use template section numbers rather than claiming final PDF page numbers. The existing rental document workspace keeps its own preview.
