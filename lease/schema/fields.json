@@ -1622,7 +1622,8 @@
       "type": "text",
       "required": false,
       "default": null,
-      "scope": "building"
+      "scope": "building",
+      "required_when": "smoking.other_areas"
     },
     {
       "id": "smoking.in_unit_yes",

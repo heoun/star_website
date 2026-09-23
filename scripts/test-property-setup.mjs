@@ -42,7 +42,7 @@ assert.equal(resolveValues({layers:{building:{'utility.other1_label':'Bicycle st
 assert.equal(LEASE_REGISTRY.fields.filter(f=>['utility.other1','utility.other2'].includes(f.id)).every(f=>!f.required && f.default==='N/A'),true);
 console.log('PASS property setup: 15 sections, full layout coverage, initial choices, linked contacts, overrides, concession and lease-type defaults, conditional dates, spare utility rows parked at N/A.');
 
-for(const [toggle,dependent] of [['bedbug.mark_building_eradicated','bedbug.building_eradicated_floors'],['bedbug.mark_building_not_eradicated','bedbug.building_not_eradicated_floors'],['bedbug.mark_other','bedbug.other_details'],['sprinkler.mark_option2','sprinkler.last_inspection']]) {
+for(const [toggle,dependent] of [['bedbug.mark_building_eradicated','bedbug.building_eradicated_floors'],['bedbug.mark_building_not_eradicated','bedbug.building_not_eradicated_floors'],['bedbug.mark_other','bedbug.other_details'],['sprinkler.mark_option2','sprinkler.last_inspection'],['smoking.other_areas','smoking.other_areas_text']]) {
  const check=values=>resolveValues({layers:{building:values,unit:{}},deal:{'lease.vacancy_lease_date':'09/14/2026'}});
  assert(check({[toggle]:true}).missing.includes(dependent),'Selected disclosure requires its detail in final lease validation');
  assert(!check({[toggle]:false}).missing.includes(dependent),'Unselected disclosure does not require details');
