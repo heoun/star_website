@@ -160,6 +160,28 @@ reverting database references. Retaining old accounts alone is not a full rollba
 Production requires a separate reviewed migration; this adapter's runtime credential
 is deliberately restricted to the Dev project.
 
+## Google-managed security emails
+
+Dev uses Resend SMTP (`smtp.resend.com:465`, TLS), with the existing Resend
+credential explicitly authorized for storage in `starreusa-dev-auth`. Both Dev
+tenants inherit the project's email settings. All four Google template senders
+are `Star Real Estate <no-reply@starreusa.com>` with replies to
+`info@starreusa.com`. The Google project's display name is `Star Real Estate Dev`;
+its project ID is unchanged.
+
+Use `node scripts/gip-email-config.mjs plan|apply|verify` to inspect, apply or
+read back this Dev-only configuration. The tool never sends mail or prints SMTP
+credentials. Application-owned verification/reset emails still use the existing
+branded Worker/Resend flow.
+
+The automatic MFA enrollment notification is a Google-owned safety email. On
+2026-09-22, its custom HTML update and a separate subject-only update returned
+`EMAIL_TEMPLATE_UPDATE_NOT_ALLOWED`, including after custom SMTP was enabled.
+Sender name/local part/reply-to updates succeeded. Do not claim its body uses our
+logo/card layout. Preserve Google's original security text, tenant-bound link,
+and hosted action handler; replacing the handler with `/login/` would break
+`revertSecondFactorAddition`. No real user's factor is changed to test branding.
+
 References: [Google tenant access control](https://docs.cloud.google.com/identity-platform/docs/multi-tenancy-access-control),
 [Google account API permissions](https://docs.cloud.google.com/identity-platform/docs/access-control),
 [Workload Identity Federation](https://docs.cloud.google.com/iam/docs/workload-identity-federation-with-other-providers).
