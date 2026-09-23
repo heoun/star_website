@@ -162,6 +162,11 @@ try{
   editor.syncDefaultsNavigation(host,ui);
  });
  await a.frameLocator('[data-property-preview]').locator('.is-current-match').filter({hasText:'123 Test Street'}).first().waitFor();
+ await a.setViewportSize({width:1920,height:1080});
+ await a.locator('#test').evaluate(el=>el.style.maxWidth='1700px');
+ const formBox=await a.locator('.property-edit-pane').boundingBox(),previewBox=await a.locator('[data-property-preview]').boundingBox();
+ assert(previewBox.x>=formBox.x+formBox.width,'Desktop preview belongs to the right of the settings');
+ assert(Math.abs(previewBox.y-formBox.y)<2,'Desktop panels should align at the top');
  await a.screenshot({path:'/tmp/property-admin-lease-preview.png',fullPage:true});
  assert.deepEqual(errors,[]);
  assert(agentWrites.every(path=>path.startsWith('/api/admin/property-collaborations/')),'Agent editor must never call a live settings write');

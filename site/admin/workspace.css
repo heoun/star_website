@@ -358,3 +358,14 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 
 .account-invitation-actions{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;width:100%;margin-top:12px}
 .account-invitation-actions button{width:100%;min-width:0;white-space:normal}
+
+/* Keep the current settings beside their lease location on desktop. */
+.property-step-content { container-type: inline-size; }
+.property-edit-preview { display: grid; grid-template-columns: minmax(0, .85fr) minmax(0, 1.15fr); gap: 20px; align-items: start; }
+.property-edit-pane { min-width: 0; }
+.property-edit-preview > iframe { display: block; width: 100%; height: 760px; border: 1px solid #dce4eb; border-radius: 16px; background: white; }
+.property-edit-pane .line { grid-template-columns: minmax(0, 1fr); gap: 6px; overflow-wrap: anywhere; }
+.property-edit-pane .line > .src, .property-edit-pane .line > button { grid-column: 1; }
+@container (max-width: 800px) {
+  .property-edit-preview { grid-template-columns: minmax(0, 1fr); }
+}

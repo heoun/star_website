@@ -316,8 +316,7 @@ function defaultsMarkup(ctx) {
         }).join("")}
       </nav>
       <div class="property-step-content"><div class="property-step-position" tabindex="-1">Step ${index + 1} of ${sections.length}<span>${ui.editingGroup ? "Editing · changes not saved" : "Property lease information"}</span></div>
-        ${panel}
-        ${ctx.docLinked ? '' : '<iframe data-property-preview title="Property Lease Preview" src="./property-preview.html" style="display:block;width:100%;height:760px;border:1px solid #dce4eb;border-radius:16px;margin-top:20px;background:white"></iframe>'}
+        ${ctx.docLinked ? panel : `<div class="property-edit-preview"><div class="property-edit-pane">${panel}</div><iframe data-property-preview title="Property Lease Preview" src="./property-preview.html"></iframe></div>`}
         <div class="property-step-footer"><button type="button" data-property-step="${sections[index - 1]?.id || ''}" ${index === 0 ? "disabled" : ""}>← Previous</button><span>${index + 1} / ${sections.length}</span>${index < sections.length - 1 ? `<button type="button" data-property-step="${sections[index + 1].id}">Next: ${escapeHtml(sections[index + 1].label)} →</button>` : '<span class="soft">End of lease information</span>'}</div>
       </div>
     </div>
