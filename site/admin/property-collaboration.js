@@ -93,7 +93,7 @@ export async function renderAgentProperties(host,{api,buildingId}) {
   host.innerHTML='<a href="#/properties">← All Properties</a><div class="pagehead"><div><h1>'+esc(assignment.name)+'</h1><p>'+esc(statusLabel(r))+' · Access Ends '+esc(time(r.expires_at))+'</p><p>Changes remain in draft until an Admin approves them.</p></div></div>'+
    (r.note?'<p class="status">Admin Feedback: '+esc(r.note)+'</p>':'')+
    '<div data-collaboration-editor></div><p class="status" data-draft-status role="status"></p>'+
-   (editable?'<div class="actions"><button type="button" class="primary" data-submit-draft>Submit for Review</button></div>':'')+
+   (editable?'<div class="actions property-review-actions"><button type="button" class="primary" data-submit-draft>Submit for Review</button></div>':'')+
    '<div data-collaboration-documents>'+'</div>'+
    '<div data-collaboration-history>'+historyMarkup(detail.history,fields)+'</div>';
   const editorHost=host.querySelector('[data-collaboration-editor]');

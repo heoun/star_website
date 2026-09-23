@@ -396,3 +396,6 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
  .property-flow:not(.is-document) > .property-steps { height: auto; min-height: 0; align-self: stretch; padding-bottom: 16px; }
  .property-flow:not(.is-document) .property-edit-preview { height: auto; min-height: 0; align-self: stretch; contain: size; }
 }
+
+/* Keep whole-draft submission separate from step navigation. */
+.property-review-actions { display:flex; flex-wrap:wrap; gap:12px; margin-top:24px; padding:20px 0 8px; border-top:1px solid var(--line); }
