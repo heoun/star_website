@@ -138,6 +138,18 @@ try{
  await g.locator('[data-setting="manager.name"]').fill('Discard this');
  await g.locator('.property-steps [data-property-step="payments"]').click();
  await g.getByRole('dialog').getByRole('button',{name:'Discard Changes',exact:true}).click();
+ const cap=g.locator('[data-setting="attorney_fees.cap_amount"]');
+ await g.locator('[data-setting="attorney_fees.cap_enabled"]').check();
+ assert.equal(await cap.getAttribute('aria-required'),'true');
+ const writesBeforeCap=agentWrites.length;
+ await g.locator('[data-settings-save="payments"]').click();
+ await g.getByText('Enter the attorneys’ fees cap amount when the cap is selected.',{exact:true}).waitFor();
+ assert.equal(agentWrites.length,writesBeforeCap,'Missing conditional amount prevents a save');
+ await cap.fill('500');
+ assert.equal(await cap.getAttribute('aria-invalid'),null);
+ await g.locator('[data-setting="attorney_fees.cap_enabled"]').uncheck();
+ assert.equal(await cap.getAttribute('aria-required'),'false');
+ await cap.fill('');
  await g.locator('[data-setting="rent.due_day"]').fill('5');
  await g.locator('.property-steps [data-property-step="signing"]').click();
  await g.getByRole('button',{name:'Save & Continue',exact:true}).click();

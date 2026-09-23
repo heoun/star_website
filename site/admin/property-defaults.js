@@ -139,8 +139,13 @@ function control(field, resolved, docLinked) {
   return `<input type="${type}" ${attrs} value="${escapeHtml(resolved.value)}">`;
 }
 
+function fieldRequired(field, values) {
+  return field.required || (field.id === "attorney_fees.cap_amount" && values["attorney_fees.cap_enabled"] === true);
+}
+
 function settingRow(field, values, editing, docLinked) {
   const resolved = resolve(field, values);
+  field = {...field, required: fieldRequired(field, values)};
   const needed = field.required && !resolved.answered;
 
   return `<div class="line${needed && !editing && docLinked ? " is-needed" : ""}"
@@ -215,7 +220,7 @@ function sectionPanel(section, ctx) {
   const { ui, docLinked } = ctx;
   const values=ui.editingGroup ? propertySetupDefaults(ctx.values,ctx.signerEmail) : ctx.values;
   const editing = ui.editingGroup === section.id;
-  const short = section.fields.filter((field) => field.required && !resolve(field, values).answered).length;
+  const short = section.fields.filter((field) => fieldRequired(field, values) && !resolve(field, values).answered).length;
   const optional = isOptionalSection(section);
 
   return `<article class="panel" data-group-panel="${escapeHtml(section.id)}">
@@ -329,7 +334,7 @@ function defaultsMarkup(ctx) {
     <div class="property-flow${ctx.docLinked ? " is-document" : ""}">
       <nav class="property-steps" aria-label="Lease Information Sections">
         ${sections.map((item, n) => {
-          const missing = item.fields.filter(field => field.required && !resolve(field, ctx.values).answered).length;
+          const missing = item.fields.filter(field => fieldRequired(field, ctx.values) && !resolve(field, ctx.values).answered).length;
           return `<button type="button" data-property-step="${item.id}" ${item.id === section.id ? 'aria-current="step"' : ''}><span class="property-step-number">${String(n + 1).padStart(2, "0")}</span><span>${escapeHtml(item.label)}</span>${missing ? `<span class="property-step-missing" aria-label="${missing} required values missing">${missing}</span>` : ''}</button>`;
         }).join("")}
       </nav>
@@ -472,6 +477,28 @@ function syncDirectEditing(host, ui) {
   }
   const update = () => {
     const current=Object.fromEntries(inputs.map(el=>[key(el),read(el)]));
+    const cap=host.querySelector('[data-setting="attorney_fees.cap_amount"]');
+    const enabled=host.querySelector('[data-setting="attorney_fees.cap_enabled"]');
+    if(cap && enabled) {
+      cap.required=enabled.checked;
+      cap.setAttribute("aria-required",String(enabled.checked));
+      const label=cap.closest('[data-setting-row]').querySelector('.lbl');
+      const mark=label.querySelector('.required-mark');
+      if(enabled.checked && !mark) label.insertAdjacentHTML('beforeend','<span class="required-mark" aria-hidden="true"></span>');
+      if(!enabled.checked) mark?.remove();
+      if(!enabled.checked || cap.value.trim()) { cap.setCustomValidity(""); cap.removeAttribute("aria-invalid"); }
+      const values={...ui.previewContext.values,...current};
+      const section=sectionsFor(ui.previewContext.fields).find(item=>item.id===ui.activeSection);
+      const missing=section.fields.filter(field=>fieldRequired(field,values)&&!resolve(field,values).answered).length;
+      const step=host.querySelector('.property-steps [aria-current="step"]');
+      let badge=step?.querySelector('.property-step-missing');
+      if(missing && step) {
+        if(!badge){badge=document.createElement('span');badge.className='property-step-missing';step.append(badge);}
+        badge.textContent=String(missing);badge.setAttribute('aria-label',`${missing} required values missing`);
+      } else badge?.remove();
+      const pill=host.querySelector('.property-edit-pane .phead .pill');
+      if(pill){pill.textContent=missing ? `${missing} required` : "Complete";pill.className=`pill ${missing ? "is-bad" : "is-good"}`;}
+    }
     ui.dirty=inputs.some(el=>read(el)!==baseline[key(el)]);
     ui.inputDraft=ui.dirty ? current : null;
     host.querySelectorAll("[data-settings-save], [data-settings-cancel]").forEach(el=>el.disabled=!ui.dirty);
@@ -595,6 +622,15 @@ async function saveGroup(ctx, group) {
   const values = layerOf(buildingId);
   const panel = host.querySelector(`[data-group-panel="${CSS.escape(group)}"]`);
   if (!panel) return;
+
+  const cap=panel.querySelector?.('[data-setting="attorney_fees.cap_amount"]');
+  const capEnabled=panel.querySelector?.('[data-setting="attorney_fees.cap_enabled"]');
+  if(capEnabled?.checked && !cap?.value.trim()) {
+    const message="Enter the attorneys’ fees cap amount when the cap is selected.";
+    if(cap){cap.required=true;cap.setAttribute("aria-invalid","true");cap.setCustomValidity(message);cap.reportValidity();cap.focus();}
+    setStatus(message,"error");
+    return false;
+  }
 
   // Only what actually changed, so a save writes what a person typed and
   // nothing else.
