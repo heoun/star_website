@@ -152,7 +152,7 @@ export default {
     // Operator-controlled cutover window: never allow new writes while business
     // identities are being rebound. Webhooks receive 503 so senders can retry.
     if(env.AUTH_MIGRATION==='maintenance')return Response.json({error:'Account migration is in progress. Please try again shortly.'},{status:503,headers:{'Cache-Control':'no-store','Retry-After':'60'}});
-    return deploymentResponse(await application.fetch(request,env,ctx),env);
+    return deploymentResponse(await application.fetch(request,env,ctx),env,request);
   },
   async scheduled(event,env,ctx) {
     if(deploymentError(env))throw new Error('Background jobs blocked: environment configuration is invalid.');
