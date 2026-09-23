@@ -31,6 +31,17 @@ try{
  await page.setViewportSize({width:1600,height:1080});await page.screenshot({path:`${out}/aligned-rental-queue.png`,fullPage:true});
  await page.goto(`${base}/admin/#/applications/${ids.a}`);await page.getByRole('heading',{name:'Application & Screening',exact:true}).waitFor();
  await page.locator('.rg-key-data').getByText('Awaiting report',{exact:true}).waitFor();checks++;
+ const assignment=page.locator('form[data-action="assign"]');
+ await assignment.locator('..').locator('summary').click();
+ const owner=assignment.locator('select[name="responsible_email"]');
+ const original=await owner.inputValue();
+ const self=assignment.locator(`input[name="collaborator_emails"][value="${original}"]`);
+ eq(await self.isVisible(),false);eq(await self.isEnabled(),false);
+ await owner.selectOption('');eq(await self.isVisible(),true);eq(await self.isEnabled(),true);
+ await self.check();await owner.selectOption(original);
+ eq(await self.isChecked(),false);eq(await self.isEnabled(),false);eq(await self.isVisible(),false);
+ await assignment.locator('..').locator('summary').click();
+
  eq(await page.locator('[data-report-evidence], select[name=fee], select[name=screening]').count(),0);
  eq(await page.getByText('Record external report / payment',{exact:true}).count(),0);
  const flow=rentalWorkflow(env,new Request(base));await flow.reconcile(ids.b);
