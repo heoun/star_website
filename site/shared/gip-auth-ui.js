@@ -37,7 +37,14 @@ export async function mountGipAuth(host,{scope,post,enter,email:initialEmail='',
       }else if(mode==='verify-confirm'){
         await send('verify-register',{code});code='';render('login','Email confirmed. Sign In with your password.');
       }else if(mode==='reset-confirm'||mode==='activate-confirm'){
-        await send('verify-reset',{code,password:data.password,activation:mode==='activate-confirm'});code='';render('login','Password saved. Sign In with your new password.');
+        await send('verify-reset',{code,password:data.password,activation:mode==='activate-confirm'});code='';
+        if(mode==='activate-confirm'){
+          render('login','Password saved. Sign In with your new password.');
+          try{
+            const result=await send('login',{email,password:data.password});
+            if(result.mfa_required){renderMfa(result.factors);return;}await entered();
+          }catch(error){render('login','Password saved. '+error.message);}
+        }else render('login','Password saved. Sign In with your new password.');
       }else{
         const result=await send(mode==='activate'?'workspace-code':mode==='reset'?'request-reset':'resend',{email});
         render('login',result.existing_account?'Your account is already activated. Sign In with your current password.':'If this email is eligible, a link is on its way. Open it to continue.');
@@ -55,7 +62,13 @@ export async function mountGipAuth(host,{scope,post,enter,email:initialEmail='',
       if(action==='verify'&&checked.requestType==='VERIFY_EMAIL')render('verify-confirm');
       else if(['reset','activate'].includes(action)&&checked.requestType==='PASSWORD_RESET'&&(action!=='activate'||workspace))render(action==='activate'?'activate-confirm':'reset-confirm');
       else throw Error('This link does not match the requested action. Request a new one.');
-    }else if(invite){const inv=await send('workspace-invitation');email=inv.email;render('activate');}
+    }else if(invite){
+      const inv=await send('workspace-invitation');email=inv.email;
+      const activation=await send('workspace-code',{email});
+      if(activation.existing_account)render('login','Sign In with your current password to accept your invitation.');
+      else if(activation.activation_ready)render('activate-confirm');
+      else render('activate');
+    }
     else if(workspace&&new URLSearchParams(location.search).has('security')&&!new URLSearchParams(location.search).has('reauth'))await enter();
     else render(new URLSearchParams(location.search).has('reset')?'reset':initialMode);
   }catch(error){code='';invite='';render('login',error.message);}

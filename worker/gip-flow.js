@@ -75,9 +75,15 @@ export async function handleGipAuth(request,env,resource,scope){
     if(resource==='check-action')return json(await client.checkEmailAction(body.code));
     if(resource==='verify-register')return json({ok:true,...await client.verifyEmail(body.code)});
     if(resource==='verify-reset'){
-      const checked=await client.checkEmailAction(body.code);
+      let code=body.code;
+      if(body.activation===true&&!code){
+        const activation=await readGipChallenge(request,env,scope,'activation');
+        if(!activation||activation.inviteHash!==await hashInvitation(body.invite||''))return json({error:'Open your latest invitation again to activate your account.'},403);
+        code=activation.code;
+      }
+      const checked=await client.checkEmailAction(code);
       if(body.activation===true){if(scope!=='workspace')return json({error:'Use the applicant password reset page.'},400);await activationContext(env,body,checked.email);}
-      const result=await client.resetPassword(body.code,body.password);
+      const result=await client.resetPassword(code,body.password);
       const response=json({ok:true,email:result.email,sign_in_required:true});
       response.headers.append('Set-Cookie',sessionCookie(request,'',0,scope));response.headers.append('Set-Cookie',challengeCookie(request,scope));return response;
     }
@@ -95,8 +101,16 @@ export async function handleGipAuth(request,env,resource,scope){
         await reserveEmail(request,env,scope,email);
         const admin=createGipAdmin(env,scope);let account=await admin.findByEmail(email);
         if(account?.disabled)return json({error:'Account unavailable. Contact your administrator.'},403);
-        if(account?.emailVerified&&!context.account?.password_setup_required)return json({ok:true,existing_account:true});
+        if(account?.emailVerified&&(context.inv||!context.account?.password_setup_required))return json({ok:true,existing_account:true});
         if(!account){if(!context.inv)return json({error:'Account migration is not ready.'},503);account=await admin.createInvited(email);}
+        if(context.inv){
+          // The emailed invitation already proves mailbox possession. Keep the
+          // provider's single-use code in an encrypted, invitation-bound cookie.
+          const action=await admin.emailAction(email,'PASSWORD_RESET');
+          const response=json({ok:true,activation_ready:true});
+          response.headers.append('Set-Cookie',await writeGipChallenge(request,env,scope,'activation',{code:action.code,inviteHash:await hashInvitation(body.invite)}));
+          return response;
+        }
         await mailAction(request,env,scope,email,'PASSWORD_RESET',{invite:body.invite,activation:true,member:context.member});return json({ok:true,email_link:true});
       }
       await reserveEmail(request,env,scope,email);

@@ -21,7 +21,7 @@ try{
   calls.push({path,body});let data={},status=200;
   if(path.endsWith('/options'))data={provider:'gip',secure:true};
   else if(path.endsWith('/workspace-invitation')){if(body.invite==='a'.repeat(64))data={email:'member@example.invalid',role:'agent'};else{status=410;data={error:'This invitation is expired, replaced or already accepted.'};}}
-  else if(path.endsWith('/workspace-code'))data={ok:true,email_link:true};
+  else if(path.endsWith('/workspace-code'))data=reset?{ok:true,existing_account:true}:{ok:true,activation_ready:true};
   else if(path.endsWith('/check-action'))data={email:'member@example.invalid',requestType:'PASSWORD_RESET'};
   else if(path.endsWith('/verify-reset')){password=body.password;reset=true;data={ok:true,sign_in_required:true};}
   else if(path.endsWith('/request-reset'))data={ok:true,email_link:true};
@@ -41,16 +41,20 @@ try{
  // An invitation opens activation, not a generic welcome screen.
  await page.goto(base+'/login/#invite='+'a'.repeat(64));await page.getByRole('heading',{name:'Activate your account',exact:true}).waitFor();checks++;
  assert.equal(await page.getByLabel('Email address').inputValue(),'member@example.invalid');assert.equal(new URL(page.url()).hash,'');checks++;
- await page.getByRole('button',{name:'Send Email Link'}).click();await page.getByText('If this email is eligible',{exact:false}).waitFor();checks++;
- // New action in the same tab reloads correctly and must not consume a link on GET.
- await page.goto(base+'/login/#action=activate&oob=synthetic-action&invite='+'a'.repeat(64));
+ await page.getByLabel('New password',{exact:true}).waitFor();assert.equal(await page.getByRole('button',{name:'Send Email Link'}).count(),0);checks++;
+ // Set the password directly from the invitation, without another email link.
  await page.getByLabel('New password',{exact:true}).fill('changed-workspace-password');await page.getByLabel('Confirm password').fill('mismatch-password');
  await page.getByRole('button',{name:'Save Password'}).click();await page.getByText('The passwords do not match.',{exact:true}).waitFor();assert.equal(reset,false);checks++;
- await page.getByLabel('Confirm password').fill('changed-workspace-password');await page.getByRole('button',{name:'Save Password'}).click();await page.getByRole('heading',{name:'Welcome back'}).waitFor();assert.equal(signed,false);checks++;
+ await page.getByLabel('Confirm password').fill('changed-workspace-password');await page.getByRole('button',{name:'Save Password'}).click();await page.getByRole('heading',{name:'Two-step verification'}).waitFor();assert.equal(signed,false);checks++;
+ await page.getByRole('button',{name:'Back to Sign In',exact:true}).click();
  await page.getByLabel('Password',{exact:true}).fill('wrong-password');await page.getByRole('button',{name:'Sign In',exact:true}).click();await page.getByText('Email or password is incorrect.',{exact:true}).waitFor();checks++;
  await page.getByLabel('Password',{exact:true}).fill(password);await page.getByRole('button',{name:'Sign In',exact:true}).click();await page.getByRole('heading',{name:'Two-step verification'}).waitFor();assert.equal(accepted,false);checks++;
  await page.getByLabel('Verification code').fill('000000');await page.getByRole('button',{name:'Verify & Sign In'}).click();await page.getByText('Enter a valid authenticator code.',{exact:true}).waitFor();checks++;
  await page.getByLabel('Verification code').fill('123456');await page.getByRole('button',{name:'Verify & Sign In'}).click();await page.waitForURL('**/admin/**');assert.equal(accepted,true);checks++;
+ // An existing workspace account accepts an invitation with its current password.
+ await page.goto(base+'/login/#invite='+'a'.repeat(64));
+ await page.getByText('Sign In with your current password to accept your invitation.',{exact:true}).waitFor();
+ assert.equal(await page.getByLabel('New password',{exact:true}).count(),0);checks++;
  // Expired invitation cannot pin subsequent sign-in to an unusable token.
  await page.goto(base+'/login/#invite='+'b'.repeat(64));await page.getByText('This invitation is expired, replaced or already accepted.',{exact:true}).waitFor();assert.equal(await page.getByLabel('Email address').getAttribute('readonly'),null);checks++;
  // Applicant UI mounts GIP; workspace password cannot enter it.
