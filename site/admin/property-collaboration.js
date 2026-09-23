@@ -1,3 +1,6 @@
+import {propertyDirectory, propertyDirectoryRow} from "./property-directory.js";
+import {readiness} from "./property-sections.js";
+import {resolve, signerEmailKnown} from "./property-defaults.js";
 import {esc} from './admin-ui.js';
 import {PROPERTY_LABELS} from './property-form-layout.js';
 import {createPropertyDefaults} from './property-defaults.js';
@@ -57,7 +60,20 @@ export async function renderAgentProperties(host,{api,buildingId}) {
  host.innerHTML='<p>Loading property assignments…</p>';
  try {
   const {collaborations}=await api(endpoint);
-  if(!buildingId){host.innerHTML='<div class="pagehead"><div><span class="k">Temporary Collaboration</span><h1>Properties & Settings</h1><p>Prepare changes for Admin review.</p></div></div>'+collaborations.map(r=>'<a class="prop-row" href="#/properties/'+encodeURIComponent(r.building_id)+'"><b>'+esc(r.name)+'</b><span>'+esc(statusLabel(r))+'</span><span>Expires '+esc(time(r.expires_at))+'</span></a>').join('')+(collaborations.length?'':'<p>No active property assignments.</p>');return;}
+  if(!buildingId){
+   const [{registry},details]=await Promise.all([api('/lease/fields'),Promise.all(collaborations.map(r=>api(endpoint+'/'+r.id)))]);
+   const fields=registry.fields.filter(f=>f.source==='manager');
+   const rows=details.map(({collaboration:r})=>{
+    const building={...r.base_property,...r.property_patch,id:r.building_id};
+    const values={...r.base_settings,...r.settings_patch};
+    const field=id=>fields.find(f=>f.id===id);
+    const ready=readiness({fields,answered:f=>resolve(f,values).answered,hasSigner:signerEmailKnown(building)?Boolean(building.landlord_signer_email):true});
+    return propertyDirectoryRow({building,entity:resolve(field('landlord.entity_name'),values),signer:resolve(field('landlord.print_name'),values),ready,
+     note:statusLabel(r)+' · Access Ends '+time(r.expires_at),action:r.state==='draft'?'Manage':'View'});
+   }).join('');
+   host.innerHTML='<div class="pagehead"><div><span class="k">Configuration</span><h1>Properties</h1><p>Prepare property settings for Admin review. Lease status reflects your draft.</p></div></div>'+(rows?propertyDirectory(rows):'<div class="empty"><h2>No active property assignments.</h2></div>');
+   return;
+  }
   const assignment=collaborations.find(r=>r.building_id===buildingId);
   if(!assignment){host.innerHTML='<p role="alert">You do not have active collaboration access to this property.</p>';return;}
   const [detail,{registry}]=await Promise.all([api(endpoint+'/'+assignment.id),api('/lease/fields')]);

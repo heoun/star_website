@@ -55,6 +55,18 @@ try{
  await a.goto(base+'/admin/test');await a.getByText('Temporary Property Collaboration',{exact:true}).click();await a.locator('[name=agent_email]').selectOption('agent@example.test');await a.getByRole('button',{name:'Grant Temporary Access',exact:true}).click();
  await a.locator('[data-review-id]').waitFor({state:'attached'});await a.getByText('Temporary Property Collaboration',{exact:true}).click();
  await g.goto(base+'/admin/test');await g.locator('.property-steps').waitFor();
+ await g.evaluate(async()=>{
+  const {renderAgentProperties}=await import('/admin/property-collaboration.js');
+  await renderAgentProperties(document.querySelector('#test'),{api:async path=>{const response=await fetch('/api/admin'+path);if(!response.ok)throw Error('List request failed');return response.json();}});
+ });
+ assert.equal(await g.locator('.prop-directory .prop-row:not(.is-head)').count(),1);
+ assert.equal((await g.locator('.prop-go').innerText()).replace(/\s+/g,' '),'Manage ↗');
+ await g.getByText('Lease status',{exact:true}).first().waitFor();
+ await g.screenshot({path:'/tmp/property-agent-directory.png',fullPage:true});
+ await g.setViewportSize({width:390,height:844});
+ assert.equal(await g.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
+ await g.setViewportSize({width:1280,height:720});
+ await g.goto(base+'/admin/test');await g.locator('.property-steps').waitFor();
  assert.equal(await g.locator('.property-steps [data-property-step]').count(),15);
  await g.locator('#property-address').click();
  await g.locator('#address-street').fill('123 Test Street');

@@ -1,3 +1,4 @@
+import {propertyDirectory, propertyDirectoryRow} from "./property-directory.js";
 import {renderCollaborationAdmin} from './property-collaboration.js';
 // Property-level lease configuration.
 //
@@ -127,24 +128,7 @@ export async function renderPropertyList(host) {
       const signer = resolve(byId("landlord.print_name"), values);
       const count = units.get(building.id) || 0;
 
-      return `<a class="prop-row" href="#/properties/${escapeHtml(building.id)}">
-        <span class="prop-identity">
-          <b class="property-list-name">${escapeHtml(building.name)}</b>
-          <small>${escapeHtml([building.street, building.city, building.state_abbr, building.zip]
-            .filter(Boolean).join(", ")) || "No address recorded"}</small>
-          <span class="prop-listing-count">${count} linked listing${count === 1 ? "" : "s"}</span>
-        </span>
-        <span class="prop-landlord">
-          <span class="prop-mobile-caption">Landlord</span>
-          <span class="prop-entity">${entity.answered ? escapeHtml(entity.value) : '<span class="soft">Entity not set</span>'}</span>
-          <small><span class="prop-signer-label">Signer</span> · ${signer.answered
-            ? escapeHtml(signer.value)
-            : '<span class="prop-need">Not set</span>'}</small>
-        </span>
-        <span class="prop-readiness"><span class="prop-mobile-caption">Lease status</span><span class="pill is-${ready.state === "ready" ? "good" : ready.state === "one" ? "warn" : "bad"}">${
-          escapeHtml(ready.label)}</span></span>
-        <span class="prop-go">${isManager() ? "Manage" : "View"} <span aria-hidden="true">↗</span></span>
-      </a>`;
+      return propertyDirectoryRow({building, entity, signer, ready, count, action:isManager() ? "Manage" : "View"});
     }).join("");
 
     host.innerHTML = `
@@ -163,12 +147,7 @@ export async function renderPropertyList(host) {
              <p>A property is what lets several apartments share one set of landlord terms.
                 Add one from any listing's Property field, then set its address here.</p>
            </div>`
-        : `<div class="rows prop-directory">
-             <div class="prop-row is-head" aria-hidden="true">
-               <span>Property</span><span>Landlord</span><span>Lease status</span><span></span>
-             </div>
-             ${rowsMarkup}
-           </div>`}
+        : propertyDirectory(rowsMarkup)}
 
       ${unlinked > 0
         ? `<p class="note">${unlinked} apartment${unlinked === 1 ? " is" : "s are"} under no
