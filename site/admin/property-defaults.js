@@ -299,7 +299,7 @@ function sectionRows(section, values, editing, docLinked) {
     return settingRow(field, values, editing, docLinked);
   }).join("");
   const questions = GOOD_CAUSE_QUESTIONS;
-  return questions.map(([label, matches]) => `<h3 class="property-question">${label}</h3>${section.fields.filter(matches).map(field => settingRow(field, values, editing, docLinked)).join("")}`).join("");
+  return questions.map(([label, matches]) => `<h3 class="property-question">${label}</h3>${sectionRows({...section, id:"group", fields:section.fields.filter(matches)}, values, editing, docLinked)}`).join("");
 }
 
 function sectionContext(id, ctx, building) {

@@ -1942,7 +1942,8 @@
       "required": false,
       "default": null,
       "scope": "building",
-      "note": "Only needed when the increase is above the threshold."
+      "note": "Required when the increase is above the threshold.",
+      "required_when": "good_cause.increase_above_threshold"
     },
     {
       "id": "good_cause.nonrenewal_sublet",
