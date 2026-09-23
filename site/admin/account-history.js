@@ -1,6 +1,6 @@
 import {esc} from './admin-ui.js';
 const roles={manager:'Admin',agent:'Agent',landlord:'Landlord'};
-const actions={save:'Account Saved',create_admin:'Admin Created',grant_admin:'Admin Access Granted',revoke_admin:'Admin Access Revoked',remove_admin:'Admin Access Removed',remove_account:'Account Access Removed',onboarding_approved:'Landlord Onboarding Approved'};
+const actions={save:'Account Saved',create_admin:'Admin Created',grant_admin:'Promoted to Admin',revoke_admin:'Demoted to Agent',remove_admin:'Workspace Access Removed',remove_account:'Workspace Access Removed',onboarding_approved:'Landlord Onboarding Approved'};
 export function accountHistoryChanges(entry, buildings=[]) {
   const before=entry.before_record,after=entry.after_record;
   if(!after || typeof after!=='object')return ['Change details were not recorded.'];
