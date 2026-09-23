@@ -1,3 +1,4 @@
+import {renderWithPropertyPreview} from "./property-preview.js";
 import {propertyDirectory, propertyDirectoryRow} from "./property-directory.js";
 import {renderCollaborationAdmin} from './property-collaboration.js';
 // Property-level lease configuration.
@@ -260,7 +261,7 @@ export async function handlePropertyClick(event, host, target) {
     rerender: async () => {
       rememberDefaultsNavigation(host, ui);
       const building = buildings.find(row => row.id === target);
-      host.innerHTML = renderPropertyShell({building, target});
+      renderWithPropertyPreview(host,renderPropertyShell({building, target}));
       syncDefaultsNavigation(host, ui);
       if(isManager()) await renderCollaborationAdmin(host.querySelector("[data-property-collaboration]"),{api,buildingId:target,onApproved:async()=>{forgetLayers();await renderProperty(host,target);}});
     }

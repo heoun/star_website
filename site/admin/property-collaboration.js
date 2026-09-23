@@ -1,3 +1,4 @@
+import {renderWithPropertyPreview} from "./property-preview.js";
 import {verifyWorkspaceIdentity} from "../shared/workspace-verify.js";
 import {propertyDirectory, propertyDirectoryRow} from "./property-directory.js";
 import {readiness} from "./property-sections.js";
@@ -122,7 +123,7 @@ export async function renderAgentProperties(host,{api,buildingId}) {
   await editor.loadLayer(buildingId);
   const rerender=async()=>{
    editor.rememberDefaultsNavigation(editorHost,ui);
-   editorHost.innerHTML=editor.defaultsMarkup({fields,values:editor.layerOf(buildingId),ui,buildingId});
+   renderWithPropertyPreview(editorHost,editor.defaultsMarkup({fields,values:editor.layerOf(buildingId),ui,buildingId}));
    editor.syncDefaultsNavigation(editorHost,ui);
   };
   await rerender();

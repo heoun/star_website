@@ -99,6 +99,9 @@ try{
  assert.equal(await g.locator('.property-steps [data-property-step]').count(),15);
  const preview=g.frameLocator('[data-property-preview]');
  await preview.locator('#position').filter({hasText:'Template Section'}).waitFor({timeout:15000}).catch(async error=>{console.error('PREVIEW',await preview.locator('body').innerText(),errors);throw error;});
+ const previewDocument=await preview.locator('body').evaluate(()=>{window.previewTestIdentity=crypto.randomUUID();return window.previewTestIdentity;});
+ let templateReloads=0;g.on('request',request=>{if(new URL(request.url()).pathname==='/admin/lease-template.docx')templateReloads++;});
+ const previewActionsStarted=Date.now();
  const total=await preview.locator('#count').innerText();assert.match(total,/1 \/ [1-9]/);
  assert.equal(await preview.locator('section.docx:not([data-doc-hidden])').count(),1);
  if(!await preview.locator('#next').isDisabled()){
@@ -131,6 +134,9 @@ try{
  await g.locator('#signer-email').fill('signer@example.test');
  await g.locator('#signer-save').click();
  await g.getByText('Signer saved to draft. Admin approval is required.').waitFor();
+ assert.equal(await g.frameLocator('[data-property-preview]').locator('body').evaluate(()=>window.previewTestIdentity),previewDocument,'Editing and saves preserve the loaded preview document');
+ assert.equal(templateReloads,0,'Steps, dialogs and saves must not reload the template');
+ console.log('Preview performance: 0 template reloads across address edit/save, step changes, manager edit/save, signer dialog/save in '+(Date.now()-previewActionsStarted)+' ms including test interaction and screenshots');
  await g.screenshot({path:'/tmp/property-unified-agent-desktop.png',fullPage:true});
  assert.equal((await db.query('select count(*)::int n from lease_settings')).rows[0].n,0);
  assert.equal((await db.query('select city from buildings')).rows[0].city,null);
