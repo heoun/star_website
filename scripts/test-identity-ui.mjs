@@ -65,7 +65,7 @@ try{
   await context.request.post(`${base}/api/portal/login`,{data:{email:'applicant@example.test',password:'testing-password'}});
   await page.goto(`${base}/admin/#/staff`);await page.getByRole("tab",{name:/Agents/}).click();await page.getByRole("button",{name:"Add Agent",exact:true}).click();
   await page.locator('#account-form [name="email"]').fill("browser-agent@example.test");await page.locator('#account-form [name="name"]').fill("Browser Agent");await page.getByRole("button",{name:"Save Account",exact:true}).click();
-  await page.getByRole("status").filter({hasText:"activation code has been emailed"}).waitFor();checks++;
+  await page.getByRole("status").filter({hasText:"An invitation has been emailed"}).waitFor();checks++;
   await page.locator("[data-sign-out]").first().click();await page.waitForURL("**/login/");checks++;
   assert.equal((await(await context.request.get(`${base}/api/portal/me`)).json()).email,'applicant@example.test');checks++;
   await page.getByRole("button",{name:"Activate an Invited Account"}).click();await page.getByLabel("Email address").fill("browser-agent@example.test");await page.getByRole("button",{name:"Send Email Code"}).click();
