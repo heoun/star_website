@@ -77,7 +77,7 @@ try{
  eq(await person.locator('[data-record-section][open]').count(),0);
  await page.setViewportSize({width:390,height:844});eq(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);await page.screenshot({path:`${out}/application-mobile.png`,fullPage:true});await page.setViewportSize({width:1600,height:1080});
  await flow.reconcile(ids.b);eq(fixture.state.emails.length,1);
- const email=fixture.state.emails[0],link=/Agree to proceed: (\S+)/.exec(email.text)[1],landlord=fixture.state.applications.find(a=>a.id===ids.b).workspace.recommendation.landlord_email;
+ const email=fixture.state.emails[0],link=/Agree to Proceed: (\S+)/.exec(email.text)[1],landlord=fixture.state.applications.find(a=>a.id===ids.b).workspace.recommendation.landlord_email;
  // Stay signed in as an admin: the email capability must ignore this session.
  await page.goto(link);await page.getByRole('button',{name:'Confirm Agree to Proceed',exact:true}).waitFor();
  eq(fixture.state.applications.find(a=>a.id===ids.b).status,'sent_to_landlord');
@@ -86,10 +86,13 @@ try{
  await anonPage.goto(link.replace('choice=accept','choice=decline'));await anonPage.getByRole('button',{name:'Confirm Do Not Proceed',exact:true}).waitFor();
  eq(await anonPage.getByRole('link',{name:/Sign In/}).count(),0);eq(await anonPage.evaluate(()=>document.documentElement.scrollWidth<=innerWidth),true);
  await anonPage.getByRole('button',{name:'Confirm Do Not Proceed',exact:true}).click();eq(fixture.state.applications.find(a=>a.id===ids.b).status,'sent_to_landlord');
- await anonPage.screenshot({path:`${out}/landlord-decline-mobile.png`,fullPage:true});await anon.close();
+ await anonPage.screenshot({path:`${out}/landlord-decline-mobile.png`,fullPage:true});await anonPage.getByRole('link',{name:'View Details',exact:true}).click();
+ await anonPage.getByRole('link',{name:'Sign In to Continue',exact:true}).waitFor();
+ eq(await anonPage.getByRole('button',{name:'Confirm Do Not Proceed',exact:true}).count(),0);
+ await anon.close();
  await page.screenshot({path:`${out}/landlord-email-confirmation.png`,fullPage:true});
- await page.getByRole('button',{name:'Confirm Agree to Proceed',exact:true}).click();await page.getByRole('heading',{name:'Decision recorded'}).waitFor();eq(fixture.state.applications.find(a=>a.id===ids.b).status,'landlord_approved');
- await page.reload();await page.getByRole('heading',{name:'Decision recorded'}).waitFor();
+ await page.getByRole('button',{name:'Confirm Agree to Proceed',exact:true}).click();await page.getByRole('heading',{name:'Decision Recorded'}).waitFor();eq(fixture.state.applications.find(a=>a.id===ids.b).status,'landlord_approved');
+ await page.reload();await page.getByRole('heading',{name:'Decision Recorded'}).waitFor();
  eq(fixture.state.applications.find(a=>a.id===ids.b).workspace.lease_draft.missing.length,0);
  await login('admin@example.test');await page.goto(`${base}/admin/#/applications/${ids.b}`);await page.getByRole('tab',{name:'Lease & Decision',exact:true}).click();await page.getByRole('button',{name:'Download lease draft',exact:true}).waitFor();
  eq(await page.locator('[data-rental-panel]:visible').getAttribute('data-rental-panel'),'lease');
