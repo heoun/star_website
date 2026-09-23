@@ -113,6 +113,12 @@ eq((bedbugA.xml.slice(bedbugA.xml.indexOf('\\BEDBUG-R1-SIG\\'),bedbugA.xml.index
 for(const text of ['', '  ', 'None', 'N/A', 'No rent concession in this mock tenancy.','MOCK TEST ONLY — NOT A REAL TENANCY'])eq(hasConcession({'concession.terms':text}),false);
 const noConcession=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),{...values,'concession.terms':''},signers);
 eq(noConcession.tabs.some(t=>t.layout==='concession'),false);
+eq(noConcession.documents.some(d=>d.layout==='concession'),false);
+eq((await readEntryText(entries(noConcession.docx),'word/document.xml')).includes('Rent Concession Rider'),false);
+eq(noConcession.documents.every((d,i)=>d.documentId===String(i+1)),true);
+const withConcession=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),{...values,'concession.terms':'A one-time $500 credit against October rent.'},signers);
+eq(withConcession.documents.some(d=>d.layout==='concession'),true);
+eq(withConcession.tabs.some(t=>t.layout==='concession'),true);
 eq(hasConcession({'concession.terms':'A one-time $500 credit against October rent.'}),true);
 const pkg={id:crypto.randomUUID(),rentalId:'rental',createdAt:new Date().toISOString(),createdBy:'agent@example.test',signers,tabs:document.tabs,documents:await Promise.all(document.documents.map(async d=>({documentId:d.documentId,name:d.name,file:{sha256:await sha256(d.bytes)}})))};
 const definition=envelopeDefinition(pkg,document.documents,'https://example.test/api/webhooks/docusign');

@@ -2,6 +2,7 @@
 // resources verbatim. Single-tenant notices get one independently filled copy.
 import {readEntries,readEntryText,replaceEntry} from './zip.js';
 import {DOCUMENTS} from '../site/shared/lease-documents.js';
+import {hasConcession} from '../site/shared/lease-signing-layout.js';
 export const INDIVIDUAL_NOTICES=new Set(['window_guards','bedbug','dhcr']);
 const unescape=s=>s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(+n));
 const visible=xml=>unescape([...xml.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(m=>m[1]).join('')).replace(/\s+/g,' ').trim();
@@ -30,6 +31,7 @@ export async function splitSigningDocuments(docx,originalXml,values,signers,tena
  const result=[],review=[];
  for(let i=0;i<starts.length;i++){
   const d=starts[i],chunks=nodes.slice(d.index,starts[i+1]?.index??nodes.length);
+  if(d.id==='concession' && !hasConcession(values))continue;
   for(const tenant of INDIVIDUAL_NOTICES.has(d.id)?signers.filter(s=>s.role==='tenant'):[null]){
    const v=tenant?{...values,...tenantValues[tenant.memberId],'tenant.names':tenant.name,'tenant.email':tenant.email}:values;
    const xml=fill(chunks.join(''),v);review.push(xml);
