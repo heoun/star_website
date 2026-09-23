@@ -15,9 +15,7 @@ function diffMarkup(r,fields) {
  const rows=changes(r,fields);
  return rows.length?'<div class="collab-diff"><table><thead><tr><th>Field</th><th>Before</th><th>Proposed</th></tr></thead><tbody>'+rows.map(row=>'<tr><th>'+esc(row.label)+'</th><td>'+esc(display(row.before))+'</td><td>'+esc(display(row.after))+'</td></tr>').join('')+'</tbody></table></div>':'<p>No setting changes.</p>';
 }
-function documents(r) {
- return '<h3>Supporting Documents</h3>'+(r.documents.length?'<ul>'+r.documents.map(d=>'<li><a href="/api/admin/property-collaborations/'+encodeURIComponent(r.id)+'/documents/'+encodeURIComponent(d.id)+'">'+esc(d.name)+'</a></li>').join('')+'</ul>':'<p>No documents uploaded.</p>');
-}
+
 function historyMarkup(history,fields) {
  const titles={grant:'Temporary Access Granted',save:'Draft Saved',submit:'Submitted for Review',document:'Document Uploaded',approve:'Changes Approved · Access Ended',return:'Returned for Correction',revoke:'Access Ended'};
  return '<details class="case-disclosure"><summary>Collaboration History</summary>'+history.map(h=>{
@@ -32,7 +30,7 @@ function historyMarkup(history,fields) {
 }
 async function review(host,api,id,refresh) {
  const [{collaboration:r,history},{registry}]=await Promise.all([api(endpoint+'/'+id),api('/lease/fields')]);
- host.innerHTML='<h3>'+esc(r.agent_email)+'</h3><p>'+esc(statusLabel(r))+' · Expires '+esc(time(r.expires_at))+'</p>'+diffMarkup(r,registry.fields)+documents(r)+
+ host.innerHTML='<h3>'+esc(r.agent_email)+'</h3><p>'+esc(statusLabel(r))+' · Expires '+esc(time(r.expires_at))+'</p>'+diffMarkup(r,registry.fields)+
  (['draft','submitted'].includes(r.state)?'<form class="desk-form" data-review><label>Review Notes<textarea name="note" maxlength="1000"></textarea></label><div class="actions">'+(r.state==='submitted'?'<button class="primary" name="action" value="approve">Approve Changes</button><button name="action" value="return">Return for Correction</button>':'')+'<button name="action" value="revoke">End Access</button></div><p role="status"></p></form>':'')+historyMarkup(history,registry.fields);
  const form=host.querySelector('[data-review]');
  if(form)form.onsubmit=async event=>{event.preventDefault();const action=event.submitter.value;const buttons=[...form.querySelectorAll('button')];buttons.forEach(b=>b.disabled=true);
@@ -71,8 +69,7 @@ export async function renderAgentProperties(host,{api,buildingId}) {
    (r.note?'<p class="status">Admin Feedback: '+esc(r.note)+'</p>':'')+
    '<div data-collaboration-editor></div><p class="status" data-draft-status role="status"></p>'+
    (editable?'<div class="actions"><button type="button" class="primary" data-submit-draft>Submit for Review</button></div>':'')+
-   '<div data-collaboration-documents>'+documents(r)+'</div>'+
-   (editable?'<form class="desk-form" data-upload><label>Add Supporting Document<input name="file" type="file" accept=".pdf,.docx,.jpg,.jpeg,.png" required></label><button>Upload Document</button><p role="status"></p></form>':'')+
+   '<div data-collaboration-documents>'+'</div>'+
    '<div data-collaboration-history>'+historyMarkup(detail.history,fields)+'</div>';
   const editorHost=host.querySelector('[data-collaboration-editor]');
   const setStatus=(message,tone='')=>{const status=host.querySelector('[data-draft-status]');status.textContent=message;status.dataset.tone=tone;};
@@ -126,20 +123,6 @@ export async function renderAgentProperties(host,{api,buildingId}) {
    catch(error){setStatus(error.message,'error');submit.disabled=false;}
    finally{busy=false;}
   };
-  const upload=host.querySelector('[data-upload]');
-  if(upload)upload.onsubmit=async event=>{
-   event.preventDefault();if(busy)return;
-   if(pendingEdits()){setStatus('Save or cancel the open section before uploading.','error');return;}
-   const file=new FormData(upload).get('file'),button=upload.querySelector('button');busy=true;button.disabled=true;
-   try{
-    if(file.size>10*1024*1024)throw Error('Maximum file size is 10 MB.');
-    const response=await fetch('/api/admin'+endpoint+'/'+r.id+'/documents?name='+encodeURIComponent(file.name),{method:'POST',credentials:'same-origin',headers:{'Content-Type':file.type||'application/octet-stream'},body:file});
-    const result=await response.json();if(!response.ok)throw Error(result.error||'Upload failed.');
-    r=result.collaboration;
-    host.querySelector('[data-collaboration-documents]').innerHTML=documents(r);
-    await refreshHistory();upload.reset();upload.querySelector('[role=status]').textContent='Document uploaded.';
-   }catch(error){upload.querySelector('[role=status]').textContent=error.message;}
-   finally{busy=false;button.disabled=false;}
-  };
+
  }catch(error){host.innerHTML='<p role="alert">'+esc(error.message)+'</p>';}
 }

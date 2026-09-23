@@ -78,9 +78,8 @@ try{
  await g.screenshot({path:'/tmp/property-unified-agent-desktop.png',fullPage:true});
  assert.equal((await db.query('select count(*)::int n from lease_settings')).rows[0].n,0);
  assert.equal((await db.query('select city from buildings')).rows[0].city,null);
- await g.locator('input[type=file]').setInputFiles({name:'landlord-note.pdf',mimeType:'application/pdf',buffer:Buffer.from('%PDF-1.4 Test Only')});
- await g.getByRole('button',{name:'Upload Document',exact:true}).click();
- await g.getByRole('link',{name:'landlord-note.pdf'}).waitFor();
+ assert.equal(await g.locator('input[type=file]').count(),0);
+ assert.equal(await g.getByText('Supporting Documents',{exact:true}).count(),0);
  await g.getByRole('button',{name:'Submit for Review',exact:true}).click();
  await g.getByText('Awaiting Review · Access Ends',{exact:false}).waitFor();
  assert.equal(await g.locator('[data-settings-edit], #property-address, #property-signer').count(),0);
@@ -88,8 +87,7 @@ try{
  await a.reload();await a.getByText('Temporary Property Collaboration',{exact:true}).click();await a.locator('[data-review-id]').click();await a.getByRole('button',{name:'Approve Changes'}).waitFor();
  assert((await a.locator('[data-review-host]').innerText()).includes('New York'));
  await a.screenshot({path:'/tmp/property-collaboration-admin.png',fullPage:true});
- const download=await admin.request.get(base+(await a.getByRole('link',{name:'landlord-note.pdf'}).getAttribute('href')));
- assert.equal(download.status(),200);
+ assert.equal(await a.getByText('Supporting Documents',{exact:true}).count(),0);
  await a.getByRole('button',{name:'Approve Changes'}).click();
  await a.getByRole('button',{name:/Approved · Access Ended/,includeHidden:true}).waitFor({state:'attached'});await a.getByText('Temporary Property Collaboration',{exact:true}).click();
  assert.equal((await db.query('select city from buildings')).rows[0].city,'New York');
@@ -103,5 +101,5 @@ try{
  assert.deepEqual(errors,[]);
  assert(agentWrites.every(path=>path.startsWith('/api/admin/property-collaborations/')),'Agent editor must never call a live settings write');
  assert.equal((await db.query('select field_values from lease_settings')).rows[0].field_values['manager.name'],'Draft Property Manager');
- console.log('PASS collaboration browser flow: grant, save draft without live write, upload, submit, review diff, private download, approval, access closed, fresh assignment, mobile layout');
+ console.log('PASS collaboration browser flow: grant, save draft without live write, submit, review diff, approval, access closed, fresh assignment, mobile layout');
 }finally{await browser.close();server.close();globalThis.fetch=oldFetch;await db.close();}
