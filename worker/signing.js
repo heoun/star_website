@@ -1,8 +1,8 @@
 import { signingFor, boundedBytes } from '../backend/app/rental-signing.ts';
-import { requireConfig, fetchStaff, fetchBuilding } from './supabase.js';
-import { rentalMode, rentalWorkflow } from './rentals.js';
+import { requireConfig, fetchStaff, fetchBuilding, fetchLeaseLayers } from './supabase.js';
+import { rentalMode, rentalWorkflow, householdApplication } from './rentals.js';
 import { requireDocsBucket } from './portal.js';
-import { missingIn } from './lease.js';
+import { missingIn, dealValues, resolveValues } from './lease.js';
 import { buildSigningLease, sha256 } from './signing-template.js';
 import { SIGNING_TEMPLATE_VERSION, SIGNING_LAYOUT_REVIEW_REQUIRED } from '../site/shared/lease-signing-layout.js';
 import { internalTesting,internalTestListing,internalTestRoommates } from '../backend/app/internal-testing.ts';
@@ -58,10 +58,11 @@ function safeRecord(record) {
     completed:record.phase==='completed',source_sha256:(record.package.reviewFile || record.package.documents[0].file).sha256,
     documents:record.package.documents.map(d=>({documentId:d.documentId,layout:d.layout,tenantRecipientId:d.tenantRecipientId,name:d.name,sha256:d.file.sha256})),values:{'concession.terms':record.package.values['concession.terms']}};
 }
-async function recipients(env,g,request) {
+async function recipients(env,g,request,reviewOnly=false) {
   const tenants=g.members.map((m,i)=>({recipientId:String(i+1),memberId:m.id,role:'tenant',routingOrder:1,name:String(m.name || '').trim(),email:email(m.email)}));
-  const w=g.root.workspace,landlordEmail=email(w?.recommendation?.landlord_email);
+  const w=g.root.workspace,approvedEmail=email(w?.recommendation?.landlord_email);
   const [allStaff,building]=await Promise.all([fetchStaff(env),fetchBuilding(env,g.root.listings?.building_id)]);
+  const landlordEmail=approvedEmail || (reviewOnly?email(building?.landlord_signer_email):'');
   const staff=allStaff.filter(s=>s.active && s.role==='landlord' && s.property_ids?.includes(g.root.listings?.building_id));
   if(!staff.some(s=>email(s.email)===landlordEmail) || (building?.landlord_signer_email && email(building.landlord_signer_email)!==landlordEmail))throw error('The approved landlord is no longer this property’s signer. Review the landlord assignment.');
   const signers=[...tenants,{recipientId:String(tenants.length+1),memberId:null,role:'landlord',routingOrder:2,name:String(g.root.lease_snapshot?.['landlord.print_name'] || '').trim(),email:landlordEmail}];
@@ -69,7 +70,7 @@ async function recipients(env,g,request) {
   // most four tenants, every one of them a designated test inbox.
   const inboxes=[email(env.INTERNAL_TEST_EMAIL),...internalTestRoommates(env)];
   if(w?.test_run && (!internalTesting(env,request) || !internalTestListing(env,g.root.listings?.id) || !tenants.length || tenants.length>4 || tenants.some(t=>!inboxes.includes(t.email)) || landlordEmail!==email(env.INTERNAL_TEST_LANDLORD_EMAIL)))throw error('Internal test signing is limited to the configured test listing and recipient inboxes.',403);
-  if(signers.some(s=>!s.name || s.name.length>100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email)) || new Set(signers.map(s=>s.email)).size!==signers.length)throw error('Each signer needs a legal name (up to 100 characters) and a distinct valid email address.');
+  if(signers.some(s=>!s.name || s.name.length>100 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.email)) || (!reviewOnly && new Set(signers.map(s=>s.email)).size!==signers.length))throw error('Each signer needs a legal name (up to 100 characters) and a distinct valid email address.');
   return signers;
 }
 function assertLease(flow,g) {
@@ -83,6 +84,8 @@ export async function handleRentalSigning(request,env,identity,id,ctx) {
     const config=signingConfiguration(env,request);
     if(!config.enabled)return json({configuration:config,signing:null},request.method==='GET'?200:503);
     const workflow=rentalWorkflow(env,request),g=await workflow.load(identity,id);
+    const reviewOnly=env.APP_ENV==='staging' && identity.role==='manager' && String(env.LEASE_REVIEW_ONLY_CASE_IDS || '').split(',').includes(id);
+    if(reviewOnly){config.reviewOnly=true;config.canSend=false;config.message='Admin-authorized review only. Landlord confirmation is skipped for this review; sending is disabled.';}
     if(g.root.id!==id)throw error('Open the shared rental to send its lease.');
     const files=signingFiles(env),flow=signingFor(requireConfig(env),env,files),url=new URL(request.url);
     if(request.method==='GET') {
@@ -101,23 +104,30 @@ export async function handleRentalSigning(request,env,identity,id,ctx) {
     if(request.method!=='POST')return json({error:'Method not allowed.'},405);
     const body=await request.json();
     if(body.action==='prepare') {
-      assertLease(workflow,g);
+      if(!reviewOnly)assertLease(workflow,g);
       if(body.version!==g.root.workspace_version)throw error('The rental changed. Refresh and review it again.');
       const prior=await flow.store.current(id);
       if(prior && !['voided','declined'].includes(prior.phase))return json({configuration:config,signing:safeRecord(prior),reserved:true});
-      const [signers,previews]=await Promise.all([recipients(env,g,request),flow.store.previews(id)]);
+      let values=g.root.lease_snapshot;
+      const revision=g.root.workspace?.recommendation?.revision || 0;
+      if(reviewOnly){
+        const building=await fetchBuilding(env,g.root.listings.building_id),layers=await fetchLeaseLayers(env,g.root.listing_id);
+        const deal=dealValues({application:householdApplication(g),listing:g.root.listings,building,today:null});
+        values=resolveValues({layers,deal,overrides:{...g.root.workspace?.lease_overrides,...g.root.workspace?.terms}}).values;
+      }
+      const [signers,previews]=await Promise.all([recipients(env,reviewOnly?{...g,root:{...g.root,lease_snapshot:values}}:g,request,reviewOnly),flow.store.previews(id)]);
       const versions=Object.fromEntries(g.members.map(m=>[m.id,m.workspace_version || 0]));
-      const saved=previews.find(p=>p.record.package.templateVersion===SIGNING_TEMPLATE_VERSION && p.record.package.approvalRevision===g.root.workspace.recommendation.revision && sameSigners(signers,p.record.package.signers) && Object.keys(p.member_versions).length===g.members.length && g.members.every(m=>p.member_versions[m.id]===versions[m.id]));
+      const saved=previews.find(p=>p.record.package.templateVersion===SIGNING_TEMPLATE_VERSION && p.record.package.approvalRevision===revision && sameSigners(signers,p.record.package.signers) && Object.keys(p.member_versions).length===g.members.length && g.members.every(m=>p.member_versions[m.id]===versions[m.id]));
       if(saved)return json({configuration:config,signing:safeRecord(saved.record),preview:true});
       const packageId=crypto.randomUUID();
-      let document;try{document=await buildSigningLease(env,request,g.root.lease_snapshot,signers,Object.fromEntries(g.members.map(m=>[m.id,{'tenant.mailing_address':m.current_address || ''}])));}catch(e){throw error(e.message,409);}
+      let document;try{document=await buildSigningLease(env,request,values,signers,Object.fromEntries(g.members.map(m=>[m.id,{'tenant.mailing_address':m.current_address || ''}])));}catch(e){throw error(e.message,409);}
       // Bound storage concurrency instead of paying one round trip per document.
       const sources=[{bytes:document.docx},...document.documents],stored=new Array(sources.length);
       let cursor=0;
       await Promise.all(Array.from({length:4},async()=>{while(cursor<sources.length){const i=cursor++;stored[i]=await files.put(packageId,'source_docx',new Response(sources[i].bytes).body);}}));
       const file=stored[0],documents=document.documents.map((d,i)=>({documentId:d.documentId,layout:d.layout,tenantRecipientId:d.tenantRecipientId,name:d.name,file:stored[i+1]}));
-      const pkg={id:packageId,rentalId:id,approvalRevision:g.root.workspace.recommendation.revision,templateVersion:document.templateVersion,
-        values:g.root.lease_snapshot,reviewFile:file,documents,signers,tabs:document.tabs,createdAt:new Date().toISOString(),createdBy:identity.email};
+      const pkg={id:packageId,rentalId:id,approvalRevision:revision,templateVersion:document.templateVersion,
+        values,reviewFile:file,documents,signers,tabs:document.tabs,createdAt:new Date().toISOString(),createdBy:identity.email};
       const record=await flow.store.preview(pkg,versions);
       return json({configuration:config,signing:safeRecord(record),preview:true});
     }

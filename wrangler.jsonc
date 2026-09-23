@@ -55,6 +55,7 @@
         "DOCUSIGN_ENVIRONMENT":"demo",
         "DOCUSIGN_WEBHOOK_URL":"https://dev.starreusa.com/api/webhooks/docusign",
         "DEV_DOCUSIGN_SEND":"on",
+        "LEASE_REVIEW_ONLY_CASE_IDS":"276594d5-1491-4518-b9cd-5fd4bf02f072",
         "EMAIL_LOGO_URL":"https://dev.starreusa.com/png/email-logo-v1.png"
       },
       "triggers":{"crons":["* * * * *"]}

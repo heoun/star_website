@@ -73,5 +73,23 @@ try {
  eq(reserves,1); // Reading legacy state must not resend or reserve another package.
  record.envelope.status='created';
  eq((await(await get(agent)).json()).signing.signers.map(s=>s.status),['pending','pending','pending']);
+ // A scoped staging exception permits incomplete review, never sending.
+ records.clear();row.status='review';row.lease_snapshot=null;
+ delete row.workspace.signing;delete row.workspace.recommendation;delete row.workspace.landlord_decision;delete row.workspace.lease_preparation;delete row.workspace.test_run;
+ const group=await flow.store.group(ids.b);
+ const building=fixture.state.buildings.find(b=>b.id===group.root.listings.building_id);
+ building.landlord_signer_email=landlord.email;
+ for(const member of group.members){const source=fixture.state.applications.find(a=>a.id===member.id);source.email='shared@example.test';}
+ env.APP_ENV='staging';env.LEASE_REVIEW_ONLY_CASE_IDS=ids.b;
+ const reviewResponse=await post({action:'prepare',version:row.workspace_version});
+ const reviewPayload=await reviewResponse.json();assert.equal(reviewResponse.status,200,JSON.stringify(reviewPayload));checks++;
+ eq(reviewPayload.configuration.reviewOnly,true);eq(reviewPayload.configuration.canSend,false);
+ eq(reviewPayload.signing.signers.filter(s=>s.role==='tenant').map(s=>s.email),['shared@example.test','shared@example.test']);
+ eq((await post({action:'send',packageId:reviewPayload.signing.id,version:row.workspace_version})).status,503);
+ eq(row.status,'review');eq(row.workspace.landlord_decision,undefined);
+ env.APP_ENV='production';
+ eq((await post({action:'prepare',version:row.workspace_version})).status,409);
+ env.APP_ENV='staging';env.LEASE_REVIEW_ONLY_CASE_IDS='another-case';
+ eq((await post({action:'prepare',version:row.workspace_version})).status,409);
  console.log(`PASS ${checks} signing HTTP checks: scoped access, readiness, exact source download, stale reviews, signer changes, idempotent send and forged webhook`);
 }finally{globalThis.fetch=original;}

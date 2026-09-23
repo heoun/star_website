@@ -458,6 +458,7 @@ function leaseStatus() {
   if (applicationStatus === "declined") return { label: "Cancelled", tone: "off" };
   if (applicationStatus === "lease_signed") return { label: "Fully signed", tone: "good" };
   if (applicationStatus === "lease_sent") return { label: "Sent for signature", tone: "busy" };
+  if(state.signing?.configuration?.reviewOnly)return {label:"Admin Review Only · Not Sent",tone:"off"};
   if (state.missing.size > 0) return { label: "Draft", tone: "off" };
   if(state.dirty.size)return {label:'Unsaved Corrections',tone:'off'};
   if(state.mode==='lease' && !['landlord_approved','lease_sent','lease_signed'].includes(applicationStatus))return {label:'Awaiting Approval',tone:'off'};
@@ -810,7 +811,7 @@ function updateActions() {
     draft.hidden=state.readOnly || !!signingEntry?.reviewed;draft.textContent='Review Lease for Signatures';
     review.hidden=false;review.textContent=state.readOnly?'View Signing Status':'Send With DocuSign';
     review.disabled=!!state.dirty.size || !state.signing?.configuration?.enabled || !screen.querySelector('#lease-alarm').hidden || (!state.readOnly && (problems>0 || state.caseRow.status!=='landlord_approved'));
-    draft.disabled=review.disabled || signingLoading || signingBusy;
+    draft.disabled=state.signing?.configuration?.reviewOnly ? !!state.dirty.size || signingLoading || signingBusy : review.disabled || signingLoading || signingBusy;
     if(signingLoading || signingBusy || (!state.readOnly && !state.signing?.configuration?.canSend))review.disabled=true;
     if(state.signing?.configuration?.placementReviewRequired && !state.readOnly)review.disabled=true;
     screen.querySelector('#lease-warnings').textContent=state.dirty.size?`${state.dirty.size} unsaved correction${state.dirty.size===1?'':'s'} · This lease only`:state.caseRow.status==='sent_to_landlord'?'Waiting for landlord approval':'';
@@ -970,8 +971,8 @@ function previewBlocker(){
   if(state.readOnly)return 'This lease is locked, so signing fields cannot be previewed.';
   if(!state.signing?.configuration?.enabled)return 'DocuSign is not connected, so signing fields cannot be previewed.';
   const row=state.caseRow;
-  if(row.status!=='landlord_approved' || !row.workspace?.lease_preparation || row.progression_blocked)return 'Signing fields can be previewed once the landlord has approved this lease.';
-  if(workspace.reviewIssues(state).length)return 'Resolve the items under Lease Information to preview signing fields.';
+  if(!state.signing?.configuration?.reviewOnly && (row.status!=='landlord_approved' || !row.workspace?.lease_preparation || row.progression_blocked))return 'Signing fields can be previewed once the landlord has approved this lease.';
+  if(!state.signing?.configuration?.reviewOnly && workspace.reviewIssues(state).length)return 'Resolve the items under Lease Information to preview signing fields.';
   if(!screen.querySelector('#lease-alarm').hidden)return 'This screen does not match the template, so signing fields cannot be previewed.';
   return '';
 }
