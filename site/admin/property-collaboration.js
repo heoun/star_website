@@ -122,6 +122,7 @@ export async function renderAgentProperties(host,{api,buildingId}) {
   const ui=editor.newDefaultsUi();
   await editor.loadLayer(buildingId);
   const rerender=async()=>{
+   host.querySelector('.pagehead h1').textContent=property().name;
    editor.rememberDefaultsNavigation(editorHost,ui);
    renderWithPropertyPreview(editorHost,editor.defaultsMarkup({fields,values:editor.layerOf(buildingId),ui,buildingId}));
    editor.syncDefaultsNavigation(editorHost,ui);

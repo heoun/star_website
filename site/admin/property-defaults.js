@@ -327,7 +327,7 @@ function defaultsMarkup(ctx) {
   let panel;
   if (section.id === "property") {
     const address = [building?.street, building?.city, building?.state_abbr, building?.zip].filter(Boolean).join(", ");
-    panel = `<article class="panel"><div class="phead"><div><h2>Properties</h2><p>${section.note}</p></div>${isManager() ? '<button type="button" class="link" id="property-address">Edit address</button>' : ''}</div><div class="pbody"><div class="line"><span class="lbl">Property address</span><b>${escapeHtml(address || "No address recorded")}</b></div><p class="note">The apartment number is added from the listing when preparing a lease.</p></div></article>`;
+    panel = `<article class="panel"><div class="phead"><div><h2>Properties</h2><p>${section.note}</p></div>${isManager() ? '<button type="button" class="link" id="property-address">Edit property details</button>' : ''}</div><div class="pbody"><div class="line"><span class="lbl">Property Name</span><b>${escapeHtml(building?.name || "Not entered")}</b></div><div class="line"><span class="lbl">Property Address</span><b>${escapeHtml(address || "No address recorded")}</b></div><p class="note">The apartment number is added from the listing when preparing a lease.</p></div></article>`;
   } else panel = (ctx.docLinked ? sectionContext(section.id, ctx, building) : "") + (section.id === "signing" ? signingPanel(section, inner) : sectionPanel(section, inner));
   return `
     <div class="property-flow-intro"><h2 class="section-title">Lease Information</h2><p class="note">Follow the lease from property details through its riders. ${isManager() ? "Save each section as you go." : draftMode ? "Submitted draft · awaiting Admin review." : "View only · Admin maintains property values."}</p></div>
@@ -395,10 +395,12 @@ function addressDialog(building) {
   return `<div class="sheet" data-address-sheet>
     <div class="sheet-box" role="dialog" aria-modal="true" aria-labelledby="address-title">
       <div class="sheet-head">
-        <h2 id="address-title">Property address</h2>
+        <h2 id="address-title">Property Details</h2>
         <button type="button" class="small" data-address-close aria-label="Close">Close</button>
       </div>
       <div class="sheet-body">
+        ${field("address-name", "Property Name", building.name)}
+        <h3>Property Address</h3>
         ${field("address-street", "Street", building.street, "81-07 Kew Gardens Road")}
         ${field("address-city", "City", building.city, "Kew Gardens")}
         ${field("address-state", "State, spelled out", building.state, "New York")}
@@ -409,7 +411,7 @@ function addressDialog(building) {
       </div>
       <div class="sheet-foot">
         <button type="button" data-address-close>Cancel</button>
-        <button type="button" class="primary" id="address-save">Save address</button>
+        <button type="button" class="primary" id="address-save">Save property details</button>
       </div>
     </div>
   </div>`;
@@ -601,7 +603,7 @@ async function handleDefaultsClick(event, ctx) {
   if (event.target.closest("#property-address")) {
     ui.addressOpen = true;
     await rerender();
-    host.querySelector("#address-street")?.focus();
+    host.querySelector("#address-name")?.focus();
     return true;
   }
 
@@ -721,6 +723,7 @@ async function saveAddress(ctx) {
   const { host, buildingId, ui, rerender, onSaved = () => {} } = ctx;
   const read = (id) => host.querySelector(id)?.value.trim() || "";
   const values = {
+    name: read("#address-name"),
     street: read("#address-street"),
     city: read("#address-city"),
     state: read("#address-state"),
@@ -728,12 +731,13 @@ async function saveAddress(ctx) {
     zip: read("#address-zip")
   };
 
+  if (!values.name) { setStatus("Enter the property name.", "error"); host.querySelector("#address-name")?.focus(); return; }
   if (!values.street || !values.city || !values.zip) {
     setStatus("A lease address needs at least the street, the city and the ZIP.", "error");
     return;
   }
 
-  setStatus("Saving the address…");
+  setStatus("Saving property details…");
   try {
     const { building } = await api(`/buildings/${encodeURIComponent(buildingId)}`, {
       method: "PATCH",
@@ -744,7 +748,7 @@ async function saveAddress(ctx) {
     ui.addressOpen = false;
     await rerender();
     await onSaved();
-    setStatus(draftMode ? "Address saved to draft. Admin approval is required." : "Address saved. Every lease for this property prints it.");
+    setStatus(draftMode ? "Property details saved to draft. Admin approval is required." : "Property details saved.");
   } catch (error) {
     setStatus(error.message, "error");
   }

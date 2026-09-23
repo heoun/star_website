@@ -111,11 +111,14 @@ try{
  await g.screenshot({path:'/tmp/property-lease-preview.png',fullPage:true});
 
  await g.locator('#property-address').click();
+ await g.locator('#address-name').fill('Updated Property Name');
  await g.locator('#address-street').fill('123 Test Street');
  await g.locator('#address-city').fill('New York');
  await g.locator('#address-zip').fill('10001');
  await g.locator('#address-save').click();
- await g.getByText('Address saved to draft. Admin approval is required.').waitFor();
+ await g.getByText('Property details saved to draft. Admin approval is required.').waitFor();
+ assert.equal(await g.locator('.pagehead h1').innerText(),'Updated Property Name');
+ assert.equal((await db.query('select name from buildings')).rows[0].name,'Test Property');
  await g.locator('.property-steps [data-property-step="management"]').click();
  assert.equal(await g.locator('[data-settings-save="management"]').isDisabled(),true);
  await g.locator('[data-setting="manager.name"]').fill('Temporary change');
