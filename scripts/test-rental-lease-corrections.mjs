@@ -31,7 +31,7 @@ try {
  eq(root().workspace.activity.some(a=>a.action==='terms' && a.detail.includes('previous approval')),true);
  const values=await handleAdminRequest(new Request(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({mode:'values'})}),env,{},path);
  eq(values.status,200);eq((await values.json()).values['landlord.address'],'Corrected lease-only address');
- await approve();eq(root().lease_snapshot['landlord.address'],'Corrected lease-only address');eq(root().lease_snapshot['rent.monthly'],'3100');
+ await approve();eq(root().lease_snapshot['landlord.address'],'Corrected lease-only address');eq(root().lease_snapshot['rent.monthly'],'$3,100.00');
  eq((await call({'dhcr.mark_renewal':true})).status,200);
  eq(root().workspace.lease_overrides['dhcr.mark_vacancy'],false);
  eq(root().workspace.lease_overrides['dhcr.mark_renewal'],true);

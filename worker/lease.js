@@ -21,6 +21,7 @@ import registry from "../lease/schema/fields.json" with { type: "json" };
 import { readEntries, readEntryText, replaceEntry } from "./zip.js";
 import { ADDRESS_FIELD, composeAddress } from "../site/shared/lease-address.js";
 import { applicationColumns } from "../site/shared/lease-application.js";
+import { formatLeaseMoney } from "../site/shared/lease-values.js";
 // The date rules are shared with the lease workspace, which shows the end date
 // moving as the term changes. Two copies of that arithmetic is two answers.
 import { leaseEndDate, longDate, parseDate, shortDate } from "../site/shared/lease-dates.js";
@@ -174,7 +175,7 @@ export function formatOverrides(overrides) {
       const parts = parseDate(text);
       if (parts) text = shortDate(parts);
     }
-    out[id] = text;
+    out[id] = field.type === "money" ? formatLeaseMoney(text) : text;
   }
   return out;
 }
@@ -251,7 +252,7 @@ export function resolveValues({ layers, deal, overrides = {} }) {
     }
 
     if (text.trim() === "" && (field.required || (field.required_when && sprinkler[field.required_when] === true))) missing.push(field.id);
-    values[field.id] = text;
+    values[field.id] = field.type === "money" ? formatLeaseMoney(text) : text;
   }
 
   // The registry's idle_unless rules. A spare row nobody named prints its idle
@@ -323,7 +324,7 @@ export async function fillTemplate(env, request, values, transform) {
       unknown.add(id);
       return match;
     }
-    return escapeXml(values[id]);
+    return escapeXml(FIELD_BY_ID.get(id)?.type === "money" ? formatLeaseMoney(values[id]) : values[id]);
   });
 
   if (unknown.size > 0) {

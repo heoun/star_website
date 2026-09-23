@@ -1,6 +1,7 @@
 // Review a lease by business topic; edits use the lease screen's existing controls.
 import { endDateFor, parseDate } from '../shared/lease-dates.js';
 import { DOCUMENTS } from '../shared/lease-documents.js';
+import { formatSettingValue, moneyInputValue } from '../shared/lease-values.js';
 let escapeHtml = value => String(value ?? '');
 export function initWorkspace(deps) { escapeHtml = deps.escapeHtml; }
 const esc = value => escapeHtml(value);
@@ -97,7 +98,7 @@ function leaseTypeRow(state){
 function valueText(field,state) {
   const value=state.values[field.id];
   if(field.type==='checkbox')return state.checked.has(field.id)?'Yes':'No';
-  return value===undefined || value===null || value===''?'Not Set':String(value);
+  return value===undefined || value===null || value===''?'Not Set':formatSettingValue(field,value);
 }
 function row(id,state,derived=false) {
   const field=state.byId.get(id);if(!field)return '';
@@ -119,6 +120,7 @@ function control(field,state) {
   if(field.type==='checkbox')return `<label class="ws-check"><input type="checkbox" ${attrs}${state.checked.has(field.id)?' checked':''}><span>Yes</span></label>`;
   if(field.type==='choice')return `<select ${attrs}>${['',...field.options].map(v=>`<option value="${esc(v)}"${v===value?' selected':''}>${esc(v || 'Select')}</option>`).join('')}</select>`;
   if(field.type==='multiline')return `<textarea ${attrs} rows="3">${esc(value)}</textarea>`;
+  if(field.type==='money')return `<div class="ws-money-input"><span aria-hidden="true">$</span><input type="text" inputmode="decimal" aria-label="${esc(label(field))} (USD)" ${attrs} value="${esc(moneyInputValue(value))}"></div>`;
   return `<input type="${field.type==='integer'?'number':'text'}" ${attrs} value="${esc(value)}">`;
 }
 function propertyTerms(state) {
@@ -160,7 +162,7 @@ export function annotateWorkspace(host,state) {
     const input=host.querySelector(`[data-lease-input="${selector}"]`);
     if(input && input!==document.activeElement){
       if(field.type==='checkbox')input.checked=state.checked.has(id);
-      else input.value=state.values[id]??'';
+      else input.value=field.type==='money'?moneyInputValue(state.values[id]):state.values[id]??'';
     }
   }
   const term=host.querySelector('[data-ws-term]');if(term)term.textContent=leaseTerm(state) || 'Not Set';

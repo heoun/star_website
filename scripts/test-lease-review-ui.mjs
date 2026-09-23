@@ -141,6 +141,9 @@ try{
  await end.locator('input').fill('09/30/2027');eq(await panel.locator('[data-ws-term]').innerText(),'12 Months');
  await end.getByRole('button',{name:'Done',exact:true}).click();
  const rent=panel.locator('[data-ws-row="rent.monthly"]');await rent.locator(':scope > summary').click();await rent.locator('input').fill('3100');
+ eq(await rent.locator('.ws-money-input>span').innerText(),'$');
+ eq(await rent.locator('[data-ws-value]').innerText(),'$3,100.00');
+ eq(await page.locator('[data-lease-slot="rent.monthly"]').first().innerText(),'$3,100.00');
  eq(await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).isDisabled(),true);
  await rent.getByRole('button',{name:'Done',exact:true}).click();eq(await rent.getAttribute('open'),null);
  await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();

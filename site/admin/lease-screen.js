@@ -25,6 +25,7 @@ import { DOCUMENTS, mapDocuments, verifyDocuments } from "../shared/lease-docume
 import { ADDRESS_FIELD, ADDRESS_PARTS, composeAddress } from "../shared/lease-address.js";
 import { applicationWrite } from "../shared/lease-application.js";
 import { agentMayWriteField } from "../shared/lease-permissions.js";
+import { formatLeaseMoney } from "../shared/lease-values.js";
 import {
   defaultsMarkup, handleDefaultsClick, rememberDefaultsNavigation, syncDefaultsNavigation, layerOf, loadLayer, managerFields,
   mayLeaveEditor, newDefaultsUi, propertyOf, resolve
@@ -156,6 +157,11 @@ function targetLabelFor() {
 
 // ------------------------------------------------------------------ loading
 
+function formattedValues(values) {
+  return Object.fromEntries(Object.entries(values).map(([id, value]) =>
+    [id, state.byId.get(id)?.type === 'money' ? formatLeaseMoney(value) : value]));
+}
+
 async function fetchValues() {
   if (state.mode === "lease") {
     const id=encodeURIComponent(state.application.id);
@@ -178,9 +184,9 @@ async function fetchValues() {
       const building=buildings.find(b=>b.id===caseRow.listings?.building_id);
       state.landlordEmail=signing?.configuration?.reviewOnly ? (building?.landlord_signer_email || '') : (landlords.find(l=>l.email===building?.landlord_signer_email)?.email || (landlords.length===1?landlords[0].email:''));
     }
-    state.values = payload.values;
+    state.values = formattedValues(payload.values);
     state.frozen=payload.frozen;
-    state.baseValues=structuredClone(payload.values);
+    state.baseValues=structuredClone(state.values);
     state.provenance = payload.provenance || {};
     state.missingLabels = {};
     for (let i = 0; i < payload.missing.length; i += 1) {
@@ -194,7 +200,7 @@ async function fetchValues() {
     method: "POST",
     body: JSON.stringify({ mode: "values", listing_id: state.listingId || null })
   });
-  state.values = payload.values;
+  state.values = formattedValues(payload.values);
   state.provenance = payload.provenance || {};
   state.missing = new Set(payload.missing);
   state.missingLabels = {};
@@ -671,7 +677,7 @@ function onInput(fieldId, rawValue, isCheckbox) {
     else state.checked.delete(fieldId);
     state.values[fieldId] = rawValue ? field.marks.checked : field.marks.unchecked;
   } else {
-    state.values[fieldId] = rawValue;
+    state.values[fieldId] = field.type === 'money' ? formatLeaseMoney(rawValue) : rawValue;
   }
 
   state.dirty.add(fieldId);
