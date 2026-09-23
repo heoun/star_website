@@ -42,7 +42,7 @@ import {
   updateMedia
 } from "./supabase.js";
 import {
-  DOCUMENT_TYPES,
+  STAFF_DOCUMENT_TYPES,
   deleteDocumentsByPrefix,
   requireDocsBucket,
   serveDocumentFile
@@ -492,7 +492,7 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
       const rows = summaries;
       // The checklist registry rides along so the admin page names document
       // types the same way the portal does, from the same list.
-      return json({ applications: rows, document_types: DOCUMENT_TYPES });
+      return json({ applications: rows, document_types: STAFF_DOCUMENT_TYPES });
     }
     return json({ error: "Method not allowed." }, 405);
   }
@@ -500,7 +500,7 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
   if (!UUID_PATTERN.test(id)) {
     return json({ error: "Application not found." }, 404);
   }
-  if (request.method === "GET") return json({ application: projectCase(identity, scoped, true), document_types: DOCUMENT_TYPES });
+  if (request.method === "GET") return json({ application: projectCase(identity, scoped, true), document_types: STAFF_DOCUMENT_TYPES });
 
   if (request.method === "PATCH") {
     const body = await request.json().catch(() => null);

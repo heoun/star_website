@@ -86,6 +86,14 @@ export const DOCUMENT_TYPES = [
     hint: "Optional. Proof of rent paid on time, such as a payment ledger or a letter from a previous landlord." }
 ];
 
+// Imported source evidence stays with staff; it is not an applicant upload
+// requirement and does not establish a verified screening result.
+export const STAFF_DOCUMENT_TYPES = [...DOCUMENT_TYPES, {
+  id: "external_source", label: "External Application & Reports · Pending Review",
+  required: 0, max: 20, when: "staff",
+  hint: "Original external records. Receipt does not mean verified or approved."
+}];
+
 // The types this application is asked for. Applications from before the
 // work-or-school question — employment_status null — all had an employer on
 // the form, so they read as employed rather than being asked for a visa.
@@ -254,7 +262,7 @@ export function toPortalApplication(row) {
       unit: row.listings.unit,
       location: row.listings.location
     } : null,
-    documents: (row.application_documents || []).map(toPortalDocument),
+    documents: (row.application_documents || []).filter(doc => doc.doc_type !== "external_source").map(toPortalDocument),
     // Only while the request stands. Once the status has moved on, what was
     // asked is history, not an instruction.
     request: row.status === "needs_info" && asked && asked.message
@@ -346,7 +354,7 @@ async function handleUpload(request, env, ctx, session, applicationId) {
 async function fetchOwnedDocument(env, session, id) {
   if (!UUID_PATTERN.test(id)) return null;
   const row = await fetchApplicationDocument(env, id);
-  if (!row) return null;
+  if (!row || row.doc_type === "external_source") return null;
   const owner = String(row.applications?.email || "").trim().toLowerCase();
   return (env.ACCOUNT_SECURITY==='on' ? !!session.user_id && row.applications?.user_id===session.user_id : owner===session.email) ? row : null;
 }
