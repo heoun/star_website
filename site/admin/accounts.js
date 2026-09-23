@@ -1,4 +1,5 @@
-import { esc, day, heading as pageHeading, empty, send, generation } from "./admin-ui.js";
+import {renderAccountHistory} from './account-history.js';
+import { esc, heading as pageHeading, empty, send, generation } from "./admin-ui.js";
 const titles = { manager: "Admins", agent: "Agents", landlord: "Landlords" };
 const invitationMessage = invitation => invitation?.status === "sent" ? "Account saved. An invitation has been emailed." : invitation?.status === "failed" ? "Account saved, but the invitation email failed. Use Send Invitation to retry." : invitation?.status === "preview" ? "Account saved in the local demo. No invitation email was sent." : "Account saved.";
 const nameOf = role => ({ manager: "Admin", agent: "Agent", landlord: "Landlord" }[role]);
@@ -80,7 +81,7 @@ export async function renderAccounts(host, { api, session, tab = "manager", sele
         } catch(error) { authorization.querySelector('[role="status"]').textContent=error.message; button.disabled=false; }
       };
       if (!isNew) {
-        try { const { history } = await api(`/staff/${encodeURIComponent(member.email)}/history`); if (current() && ticket===detailGeneration) panel.querySelector("#account-history").innerHTML = history.length ? `<ol class="case-history">${history.map(h=>`<li><b>${esc(h.action.replaceAll("_"," "))}</b><small>${esc(h.actor)} · ${esc(day(h.created_at))}</small><p>${esc(h.reason || "Account details updated")}</p></li>`).join("")}</ol>` : '<p>No recorded changes yet.</p>'; }
+        try { const { history } = await api(`/staff/${encodeURIComponent(member.email)}/history`); if (current() && ticket===detailGeneration) panel.querySelector("#account-history").innerHTML = renderAccountHistory(history, buildings); }
         catch(error) { if(current() && ticket===detailGeneration) panel.querySelector("#account-history").textContent=error.message; }
       }
     }

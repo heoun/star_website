@@ -1,0 +1,13 @@
+import assert from 'node:assert/strict';
+import {accountHistoryChanges,renderAccountHistory} from '../site/admin/account-history.js';
+const base={email:'agent@example.test',name:'Boyeon',role:'agent',active:true,property_ids:['old']};
+const entry={action:'save',actor:'admin@example.test',created_at:'2026-09-23T15:20:01Z',before_record:base,after_record:{...base,property_ids:['old','lucent']}};
+const properties=[{id:'old',name:'Evergarden'},{id:'lucent',name:'Lucent 33'}];
+assert.deepEqual(accountHistoryChanges(entry,properties),['Added Marketing Property: Lucent 33']);
+assert.deepEqual(accountHistoryChanges({...entry,after_record:{...base,property_ids:[]}},properties),['Removed Marketing Property: Evergarden']);
+assert.deepEqual(accountHistoryChanges({...entry,after_record:{...base,property_ids:['old','old']}},properties),['No account details or property access changed.']);
+assert.deepEqual(accountHistoryChanges({...entry,after_record:{...base,name:'New',role:'manager',active:false}},properties),['Name: Boyeon → New','Account Type: Agent → Admin','Account Status: Active → Suspended']);
+assert(accountHistoryChanges(entry,[])[0].includes('lucent'));
+assert.deepEqual(accountHistoryChanges({action:'save'}),['Change details were not recorded.']);
+const html=renderAccountHistory([{...entry,reason:'<script>bad</script>'}],[{id:'lucent',name:'<img src=x>'}]);assert(!html.includes('<script>'));assert(!html.includes('<img'));assert(html.includes('Reason: &lt;script&gt;'));assert(html.includes('Account Saved'));
+console.log('PASS account history: property addition/removal, status/name/role changes, unchanged sets, legacy records and escaping');
