@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {generateKeyPairSync} from 'node:crypto';
 import {createWorkspaceFixtures,ids} from '../backend/tools/workspace-fixtures.mjs';
 import {completeDemoState} from './demo-data.mjs';
 import {seedRentalDemo} from './rental-demo-data.mjs';
@@ -7,7 +8,17 @@ import {rentalWorkflow} from '../worker/rentals.js';
 import {handleRentalSigning,handleDocusignWebhook} from '../worker/signing.js';
 const fixture=createWorkspaceFixtures();await completeDemoState(fixture.state);await seedRentalDemo(fixture.state);
 const original=globalThis.fetch,records=new Map();let reserves=0,checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
+let pdfDrafts=0,pdfSends=0;
 globalThis.fetch=async(url,init={})=>{
+ if(String(url).includes('docusign.com/oauth/token'))return Response.json({access_token:'pdf-token'});
+ if(String(url).includes('docusign.com/oauth/userinfo'))return Response.json({accounts:[{account_id:'test',base_uri:'https://demo.docusign.net'}]});
+ if(String(url).includes('demo.docusign.net')){
+  if(String(url).includes('/envelopes/status?'))return Response.json({envelopes:[]});
+  if(String(url).endsWith('/envelopes') && init.method==='POST'){const b=JSON.parse(init.body);eq(b.status,'created');pdfDrafts++;return Response.json({envelopeId:'pdf-draft'});}
+  if(String(url).endsWith('/documents/combined'))return new Response('%PDF-test-download');
+  if(init.method==='PUT')pdfSends++;
+  throw new Error('Unexpected PDF provider call');
+ }
  const u=new URL(url),body=init.body?JSON.parse(init.body):{},name=u.pathname.split('/').at(-1);
  if(name==='rental_signing_packages') {
   if(init.method==='POST'){records.set(body.id,{...body});return Response.json([body]);}
@@ -96,6 +107,14 @@ try {
  eq((await post({...ccBody,carbonCopies:[{name:'Bad',email:'shared@example.test'}]})).status,422);
  eq((await post({...ccBody,carbonCopies:[{name:'Bad',email:'not-an-email'}]})).status,422);
  eq((await post({...ccBody,carbonCopies:Array.from({length:3},(_,i)=>({name:'Copy',email:`copy${i}@example.test`}))})).status,422);
+ env.DOCUSIGN_PRIVATE_KEY=generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({format:'pem',type:'pkcs8'});
+ const pdfBody={action:'download_pdf',packageId:cp.signing.id,version:row.workspace_version};
+ eq((await post(pdfBody,wrong)).status,404);
+ eq((await post({...pdfBody,version:row.workspace_version-1})).status,409);
+ const downloaded=await post(pdfBody);assert.equal(downloaded.status,200,await downloaded.clone().text());checks++;eq(downloaded.headers.get('Content-Type'),'application/pdf');eq(await downloaded.text(),'%PDF-test-download');
+ eq(pdfDrafts,1);eq(pdfSends,0);
+ const removedCopies=await post({...ccBody,carbonCopies:[]});eq(removedCopies.status,200);
+ eq((await(await get()).json()).carbonCopies,[]);
  eq(reserves,1);
  env.APP_ENV='production';
  eq((await post({action:'prepare',version:row.workspace_version})).status,409);

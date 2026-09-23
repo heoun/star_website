@@ -53,6 +53,16 @@ try{
  eq(await panel.getByRole('heading',{level:3}).allTextContents(),['Tenants','Property & Lease Terms','Rent & Deposit','Landlord & Signer','Property Terms & Disclosures']);
  eq(await panel.locator('[data-lease-input]:visible').count(),0);
  eq(await page.locator('#lease-alarm').isVisible(),false);
+ eq(await page.getByRole('button',{name:'Download PDF',exact:true}).isVisible(),true);
+ await page.route('**/api/admin/cases/*/signing',async route=>{
+  if(route.request().method()==='POST' && route.request().postDataJSON()?.action==='download_pdf')return route.fulfill({status:200,contentType:'application/pdf',body:'%PDF-test-download'});
+  return route.fallback();
+ });
+ const pdfDownload=page.waitForEvent('download');
+ await page.getByRole('button',{name:'Download PDF',exact:true}).click();
+ eq((await pdfDownload).suggestedFilename(),'lease-for-review.pdf');
+ await page.getByText('Lease PDF downloaded.',{exact:true}).waitFor();
+ await page.unroute('**/api/admin/cases/*/signing');
  const valueStarts=await panel.locator('[data-ws-row="property.address_full"]>.ws-review-value,[data-ws-row="lease.effective_date"]>summary>.ws-review-value,[data-ws-row="lease.commencement_date"]>summary>.ws-review-value').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().left));
  assert.ok(Math.max(...valueStarts)-Math.min(...valueStarts)<1);checks++;
  await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();
@@ -111,7 +121,7 @@ try{
  eq(await page.locator('#lease-review-feedback').isHidden(),true);
  eq(await page.locator('#lease-draft').isEnabled(),true);
  eq(await panel.getByRole('tab',{selected:true}).innerText(),'Lease Information');
- eq(packages.size,2);
+ eq(packages.size,3);
  await page.unroute(preparePattern);
  // A slow frame with a quick switch draws only the last selection, and
  // previewing one document does not count as reviewing the package.
@@ -136,7 +146,7 @@ try{
  eq(await page.locator('#lease-all-documents').getAttribute('aria-pressed'),'true');
  eq(await panel.locator('[data-workspace-document-preview]').count(),0);
  eq(await page.locator('#lease-draft').isHidden(),true);
- eq(packages.size,2);
+ eq(packages.size,3);
  await panel.locator('[data-ws-doc="utilities"]').click();
  await frame.locator('[data-signing-field="utilities-1-signature"].current').waitFor();
  eq(await page.locator('#lease-draft').isHidden(),true);
@@ -178,11 +188,11 @@ try{
  eq(await panel.getByRole('button',{name:'Review Lease Draft',exact:true}).count(),0);
  eq(await panel.getByRole('button',{name:'Send With DocuSign',exact:true}).count(),0);
  eq(await page.getByRole('button',{name:'Send With DocuSign',exact:true}).isEnabled(),true);
- eq(packages.size,2); // Prepared once for the first approval when Documents opened; a new approval needs a new package.
+ eq(packages.size,3); // Prepared once for the first approval when Documents opened; a new approval needs a new package.
  await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).click();
  await page.getByText('Review the lease and signer details, then send with DocuSign.',{exact:true}).waitFor();
- eq(packages.size,3);
+ eq(packages.size,4);
  const savedFrame=page.frameLocator('iframe[title="Lease for Signing"]');
  const savedPackage=[...packages.values()].at(-1);
  const qaSource=await page.request.get(`${base}/api/admin/cases/${ids.b}/signing?package=${savedPackage.id}&file=source`);
@@ -471,11 +481,11 @@ try{
  eq(await page.getByRole('button',{name:'Review Lease Draft',exact:true}).count(),1);
  await page.getByRole('button',{name:'Review Lease Draft',exact:true}).click();
  await page.locator('#lease-final').filter({hasText:'Send With DocuSign'}).waitFor();
- eq(packages.size,3); // The reviewed package is reused after navigating back.
+ eq(packages.size,4); // The reviewed package is reused after navigating back.
  await panel.getByRole('tab',{name:'Documents',exact:true}).click();
  await panel.locator('[data-ws-doc="smoking"]').click();
  await savedFrame.locator('[data-signing-field="smoking-1-signature"].current').waitFor();
- eq(packages.size,3);
+ eq(packages.size,4);
  await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  // A saved document with different bytes must never be marked as reviewed.
  await page.getByRole('button',{name:/Back to Rental/}).click();

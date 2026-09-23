@@ -131,7 +131,8 @@ export async function handleRentalSigning(request,env,identity,id,ctx) {
       const carbonCopies=copyRecipients(body.carbonCopies ?? previews[0]?.record.package.carbonCopies ?? [],signers,env);
       if(g.root.workspace?.test_run && carbonCopies.length)throw error('CC recipients are unavailable for internal test runs.',403);
       const versions=Object.fromEntries(g.members.map(m=>[m.id,m.workspace_version || 0]));
-      const saved=previews.find(p=>Date.now()-Date.parse(p.record.package.createdAt)<55*60000 && p.record.package.templateVersion===SIGNING_TEMPLATE_VERSION && p.record.package.approvalRevision===revision && Object.keys(values).every(key=>p.record.package.values[key]===values[key]) && sameSigners(signers,p.record.package.signers) && sameCopies(p.record.package.carbonCopies,carbonCopies) && Object.keys(p.member_versions).length===g.members.length && g.members.every(m=>p.member_versions[m.id]===versions[m.id]));
+      const copiesChanged=body.carbonCopies!==undefined && !sameCopies(previews[0]?.record.package.carbonCopies,carbonCopies);
+      const saved=!copiesChanged && previews.find(p=>Date.now()-Date.parse(p.record.package.createdAt)<55*60000 && p.record.package.templateVersion===SIGNING_TEMPLATE_VERSION && p.record.package.approvalRevision===revision && Object.keys(values).every(key=>p.record.package.values[key]===values[key]) && sameSigners(signers,p.record.package.signers) && sameCopies(p.record.package.carbonCopies,carbonCopies) && Object.keys(p.member_versions).length===g.members.length && g.members.every(m=>p.member_versions[m.id]===versions[m.id]));
       if(saved)return json({configuration:config,signing:safeRecord(saved.record),preview:true});
       const packageId=crypto.randomUUID();
       let document;try{document=await buildSigningLease(env,request,values,signers,Object.fromEntries(g.members.map(m=>[m.id,{'tenant.mailing_address':m.current_address || ''}])));}catch(e){throw error(e.message,409);}
@@ -149,6 +150,23 @@ export async function handleRentalSigning(request,env,identity,id,ctx) {
     if(!uuid(body.packageId))throw error('Choose the reviewed signing package.');
     const record=await flow.store.get(body.packageId);
     if(!record || record.package.rentalId!==id)throw error('Signing package not found.',404);
+    if(body.action==='download_pdf') {
+      if(!config.configured)throw error('DocuSign must be connected to generate the PDF.',503);
+      if(!record.envelope){
+        const versions=await flow.store.previewVersions(body.packageId);
+        if(body.version!==g.root.workspace_version || g.members.some(m=>versions[m.id]!==m.workspace_version))throw error('The lease changed. Refresh and download the current version.');
+      }
+      // Conversion uses a draft only; this action never reserves or sends it.
+      let envelope=record.envelope || await flow.provider.findByTransactionId(record.package.id);
+      if(!envelope){
+        const documents=[];
+        for(const d of record.package.documents)documents.push({documentId:d.documentId,bytes:await boundedBytes(new Response(await files.read(d.file)).body,10*1024*1024)});
+        envelope=await flow.provider.createDraft({package:record.package,documents});
+      }
+      const pdf=await boundedBytes(await flow.provider.download(envelope.envelopeId,'signed_pdf'),25*1024*1024);
+      if(new TextDecoder().decode(pdf.subarray(0,5))!=='%PDF-')throw error('The PDF could not be generated.',502);
+      return new Response(pdf,{headers:{'Content-Type':'application/pdf','Content-Disposition':'attachment; filename="lease-for-review.pdf"','Cache-Control':'no-store','X-Content-Type-Options':'nosniff'}});
+    }
     if(body.action==='send') {
       if(!config.canSend)throw error(config.message,503);
       const prior=await flow.store.current(id);

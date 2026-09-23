@@ -516,6 +516,7 @@ function renderShell() {
           <div class="lease-warnings" id="lease-warnings"></div>
           <button type="button" id="lease-save" disabled>Save settings</button>
           <button type="button" id="lease-draft" hidden>Preview package</button>
+          <button type="button" id="lease-pdf" hidden>Download PDF</button>
           <button type="button" class="primary" id="lease-final" hidden disabled>Generate lease package</button>
         </div>
       </div>
@@ -811,6 +812,10 @@ function updateActions() {
   }
 
   screen.querySelector("#lease-actions").hidden = false;
+  const pdfButton=screen.querySelector('#lease-pdf');
+  pdfButton.hidden=state.mode!=='lease' || !state.signing?.configuration?.enabled;
+  pdfButton.disabled=!!state.dirty.size || signingBusy || signingLoading;
+  pdfButton.title=state.dirty.size?'Save changes before downloading the lease PDF.':'';
   if(state.mode==='lease' && state.caseRow?.workspace?.rental_flow==='automatic') {
     const save=screen.querySelector('#lease-save'),review=screen.querySelector('#lease-final'),draft=screen.querySelector('#lease-draft');
     const problems=workspace.reviewIssues(state).length;
@@ -1337,6 +1342,20 @@ function bindOnce() {
       return;
     }
     if (button.id === "lease-save") return saveSettings();
+    if(button.id==='lease-pdf'){
+      if(state.dirty.size || signingBusy)return;
+      signingBusy=true;updateActions();button.textContent='Preparing PDF…';setStatus('Preparing the complete lease PDF. No signing invitations will be sent.');
+      try{
+        const current=state.signing?.signing;
+        const pkg=current && !['voided','declined'].includes(current.phase)?current:(await prepareSigningPackage(signingContext()))?.preview;
+        if(!pkg)throw new Error('Refresh the signing status and try again.');
+        const response=await fetch(`/api/admin/cases/${encodeURIComponent(state.application.id)}/signing`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'download_pdf',packageId:pkg.id,version:state.caseRow.workspace_version})});
+        if(!response.ok)throw new Error((await response.json().catch(()=>({}))).error || 'Unable to download the lease PDF.');
+        const blob=await response.blob();if(!blob.type.includes('application/pdf'))throw new Error('The server did not return a PDF.');
+        const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='lease-for-review.pdf';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);setStatus('Lease PDF downloaded.','ok');
+      }catch(error){setStatus(error.message,'error');}finally{signingBusy=false;button.textContent='Download PDF';updateActions();}
+      return;
+    }
     if(button.dataset.previewSigningFields){
       docPreview.selected=button.dataset.previewSigningFields;
       screen.dataset.tab='doc';
