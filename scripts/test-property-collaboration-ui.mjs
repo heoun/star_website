@@ -192,6 +192,14 @@ try{
  assert(previewBox.x>=formBox.x+formBox.width,'Desktop preview belongs to the right of the settings');
  assert(Math.abs(previewBox.y-formBox.y)<2,'Desktop panels should align at the top');
  await a.screenshot({path:'/tmp/property-admin-lease-preview.png',fullPage:true});
+ for (const height of [720, 1080, 1400]) {
+  await a.setViewportSize({width:1920,height});
+  const workbench=await a.locator('.property-flow').boundingBox();
+  assert(Math.abs(workbench.height-(height-32))<2,'Desktop workbench fills the viewport with 16px top/bottom margins');
+  const footer=await a.locator('.property-step-footer').boundingBox();
+  assert(Math.abs(footer.y+footer.height-workbench.y-workbench.height)<2,'Step navigation remains at the bottom of the workbench');
+ }
+ await a.setViewportSize({width:1920,height:1080});
  const navBox=await a.locator('.property-steps').boundingBox();
  assert(Math.abs(navBox.y-formBox.y)<2 && Math.abs(navBox.height-previewBox.height)<2 && Math.abs(formBox.height-previewBox.height)<2,'All three columns align and have equal height');
  await a.evaluate(async()=>{

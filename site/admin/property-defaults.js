@@ -520,7 +520,7 @@ async function handleDefaultsClick(event, ctx) {
   if (step) {
     const fromFooter = !!step.closest(".property-step-footer"), previous = ui.activeSection;
     await movePropertyStep(ctx, step.dataset.propertyStep);
-    if (fromFooter && previous !== ui.activeSection) host.querySelector(".property-flow-intro")?.scrollIntoView({block:"start", behavior:"instant"});
+    if (fromFooter && previous !== ui.activeSection) host.querySelector(ui.directEditing ? ".property-flow" : ".property-flow-intro")?.scrollIntoView({block:"start", behavior:"instant"});
     return true;
   }
 

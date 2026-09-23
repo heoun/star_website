@@ -389,3 +389,10 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
  .property-edit-preview > iframe { height: min(760px, 85dvh); }
 }
 .property-edit-actions [data-edit-state] { order: -1; margin-right: auto; align-self: center; color: var(--muted); font-size: 12px; }
+
+/* Once the step bar reaches the top, the entire desktop workbench fits below it. */
+@media(min-width:1121px) {
+ .property-flow:not(.is-document) { height: calc(100dvh - 32px); min-height: 0; scroll-margin-top: 16px; }
+ .property-flow:not(.is-document) > .property-steps,
+ .property-flow:not(.is-document) .property-edit-preview { height: 100%; min-height: 0; }
+}
