@@ -58,7 +58,7 @@ export function omitAbsentPetRider(xml,values){
  const nodes=elementsOf(xml.slice(head,end));
  const start=nodes.findIndex(n=>visible(n).startsWith('PET ADDENDUM'));
  if(start<0)return xml;
- const stop=nodes.findIndex((n,i)=>i>start && visible(n).startsWith('Packages Rider'));
+ const stop=nodes.findIndex((n,i)=>i>start && visible(n).startsWith('Rent Concession Rider'));
  if(stop<0)throw new Error('The Pet Addendum boundary is missing.');
  return xml.slice(0,head)+nodes.slice(0,start).join('')+nodes.slice(stop).join('')+xml.slice(end);
 }

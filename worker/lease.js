@@ -115,6 +115,7 @@ export function dealValues({ application, listing, building, today }) {
 
   const pets=Array.isArray(application?.pets)?application.pets:[];
   const petTypes=[...new Set(pets.map(p=>p.type==='other'?p.species:p.type).filter(Boolean))];
+  const petDescriptions=[...new Set(pets.map(p=>p.type==='other'?p.species:[p.type,p.species?`(${p.species})`:''].filter(Boolean).join(' ')).filter(Boolean))];
   const values = {
     "lease.effective_date": longDate(today),
     "lease.commencement_date": shortDate(start),
@@ -128,7 +129,7 @@ export function dealValues({ application, listing, building, today }) {
     "tenant.mailing_address": application?.current_address || "",
     "pet.count": pets.length,
     "pet.type_count": petTypes.length || "",
-    "pet.types": petTypes.join(", "),
+    "pet.types": petDescriptions.join(", "),
     "concession.terms": application?.concession_terms || "",
     "property.address_full": addressFull,
     "property.street": street,

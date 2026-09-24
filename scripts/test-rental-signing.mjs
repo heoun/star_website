@@ -15,6 +15,8 @@ const values=Object.fromEntries(registry.fields.map(f=>[f.id,f.default??'Example
 values['pet.count']=1;
 const petHousehold=householdApplication({root:{name:'A',pets:null},members:[{name:'A',pets:null},{name:'B',pets:[{type:'dog'},{type:'other',species:'Rabbit'}]}]});
 const petDeal=dealValues({application:petHousehold});
+const catDeal=dealValues({application:{pets:[{type:'cat',species:'American Shorthair'}]}});
+eq(catDeal['pet.count'],1);eq(catDeal['pet.type_count'],1);eq(catDeal['pet.types'],'cat (American Shorthair)');
 eq(petDeal['pet.count'],2);eq(petDeal['pet.type_count'],2);eq(petDeal['pet.types'],'dog, Rabbit');
 for(const count of [0,1]){
  const v={...values,'pet.count':count};
@@ -24,6 +26,7 @@ for(const count of [0,1]){
 }
 const signers=[{recipientId:'1',memberId:'a',role:'tenant',name:'Tenant A',email:'a@example.test',routingOrder:1},{recipientId:'2',memberId:'b',role:'tenant',name:'Tenant B',email:'b@example.test',routingOrder:1},{recipientId:'3',memberId:null,role:'landlord',name:'Landlord',email:'l@example.test',routingOrder:2}];
 const document=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),values,signers);
+eq(document.documents.slice(document.documents.findIndex(d=>d.layout==='smoking'),document.documents.findIndex(d=>d.layout==='smoking')+3).map(d=>d.layout),['smoking','pet','concession']);
 eq(document.tabs.length,105);eq(document.documents.length,20);
 for(const signer of signers){eq(document.tabs.filter(t=>t.recipientId===signer.recipientId && t.kind==='signature').length,signer.role==='tenant'?16:18);eq(document.tabs.filter(t=>t.recipientId===signer.recipientId && t.kind==='full_name').length,signer.role==='tenant'?13:14);}
 eq(document.tabs.filter(t=>t.kind==='initial').length,4);
@@ -101,7 +104,7 @@ eq(tab('lease','signature','landlord').yOffset,tab('lease','signature').yOffset)
 const sourceXml=await readEntryText(entries(template),'word/document.xml');
 const tables=[...sourceXml.matchAll(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)].map(m=>m[0]);
 const canonical=s=>s.replace(/ w14:(?:paraId|textId)="[^"]*"/g,'').replace(/ xmlns(?::[\w]+)?="[^"]*"/g,'').replace(/ \/>/g,'/>');
-for(const index of [5,7,9,12,14,16,19,23,27,31,33,39]){
+for(const index of [5,7,10,12,14,17,21,25,29,31,33,39]){
  eq(canonical(tables[index]),canonical(tables[2]));
  eq(canonical(tables[index+1]),canonical(tables[3]));
 }

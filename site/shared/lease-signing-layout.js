@@ -11,7 +11,7 @@
 // What remains here is structure: which table, row and cell a slot occupies,
 // or which paragraph carries the line. Geometry is the small TAB_GEOMETRY
 // table below, shared by every document and signer.
-export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-24-anchor-v17';
+export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-24-anchor-v18';
 export const SIGNING_LAYOUT_REVIEW_REQUIRED=false;
 
 // PDF points. The tab control includes transparent padding; `ink` describes
@@ -40,7 +40,6 @@ export const SIGNING_DOCUMENTS=[
  {id:'lease',document:'lease',name:'New York Residential Lease Agreement',tables:{tenant:2,landlord:3},place:standardCell,
   initials:[{section:'38',paragraph:{starts:'Tenant(s)’ initials',nth:0}},{section:'39',paragraph:{starts:'Tenant(s)’ initials',nth:1}}]},
  {id:'utilities',document:'utilities',name:'Utilities – Simple Form',tables:{tenant:1,landlord:2},place:standardCell},
- {id:'pet',document:'pet',name:'Pet Addendum',tables:{tenant:0,landlord:1},place:standardCell},
  {id:'packages',document:'packages',name:'Packages Rider',tables:{tenant:0,landlord:1},place:standardCell},
  {id:'keys',document:'keys',name:'Key Rider',tables:{tenant:1,landlord:2},place:standardCell},
  {id:'insurance',document:'insurance',name:'New York Renters Insurance Rider',tables:{tenant:0,landlord:1},place:standardCell},
@@ -57,6 +56,7 @@ export const SIGNING_DOCUMENTS=[
   tables:{landlord:0},place:(role,slot,kind)=>({table:'landlord',row:{signature:0,full_name:1,date_signed:2}[kind],cell:1})},
  {id:'alarms',document:'alarms',name:'Gas Leak, Carbon Monoxide and Smoke Alarm Rider',tables:{tenant:1,landlord:2},place:standardCell},
  {id:'smoking',document:'smoking',name:'Smoking Policy Rider',tables:{tenant:2,landlord:3},place:standardCell},
+ {id:'pet',document:'pet',name:'Pet Addendum',tables:{tenant:0,landlord:1},place:standardCell},
  {id:'concession',document:'concession',name:'Rent Concession Rider',conditional:true,tables:{tenant:0,landlord:1},place:standardCell},
  {id:'dhcr',document:'dhcr',name:'DHCR Electronic Lease Consent',individual:true,kinds:['signature','date_signed'],tables:{tenant:3,landlord:1},
   place:(role,slot,kind)=>({table:role,row:0,cell:kind==='signature'?1:0,lineWidth:kind==='signature'?311.6:235.4,align:'center'})},

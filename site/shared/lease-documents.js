@@ -35,14 +35,6 @@ export const DOCUMENTS = [
     note: "Who pays for each utility at this property."
   },
   {
-    id: "pet",
-    name: "Pet Addendum",
-    starts: "PET ADDENDUM",
-    why: "condition",
-    note: "Included when the household has pets.",
-    conditionalOn: "pet.count"
-  },
-  {
     id: "packages",
     name: "Packages Rider",
     starts: "Packages Rider",
@@ -119,6 +111,14 @@ export const DOCUMENTS = [
     starts: "New York Smoking Policy Rider",
     why: "property",
     note: "Where smoking is not allowed at this property."
+  },
+  {
+    id: "pet",
+    name: "Pet Addendum",
+    starts: "PET ADDENDUM",
+    why: "condition",
+    note: "Included when the household has pets.",
+    conditionalOn: "pet.count"
   },
   {
     id: "concession",
