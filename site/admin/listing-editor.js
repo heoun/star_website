@@ -12,11 +12,8 @@ export function syncListingKind(form, editing = false) {
   const types = commercial ? ["Retail", "Office", "Mixed use", "Industrial", "Land"] : ["Apartment", "Condo", "Co-op", "House", "Townhouse", "Multi-family"];
   form.querySelector("#listing-property-types").innerHTML = types.map(type => `<option value="${type}"></option>`).join("");
   form.elements.term_label.placeholder = commercial ? "e.g. 5 years" : "e.g. 12 months";
-  const published = form.elements.published.checked;
-  form.querySelector("#listing-publish-hint").textContent = published
-    ? "Saving makes this listing visible on the website."
-    : "Saved as a draft. Only staff with access to this property can see it.";
-  form.querySelector("#save").textContent = published ? (editing ? "Save & publish" : "Publish listing") : "Save draft";
+  form.querySelector("#listing-publish-hint").textContent = "Save your draft, review the website preview, then publish. The live listing stays unchanged until publication.";
+  form.querySelector("#save").textContent = "Save draft & review";
 }
 
 export function syncListingProperty(form, property, linked) {

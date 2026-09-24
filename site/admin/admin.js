@@ -1,3 +1,4 @@
+import { toDetailListing } from "../shared/listing-presentation.js";
 import {renderAgentProperties} from './property-collaboration.js';
 import {workspaceNavigation,workspaceHome,workspaceRoleLabel,workspaceGroups} from '../shared/workspace-navigation.js';
 import {propertyGroups, compareNames} from './property-groups.js';
@@ -274,6 +275,7 @@ function renderMedia() {
   }
 
   mediaSection.dataset.pending = String(pendingMedia.length > 0 || Boolean(pendingVideo));
+  updateListingPreview();
 }
 
 function queuePhotos(files) {
@@ -319,6 +321,8 @@ async function flushPendingMedia() {
       body: JSON.stringify({ path: upload.path, kind: "photo", caption: item.caption, position })
     });
     currentMedia.push(media);
+    URL.revokeObjectURL(item.preview);
+    pendingMedia = pendingMedia.filter(entry => entry !== item);
     position += 1;
   }
 
@@ -345,13 +349,13 @@ async function flushPendingMedia() {
   if (pendingVideo) {
     setStatus("Uploading video… this can take a minute.");
     const upload = await uploadFile(pendingVideo.file);
-    clearPendingVideo();
     form.elements.video_url.value = upload.url;
     await api(`/listings/${encodeURIComponent(editingId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ video_url: upload.url })
     });
+    clearPendingVideo();
   }
 }
 
@@ -558,6 +562,7 @@ function showRoute(name, { rows }) {
 }
 
 async function goto({ name, id }) {
+  if (editor.open) editor.close();
   if (session.owner && name !== "staff") {
     location.replace("#/staff");
     return;
@@ -1049,7 +1054,6 @@ function openEditor(listing) {
   }
   form.elements.category.value = listing?.category || "residential";
   form.elements.transaction_type.value = listing?.transaction_type || "sale";
-  form.elements.published.checked = listing ? Boolean(listing.published) : false;
   form.querySelector("#listing-form-error").hidden = true;
   syncListingKind(form, Boolean(editingId));
 
@@ -1060,7 +1064,16 @@ function openEditor(listing) {
   // or a folder import — may have typed in the box, and the list arriving is
   // no reason to empty it.
   loadBuildings(true).then(() => fillPropertySelect());
-  if (!editor.open) editor.showModal();
+  showRoute("listing", { rows: false });
+  renderListingDetail(ROUTE_HOSTS.listing, listing || { title: "New listing" }, false);
+  ROUTE_HOSTS.listing.classList.add("is-editing");
+  ROUTE_HOSTS.listing.querySelector("[data-listing-publish]").disabled = true;
+  ROUTE_HOSTS.listing.querySelector("[data-desk-edit-listing]").disabled = true;
+  const unpublish = ROUTE_HOSTS.listing.querySelector("[data-listing-unpublish]");
+  if (unpublish) unpublish.disabled = true;
+  ROUTE_HOSTS.listing.querySelector("[data-listing-preview-status]").textContent = "Editing draft · save to review before publishing";
+  if (!editor.open) editor.show();
+  updateListingPreview();
 }
 
 // ---- The property a unit belongs to ----
@@ -1117,6 +1130,7 @@ function showPropertyName(typedName) {
   const property = buildingRows.find(row => row.id === select.value);
   if (typedName !== undefined) form.elements.property_name.value = typedName;
   syncListingProperty(form, property, Boolean(select.value));
+  updateListingPreview();
   document.getElementById("property-hint").textContent = select.value
     ? (property ? "Building name and address come from this property." : "Property details are unavailable. Close and reopen to retry; the existing link is preserved.")
     : "For a standalone listing, enter its building name and address. Add managed properties through Properties & Settings or landlord onboarding.";
@@ -1129,8 +1143,7 @@ async function resolveBuildingLink() {
 function collectValues() {
   const values = {
     category: form.elements.category.value,
-    transaction_type: form.elements.transaction_type.value,
-    published: form.elements.published.checked
+    transaction_type: form.elements.transaction_type.value
   };
 
   for (const field of TEXT_FIELDS) {
@@ -1149,7 +1162,7 @@ form.elements.building_id?.addEventListener("change", () => {
   // Preserve the selected address when making a listing standalone, so it can be edited.
   showPropertyName();
 });
-for (const name of ["category", "transaction_type", "published"]) {
+for (const name of ["category", "transaction_type"]) {
   form.elements[name].addEventListener("change", () => syncListingKind(form, Boolean(editingId)));
 }
 
@@ -1186,9 +1199,9 @@ form.addEventListener("submit", async (event) => {
     renderMedia();
 
     editor.close();
-    const savedPublished = form.elements.published.checked;
+    location.hash = `#/listings/${editingId}`;
     await load();
-    setStatus(savedPublished ? "Saved. The website updates within a minute." : "Draft saved. This listing is not published.");
+    setStatus("Draft saved. Review the preview, then publish when ready. The live website has not changed.");
   } catch (error) {
     const errorEl = form.querySelector("#listing-form-error");
     errorEl.textContent = error.message;
@@ -1324,6 +1337,7 @@ photoGrid.addEventListener("change", async (event) => {
   if (input.dataset.role === "pending-caption") {
     const item = pendingPhotos()[Number(card.dataset.index)];
     if (item) item.caption = input.value;
+    updateListingPreview();
     return;
   }
 
@@ -1336,6 +1350,7 @@ photoGrid.addEventListener("change", async (event) => {
     });
     const item = currentMedia.find((media) => media.id === id);
     if (item) item.caption = input.value;
+    updateListingPreview();
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -1619,3 +1634,58 @@ document.querySelectorAll("[data-sign-out]").forEach(link => link.addEventListen
     location.replace("/login/");
   } catch (error) { setStatus(error.message, "error"); }
 }));
+
+// The preview uses the public page itself; only its data source is different.
+function updateListingPreview() {
+  const frame = ROUTE_HOSTS.listing.querySelector(".listing-preview-frame");
+  if (!frame) return;
+  let listing = listings.find(row => row.id === routeId);
+  if (editor.open) {
+    const queued = pendingMedia.map((item, index) => ({ ...item, url: item.preview, position: photos().length + index }));
+    const media = currentMedia.filter(item => !(pendingPlan() && item.kind === "floor_plan"));
+    listing = { id: editingId, ...collectValues(), listing_media: [...media, ...queued] };
+    if (pendingVideo) listing.video_url = pendingVideo.preview;
+  }
+  if (listing) frame.contentWindow.postMessage({ type: "listing-preview", property: toDetailListing(listing) }, location.origin);
+}
+window.addEventListener("message", event => {
+  const frame = ROUTE_HOSTS.listing.querySelector(".listing-preview-frame");
+  if (event.origin !== location.origin || event.source !== frame?.contentWindow) return;
+  if (event.data?.type === "listing-preview-ready") updateListingPreview();
+  if (event.data?.type === "listing-preview-rendered" && !editor.open) {
+    const listing = listings.find(row => row.id === routeId);
+    const publish = ROUTE_HOSTS.listing.querySelector("[data-listing-publish]");
+    if (publish) publish.disabled = !listing?.can_edit || (listing.published && !listing.has_unpublished_changes);
+  }
+});
+form.addEventListener("input", updateListingPreview);
+form.addEventListener("change", updateListingPreview);
+editor.addEventListener("close", () => ROUTE_HOSTS.listing.classList.remove("is-editing"));
+ROUTE_HOSTS.listing.addEventListener("click", async event => {
+  const width = event.target.closest("[data-preview-width]");
+  if (width) {
+    ROUTE_HOSTS.listing.querySelector(".listing-preview-stage").classList.toggle("is-mobile", width.dataset.previewWidth === "mobile");
+    for (const button of ROUTE_HOSTS.listing.querySelectorAll("[data-preview-width]")) button.setAttribute("aria-pressed", String(button === width));
+  }
+  const button = event.target.closest("[data-listing-publish], [data-listing-unpublish]");
+  if (!button || editor.open) return;
+  const listing = listings.find(row => row.id === routeId);
+  if (!listing?.can_edit) return;
+  button.disabled = true;
+  try {
+    if (button.hasAttribute("data-listing-publish")) {
+      await api(`/listings/${encodeURIComponent(listing.id)}/publish`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: listing.draft_revision })
+      });
+      await load();
+      setStatus("Published. The website updates within a minute.");
+    } else {
+      await api(`/listings/${encodeURIComponent(listing.id)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ published: false })
+      });
+      await load();
+      setStatus("Listing unpublished. It will disappear from the website within a minute.");
+    }
+  } catch (error) { setStatus(error.message, "error"); }
+  finally { button.disabled = false; }
+});

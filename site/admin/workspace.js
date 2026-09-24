@@ -29,19 +29,15 @@ export function renderPermissions(host) {
 }
 
 export function renderListingDetail(host, listing, landlord) {
-  const fields = [["Property", listing.property_name], ["Unit", listing.unit], ["Category", listing.category],
-    ["Transaction", listing.transaction_type === "sale" ? "For sale" : "For rent"], ["Address", listing.location],
-    ["Property type", listing.property_type], ["Bedrooms", listing.bedrooms], ["Bathrooms", listing.bathrooms],
-    ["Size", listing.size], ["Term", listing.term_label]];
-  host.innerHTML = `<a class="link" href="#/listings">← All listings</a>` + heading("Listing details", listing.title || "Untitled listing",
-    landlord ? "View only. Your team can update this listing from a change request." : "Marketing information for this unit.",
-    landlord ? `<a class="desk-button" href="#/requests/${esc(listing.id)}">Request a change</a>` : '<button type="button" data-desk-edit-listing>Edit listing</button>') +
-    `<div class="desk-grid"><article class="desk-panel"><div class="desk-gallery">${(listing.listing_media || []).map(m => `<figure><img src="${esc(m.url)}" alt="${esc(m.caption || m.kind)}" loading="lazy"><figcaption>${esc(m.caption || m.kind.replace("_", " "))}</figcaption></figure>`).join("") || empty("No photos uploaded", "Photos and floor plans will appear here.")}</div><div class="desk-panel-body"><h2>Description</h2><p class="desk-prewrap">${esc(listing.description || "No description added.")}</p>${safeLink(listing.video_url, "Watch video")}${safeLink(listing.details_url, "External details")}</div></article>
-    <aside class="desk-panel desk-panel-body"><span class="k">Asking price</span><h2>${listing.price_amount == null ? "Not set" : money(listing.price_amount)}</h2>${pill(listing.published ? "Published on website" : "Unpublished", listing.published ? "good" : "warn")}<dl class="desk-facts">${fields.map(([key, val]) => `<div><dt>${esc(key)}</dt><dd>${esc(val ?? "—") || "—"}</dd></div>`).join("")}</dl></aside></div>`;
-}
-function safeLink(url, label) {
-  if (!url || !/^(https?:\/\/|\/media\/)/i.test(url)) return "";
-  return `<p><a href="${esc(url)}" target="_blank" rel="noopener noreferrer">${label} ↗</a></p>`;
+  host.innerHTML = `<a class="link" href="#/listings">← All listings</a>` + heading("Website preview", listing.title || "New listing",
+    landlord ? "View only. Request changes from your leasing team." : "Review the website appearance, then publish when it is ready.",
+    landlord ? `<a class="desk-button" href="#/requests/${esc(listing.id)}">Request a change</a>` : `<button type="button" data-desk-edit-listing>Edit listing</button>
+      <button type="button" class="primary" data-listing-publish disabled>${listing.published ? "Publish changes" : "Publish listing"}</button>`) +
+    `<div class="listing-preview-toolbar"><div>${pill(listing.published ? "Live on website" : "Draft · not published", listing.published ? "good" : "warn")}
+      <span data-listing-preview-status>${listing.published && listing.has_unpublished_changes ? "Unpublished changes · the website still shows the previous version" : "Website preview"}</span></div>
+      <div class="actions"><button type="button" data-preview-width="desktop" aria-pressed="true">Desktop</button><button type="button" data-preview-width="mobile" aria-pressed="false">Mobile</button>
+      ${listing.published ? `<a class="desk-button" href="/property/?id=${encodeURIComponent(listing.id)}" target="_blank" rel="noopener">View live ↗</a>${landlord ? "" : '<button type="button" data-listing-unpublish>Unpublish</button>'}` : ""}</div></div>
+      <div class="listing-preview-stage"><iframe class="listing-preview-frame" title="Listing website preview" src="/property/?preview=listing"></iframe></div>`;
 }
 
 export async function renderRequests(host, { api, session, listings, selectedListing }) {

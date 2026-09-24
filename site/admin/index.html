@@ -912,7 +912,19 @@
 
     .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
 
-    #editor { width: min(900px, 94vw); }
+    #editor { width: min(440px, 94vw); position: fixed; inset: 110px 24px 24px auto; margin: 0; max-height: none; height: auto; border: 1px solid var(--line); box-shadow: 0 12px 40px #142f4222; z-index: 30; }
+    .listing-preview-toolbar { display: flex; justify-content: space-between; gap: 16px; align-items: center; flex-wrap: wrap; padding: 14px 18px; background: white; border: 1px solid var(--line); border-radius: 12px 12px 0 0; }
+    .listing-preview-toolbar > div { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    [data-listing-preview-status] { font-size: 12px; color: var(--soft); }
+    .listing-preview-stage { background: #e8edf1; padding: 16px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 12px 12px; }
+    .listing-preview-frame { display: block; width: 100%; height: max(680px, calc(100vh - 300px)); margin: auto; border: 0; background: white; }
+    .listing-preview-stage.is-mobile .listing-preview-frame { max-width: 390px; }
+    #route-listing.is-editing { margin-right: 460px; }
+    #editor .grid { grid-template-columns: 1fr; }
+    #editor .span-2 { grid-column: auto; }
+    @media (max-width: 1100px) { #route-listing.is-editing { margin-right: 0; } #editor { inset: 100px 12px 12px auto; width: min(440px, calc(100vw - 24px)); } }
+    @media (max-width: 600px) { .listing-preview-stage { padding: 4px; } .listing-preview-toolbar { padding: 12px; } }
+
     #listing-form { padding: 0 28px; }
     #listing-form [hidden] { display: none !important; }
     .listing-editor-head { padding: 26px 0 22px; border-bottom: 1px solid var(--line); }
@@ -1854,10 +1866,7 @@
       <section class="listing-editor-section" aria-labelledby="listing-publish-heading">
         <h3 id="listing-publish-heading"><span>04</span> Publication</h3>
         <div class="listing-publish-box">
-          <div class="checkbox">
-            <input id="published" name="published" type="checkbox">
-            <label for="published">Published on the website</label>
-          </div>
+          <strong>Review before publishing</strong>
           <p class="hint" id="listing-publish-hint" aria-live="polite">Saved as a draft. Only the leasing team can see it.</p>
         </div>
 

@@ -35,6 +35,7 @@ import {
   fetchMediaRow,
   insertBuilding,
   createPropertyWithDefaults,
+  publishListing,
   insertListing,
   insertMedia,
   toAdminListing,
@@ -66,7 +67,6 @@ import { decryptSsn, formatSsn } from "./ssn.js";
 import {
   IMAGE_TYPES,
   VIDEO_TYPES,
-  deleteObject,
   deleteObjectsByPrefix,
   isValidKey,
   putObject
@@ -359,6 +359,16 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
       return await handleMediaCreate(request, env, ctx, id);
     }
 
+    if (id && subresource === "publish" && request.method === "POST") {
+      if (!UUID_PATTERN.test(id)) return json({ error: "Listing not found." }, 404);
+      const { revision } = await request.json();
+      if (!Number.isSafeInteger(revision) || revision < 1) return json({ error: "Reload the preview before publishing." }, 422);
+      const row = await publishListing(env, id, revision);
+      if (!row) return json({ error: "This draft changed. Reload and review the latest preview before publishing." }, 409);
+      ctx.waitUntil(purgeListingsCache(request, id));
+      return json({ listing: row });
+    }
+
     if (subresource) {
       return json({ error: "Unknown endpoint." }, 404);
     }
@@ -374,6 +384,7 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
         await request.json(), { identity });
       if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
       if (refused.length > 0) return listingRefusal(refused);
+      if (values.published) return json({ error: "Save a draft and review the website preview before publishing." }, 422);
       const named = await nameFromProperty(env, values);
       if (named) return named;
 
@@ -403,6 +414,7 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
       if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
       if (refused.length > 0) return listingRefusal(refused);
       if (Object.keys(values).length === 0) return json({ error: "Nothing to update." }, 400);
+      if (values.published === true) return json({ error: "Use the preview publication action to publish this draft." }, 422);
       const named = await nameFromProperty(env, values, current);
       if (named) return named;
 
@@ -681,7 +693,8 @@ async function handleMediaItem(request, env, ctx, mediaId) {
     if (!row) return json({ error: "Media not found." }, 404);
 
     await deleteMediaRow(env, mediaId);
-    ctx.waitUntil(deleteObject(env, row.path));
+    // Published snapshots may still reference this object, including cached pages.
+    // Keep listing-owned media until the listing itself is removed.
     ctx.waitUntil(purgeListingsCache(request, row.listing_id));
     return json({ deleted: true });
   }

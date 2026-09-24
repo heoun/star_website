@@ -1,4 +1,6 @@
 (function () {
+  const preview = new URLSearchParams(location.search).get("preview") === "listing" && window.parent !== window;
+  let galleryKeyboard = null;
   const container = document.getElementById("property");
   if (!container) return;
 
@@ -13,6 +15,7 @@
   // anything else must be a real http(s) URL.
   const safeUrl = (value) => {
     const text = String(value ?? "").trim();
+    if (preview && text.startsWith("blob:" + location.origin + "/")) return text;
     if (text.startsWith("/") && !text.startsWith("//")) return text;
     try {
       const parsed = new URL(text);
@@ -89,7 +92,7 @@
       ? { ...property.floor_plan, url: safeUrl(property.floor_plan.url) }
       : null;
     const videoUrl = safeUrl(property.video_url);
-    const isHostedVideo = videoUrl.startsWith("/media/");
+    const isHostedVideo = videoUrl.startsWith("/media/") || (preview && videoUrl.startsWith("blob:"));
     const externalDetails = safeUrl(property.details_url);
     const addressLine = [property.location].filter(Boolean).join(" · ");
 
@@ -144,6 +147,8 @@
 
     document.title = `${property.title || "Property"} | Star Real Estate`;
 
+    if (galleryKeyboard) document.removeEventListener("keydown", galleryKeyboard);
+    galleryKeyboard = null;
     if (photos.length > 1) wireGallery(photos);
   };
 
@@ -172,11 +177,27 @@
       thumb.addEventListener("click", () => show(Number(thumb.dataset.index)));
     }
 
-    document.addEventListener("keydown", (event) => {
+    galleryKeyboard = (event) => {
       if (event.key === "ArrowLeft") show(index - 1);
       if (event.key === "ArrowRight") show(index + 1);
-    });
+    };
+    document.addEventListener("keydown", galleryKeyboard);
   };
+
+  if (preview) {
+    // No draft endpoint or URL payload: only the same-origin workspace parent supplies data.
+    showState("Loading website preview…");
+    document.addEventListener("click", event => {
+      if (event.target.closest("a")) event.preventDefault();
+    }, true);
+    window.addEventListener("message", event => {
+      if (event.origin !== location.origin || event.source !== parent || event.data?.type !== "listing-preview") return;
+      render(event.data.property);
+      parent.postMessage({ type: "listing-preview-rendered" }, location.origin);
+    });
+    parent.postMessage({ type: "listing-preview-ready" }, location.origin);
+    return;
+  }
 
   const id = new URLSearchParams(window.location.search).get("id") || "";
 

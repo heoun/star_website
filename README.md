@@ -804,3 +804,12 @@ Run `npm run dev:testing` and wait for **TESTING READY**. This supervises the
 Worker, payment/credit simulator, DocuSign Sandbox callback tunnel, Connect
 subscription and background jobs together. Ctrl+C stops the stack. Existing
 test applications remain available. See [testing setup](docs/backoffice/internal-testing.md).
+
+
+### Listing preview and publication
+
+The listing detail workspace embeds the actual `/property/` page. The editor sends draft data to its same-origin frame; desktop/mobile previews share the public renderer and formatting. Saving a draft, uploading media, or changing captions/order does not update the public listing. Staff publish the saved, reviewed revision explicitly. Authorized Agents retain their existing property scope; Landlords remain read-only.
+
+Apply `supabase/listing-publication.sql` **before deploying this version** (also included in `npm run db:bundle`). It captures existing published listings and media once, adds draft revisions, and provides an atomic publication RPC that refuses stale previews. Public feeds, detail pages, and applicant listing lookups use the published snapshot. Unpublishing retains the draft. Removed media bytes remain available for published snapshots and cached pages until the listing is deleted.
+
+Validation: `npm run test:listings`, `npm run test:listings:db`, and `npm run test:listings:ui` (isolated fixtures; no live database writes).
