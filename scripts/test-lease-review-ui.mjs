@@ -108,7 +108,7 @@ try{
  await page.route(preparePattern,async route=>{if(route.request().method()!=='POST')return route.fallback();await new Promise(r=>setTimeout(r,1500));await route.continue();});
  const prepared=page.waitForResponse(r=>r.request().method()==='POST' && /\/signing$/.test(r.url()));
  await panel.getByRole('tab',{name:'Documents',exact:true}).click();
- eq(await panel.locator('[data-ws-doc=""]').count(),0);eq(await panel.locator('[data-ws-doc]').count(),16);
+ eq(await panel.locator('[data-ws-doc=""]').count(),0);eq(await panel.locator('[data-ws-doc]').count(),17);
  eq(await panel.locator('[data-preview-status="loading"]').count(),1);
  eq(await page.locator('#lease-draft').isDisabled(),true);
  await page.getByRole('button',{name:/Back to Rental/}).click();

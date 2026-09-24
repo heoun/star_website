@@ -1091,7 +1091,7 @@ async function previewDocumentFields(options={}){
     // A copy with no signing box (the concession rider when none is agreed)
     // is still mounted for its filled values; its note stands in for the
     // ready text once the frame has marked them.
-    if(!fields.length)docPreview.message=layout.id==='concession'?'No rent concession is specified. This rider does not require signatures.':'This document has no signing fields.';
+    if(!fields.length)docPreview.message=layout.id==='concession'?'No rent concession is specified. This rider does not require signatures.':layout.id==='pet'?'No pets are listed. This rider is omitted from the lease package.':'This document has no signing fields.';
     docPreview.part=part;docPreview.fields=fields;
     if(!fields.some(f=>f.id===docPreview.selected))docPreview.selected=fields[0]?.id || '';
     screen.querySelector('#lease-doc-name').textContent=part.name || layout.name;

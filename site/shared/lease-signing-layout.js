@@ -11,7 +11,7 @@
 // What remains here is structure: which table, row and cell a slot occupies,
 // or which paragraph carries the line. Geometry is the small TAB_GEOMETRY
 // table below, shared by every document and signer.
-export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-23-anchor-v16';
+export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-24-anchor-v17';
 export const SIGNING_LAYOUT_REVIEW_REQUIRED=false;
 
 // PDF points. The tab control includes transparent padding; `ink` describes
@@ -40,6 +40,7 @@ export const SIGNING_DOCUMENTS=[
  {id:'lease',document:'lease',name:'New York Residential Lease Agreement',tables:{tenant:2,landlord:3},place:standardCell,
   initials:[{section:'38',paragraph:{starts:'Tenant(s)’ initials',nth:0}},{section:'39',paragraph:{starts:'Tenant(s)’ initials',nth:1}}]},
  {id:'utilities',document:'utilities',name:'Utilities – Simple Form',tables:{tenant:1,landlord:2},place:standardCell},
+ {id:'pet',document:'pet',name:'Pet Addendum',tables:{tenant:0,landlord:1},place:standardCell},
  {id:'packages',document:'packages',name:'Packages Rider',tables:{tenant:0,landlord:1},place:standardCell},
  {id:'keys',document:'keys',name:'Key Rider',tables:{tenant:1,landlord:2},place:standardCell},
  {id:'insurance',document:'insurance',name:'New York Renters Insurance Rider',tables:{tenant:0,landlord:1},place:standardCell},
@@ -66,7 +67,8 @@ export function hasConcession(values={}){
  const text=String(values['concession.terms'] || '').trim();
  return !!text && !/^(?:none|n\/a|not applicable|no(?: rent)? concession(?:s)?(?:\b.*)?|mock test only.*)[.!]?$/i.test(text);
 }
-const CODES={lease:'LEASE',utilities:'UTIL',packages:'PKG',keys:'KEYS',insurance:'INS',rules:'RULES',fines:'FINES',window_guards:'WG',bedbug:'BEDBUG',sprinkler:'SPRK',allergen:'ALRG',alarms:'ALARM',smoking:'SMOKE',concession:'CONC',dhcr:'DHCR',good_cause:'GCE'};
+export const hasPets=(values={})=>Number(values['pet.count'])>0;
+const CODES={pet:'PET',lease:'LEASE',utilities:'UTIL',packages:'PKG',keys:'KEYS',insurance:'INS',rules:'RULES',fines:'FINES',window_guards:'WG',bedbug:'BEDBUG',sprinkler:'SPRK',allergen:'ALRG',alarms:'ALARM',smoking:'SMOKE',concession:'CONC',dhcr:'DHCR',good_cause:'GCE'};
 const KIND_CODES={signature:'SIG',full_name:'NAME',date_signed:'DATE',initial:'INIT'};
 // Unique across the envelope: one recipient signs each layout once, so the
 // pair identifies the field even where a layout appears in several copies.
@@ -104,7 +106,7 @@ export function signingFields(signers,layoutId,values={}){
  if(layoutId && !layouts.length)throw new Error('Signing positions have not been configured for this document.');
  const fields=layoutId?[]:main;
  for(const layout of layouts){
-  if(layout.conditional && !hasConcession(values))continue;
+  if((layout.conditional && !hasConcession(values)) || (layout.id==='pet' && !hasPets(values)))continue;
   let tenantSlot=0;
   for(const signer of signers){
    const tenant=signer.role==='tenant';

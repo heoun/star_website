@@ -4,7 +4,7 @@ import {readEntries,readEntryText,replaceEntry} from './zip.js';
 import registry from '../lease/schema/fields.json' with {type:'json'};
 import {formatLeaseFieldValue} from '../site/shared/lease-values.js';
 import {DOCUMENTS} from '../site/shared/lease-documents.js';
-import {hasConcession} from '../site/shared/lease-signing-layout.js';
+import {hasConcession,hasPets} from '../site/shared/lease-signing-layout.js';
 const fieldById=new Map(registry.fields.map(f=>[f.id,f]));
 export const INDIVIDUAL_NOTICES=new Set(['window_guards','bedbug','dhcr']);
 const unescape=s=>s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(+n));
@@ -34,7 +34,7 @@ export async function splitSigningDocuments(docx,originalXml,values,signers,tena
  const result=[],review=[];
  for(let i=0;i<starts.length;i++){
   const d=starts[i],chunks=nodes.slice(d.index,starts[i+1]?.index??nodes.length);
-  if(d.id==='concession' && !hasConcession(values))continue;
+  if((d.id==='concession' && !hasConcession(values)) || (d.id==='pet' && !hasPets(values)))continue;
   for(const tenant of INDIVIDUAL_NOTICES.has(d.id)?signers.filter(s=>s.role==='tenant'):[null]){
    const v=tenant?{...values,...tenantValues[tenant.memberId],'tenant.names':tenant.name,'tenant.email':tenant.email}:values;
    const xml=fill(chunks.join(''),v);review.push(xml);
@@ -50,3 +50,15 @@ export async function splitSigningDocuments(docx,originalXml,values,signers,tena
  return {documents:result,review:await replaceEntry(entries,'word/document.xml',head+review.join('')+finalSection+tail)};
 }
 export {visible as signingVisibleText};
+
+// Downloads also omit the optional rider; signing retains the original for splitting.
+export function omitAbsentPetRider(xml,values){
+ if(hasPets(values))return xml;
+ const head=xml.indexOf('<w:body>')+8,end=xml.indexOf('</w:body>');
+ const nodes=elementsOf(xml.slice(head,end));
+ const start=nodes.findIndex(n=>visible(n).startsWith('PET ADDENDUM'));
+ if(start<0)return xml;
+ const stop=nodes.findIndex((n,i)=>i>start && visible(n).startsWith('Packages Rider'));
+ if(stop<0)throw new Error('The Pet Addendum boundary is missing.');
+ return xml.slice(0,head)+nodes.slice(0,start).join('')+nodes.slice(stop).join('')+xml.slice(end);
+}

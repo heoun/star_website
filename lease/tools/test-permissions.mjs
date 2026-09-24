@@ -106,6 +106,8 @@ globalThis.fetch = async (url, init = {}) => {
     }]);
   }
 
+  if (target.includes("/rest/v1/rpc/property_collaboration_command")) return reply({collaborations:[]});
+
   if (target.includes("/rest/v1/rpc/lease_settings_for_listing")) {
     return reply({ building: {}, unit: {} });
   }
@@ -162,7 +164,7 @@ check("a manager is told they are a manager",
 
 const asAgent = await call("/api/admin/me", { role: "agent" });
 check("an agent is told they are an agent",
-  asAgent.status === 200 && asAgent.body.role === "agent");
+  asAgent.status === 200 && asAgent.body.role === "agent", JSON.stringify(asAgent.body));
 
 const typo = await call("/api/admin/me", { role: "Manger" });
 check("a mistyped role is refused, not rounded down to the safer one",
@@ -394,7 +396,7 @@ for (const id of ["tenant.names", "tenant.email", "tenant.mailing_address",
   check(`${id} is a manager's`, !agentMayWriteField(id) && isManagerControlled(id));
 }
 check("the whitelist is exactly the terms of the tenancy",
-  AGENT_WRITABLE.length === 7, `has ${AGENT_WRITABLE.length}`);
+  AGENT_WRITABLE.length === 21, `has ${AGENT_WRITABLE.length}`);
 
 // ------------------------------------------------------- the building's address
 //

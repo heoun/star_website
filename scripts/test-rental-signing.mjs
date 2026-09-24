@@ -1,3 +1,5 @@
+import {dealValues,fillTemplate} from '../worker/lease.js';
+import {householdApplication} from '../worker/rentals.js';
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
 import {makeRentalSigning} from '../backend/core/rental-signing.ts';
@@ -10,10 +12,20 @@ let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};const reject=asyn
 const template=readFileSync('lease/template/lease-template.docx');
 const registry=JSON.parse(readFileSync('lease/schema/fields.json','utf8'));
 const values=Object.fromEntries(registry.fields.map(f=>[f.id,f.default??'Example']));
+values['pet.count']=1;
+const petHousehold=householdApplication({root:{name:'A',pets:null},members:[{name:'A',pets:null},{name:'B',pets:[{type:'dog'},{type:'other',species:'Rabbit'}]}]});
+const petDeal=dealValues({application:petHousehold});
+eq(petDeal['pet.count'],2);eq(petDeal['pet.type_count'],2);eq(petDeal['pet.types'],'dog, Rabbit');
+for(const count of [0,1]){
+ const v={...values,'pet.count':count};
+ const download=await fillTemplate({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),v);
+ const xml=await readEntryText(readEntries(download.buffer.slice(download.byteOffset,download.byteOffset+download.byteLength)),'word/document.xml');
+ eq(xml.includes('PET ADDENDUM'),count===1);
+}
 const signers=[{recipientId:'1',memberId:'a',role:'tenant',name:'Tenant A',email:'a@example.test',routingOrder:1},{recipientId:'2',memberId:'b',role:'tenant',name:'Tenant B',email:'b@example.test',routingOrder:1},{recipientId:'3',memberId:null,role:'landlord',name:'Landlord',email:'l@example.test',routingOrder:2}];
 const document=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),values,signers);
-eq(document.tabs.length,99);eq(document.documents.length,19);
-for(const signer of signers){eq(document.tabs.filter(t=>t.recipientId===signer.recipientId && t.kind==='signature').length,signer.role==='tenant'?15:17);eq(document.tabs.filter(t=>t.recipientId===signer.recipientId && t.kind==='full_name').length,signer.role==='tenant'?12:13);}
+eq(document.tabs.length,105);eq(document.documents.length,20);
+for(const signer of signers){eq(document.tabs.filter(t=>t.recipientId===signer.recipientId && t.kind==='signature').length,signer.role==='tenant'?16:18);eq(document.tabs.filter(t=>t.recipientId===signer.recipientId && t.kind==='full_name').length,signer.role==='tenant'?13:14);}
 eq(document.tabs.filter(t=>t.kind==='initial').length,4);
 eq(document.tabs.filter(t=>t.kind==='date_signed').length,11);
 for(const layout of ['utilities','packages','keys','insurance','rules','fines']){
@@ -88,8 +100,8 @@ eq(tab('lease','signature','landlord').yOffset,tab('lease','signature').yOffset)
 // Identical underlying table metrics prevent per-document font and line drift.
 const sourceXml=await readEntryText(entries(template),'word/document.xml');
 const tables=[...sourceXml.matchAll(/<w:tbl[ >][\s\S]*?<\/w:tbl>/g)].map(m=>m[0]);
-const canonical=s=>s.replace(/ w14:(?:paraId|textId)="[^"]*"/g,'');
-for(const index of [5,7,10,12,14,17,21,25,29,31,37]){
+const canonical=s=>s.replace(/ w14:(?:paraId|textId)="[^"]*"/g,'').replace(/ xmlns(?::[\w]+)?="[^"]*"/g,'').replace(/ \/>/g,'/>');
+for(const index of [5,7,9,12,14,16,19,23,27,31,33,39]){
  eq(canonical(tables[index]),canonical(tables[2]));
  eq(canonical(tables[index+1]),canonical(tables[3]));
 }
@@ -123,6 +135,11 @@ eq(noConcession.tabs.some(t=>t.layout==='concession'),false);
 eq(noConcession.documents.some(d=>d.layout==='concession'),false);
 eq((await readEntryText(entries(noConcession.docx),'word/document.xml')).includes('Rent Concession Rider'),false);
 eq(noConcession.documents.every((d,i)=>d.documentId===String(i+1)),true);
+for(const count of [undefined,'',0,'0']){
+ const withoutPet=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),{...values,'pet.count':count},signers);
+ eq(withoutPet.documents.some(d=>d.layout==='pet'),false);eq(withoutPet.tabs.some(t=>t.layout==='pet'),false);
+ eq((await readEntryText(entries(withoutPet.docx),'word/document.xml')).includes('PET ADDENDUM'),false);
+}
 const withConcession=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),{...values,'concession.terms':'A one-time $500 credit against October rent.'},signers);
 eq(withConcession.documents.some(d=>d.layout==='concession'),true);
 eq(withConcession.tabs.some(t=>t.layout==='concession'),true);
@@ -133,8 +150,8 @@ eq(definition.status,'created');eq(definition.recipients.signers.map(s=>s.routin
 eq(definition.eventNotification.includeHMAC,'true');eq(definition.allowReassign,'false');
 // Generate every supported tenant slot; each gets its own complete signature set.
 const many=Array.from({length:8},(_,i)=>({...signers[0],recipientId:String(i+1),memberId:String(i),name:`Tenant ${i+1}`}));
-const large=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),values,[...many,{...signers[2],recipientId:'9'}]);eq(large.documents.length,37);
-eq(large.tabs.length,315);
+const large=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),values,[...many,{...signers[2],recipientId:'9'}]);eq(large.documents.length,38);
+eq(large.tabs.length,333);
 // The second row's line has the same room above it as the first, so every
 // tenant slot signs at full size.
 const lastRow=large.tabs.filter(t=>t.layout==='lease' && t.kind==='signature' && t.role==='tenant' && t.slot>=4);
@@ -144,7 +161,7 @@ eq(ownerSlot.scale,.75);eq(ownerSlot.xOffset,0);
 // The full-size stamp starts at the left of the long landlord underline.
 eq(ownerSlot.width*.75<=228,true);
 
-eq(definition.recipients.signers[0].tabs.fullNameTabs.length,12);
+eq(definition.recipients.signers[0].tabs.fullNameTabs.length,13);
 eq(definition.recipients.signers[0].tabs.dateSignedTabs.length,3);
 await reject(()=>buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),values,[...many,...signers]));
 const config={environment:'demo',integrationKey:'key',userId:'user',accountId:'account',privateKey:'',hmacSecret:'hmac-test-secret',webhookUrl:'https://example.test/api/webhooks/docusign'};

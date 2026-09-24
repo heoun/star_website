@@ -16,11 +16,8 @@
 //   property  — it is here because of how the property is configured
 //   condition — it is about the terms of this particular tenancy
 //
-// `conditionalOn` names the lease value that decides whether the document has
-// anything to say. It does NOT decide whether the document is produced: see
-// worker/lease.js, where fillTemplate substitutes placeholders across the whole
-// of word/document.xml and cannot omit a section. Every document below is in
-// every .docx this system generates. The list says which ones are answered.
+// `conditionalOn` identifies the tenancy value that activates a rider.
+// Signing generation omits inactive concession and pet riders.
 
 export const DOCUMENTS = [
   {
@@ -36,6 +33,14 @@ export const DOCUMENTS = [
     starts: "Utilities – Simple Form",
     why: "property",
     note: "Who pays for each utility at this property."
+  },
+  {
+    id: "pet",
+    name: "Pet Addendum",
+    starts: "PET ADDENDUM",
+    why: "condition",
+    note: "Included when the household has pets.",
+    conditionalOn: "pet.count"
   },
   {
     id: "packages",

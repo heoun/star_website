@@ -1,3 +1,4 @@
+import {omitAbsentPetRider} from './signing-documents.js';
 // Fills the lease template for one approved application.
 //
 // lease/schema/fields.json lists all 147 placeholders in the template and says
@@ -112,6 +113,8 @@ export function dealValues({ application, listing, building, today }) {
     [state || abbr, zip].filter(Boolean).join(" ")
   ].filter(Boolean).join(", ");
 
+  const pets=Array.isArray(application?.pets)?application.pets:[];
+  const petTypes=[...new Set(pets.map(p=>p.type==='other'?p.species:p.type).filter(Boolean))];
   const values = {
     "lease.effective_date": longDate(today),
     "lease.commencement_date": shortDate(start),
@@ -123,6 +126,9 @@ export function dealValues({ application, listing, building, today }) {
     "tenant.names": application?.name || "",
     "tenant.email": application?.email || "",
     "tenant.mailing_address": application?.current_address || "",
+    "pet.count": pets.length,
+    "pet.type_count": petTypes.length || "",
+    "pet.types": petTypes.join(", "),
     "concession.terms": application?.concession_terms || "",
     "property.address_full": addressFull,
     "property.street": street,
@@ -331,7 +337,7 @@ export async function fillTemplate(env, request, values, transform) {
     throw new Error(`The template uses fields the registry does not define: ${[...unknown].join(", ")}.`);
   }
 
-  return replaceEntry(entries, "word/document.xml", transform ? await transform(filled, xml) : filled);
+  return replaceEntry(entries, "word/document.xml", transform ? await transform(filled, xml) : omitAbsentPetRider(filled,values));
 }
 
 // Values reach the document as XML text, so a tenant named "Smith & Jones"

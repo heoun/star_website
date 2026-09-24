@@ -21,7 +21,22 @@ export const AGENT_WRITABLE = [
   // Defaults to one month of rent.
   "deposit.amount",
   // The Rent Concession Rider, written per deal.
-  "concession.terms"
+  "concession.terms",
+  // Pet permission terms are reviewed for this tenancy.
+  "pet.count",
+  "pet.type_count",
+  "pet.types",
+  "pet.max_weight",
+  "pet.fee",
+  "pet.mark_unrestricted",
+  "pet.mark_restricted",
+  "pet.mark_count",
+  "pet.mark_weight",
+  "pet.mark_types",
+  "pet.mark_no_fee",
+  "pet.mark_fee",
+  "pet.mark_nonrefundable",
+  "pet.mark_refundable"
 ];
 
 const WRITABLE = new Set(AGENT_WRITABLE);
