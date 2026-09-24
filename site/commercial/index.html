@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Commercial | Star Real Estate</title>
   <!-- INLINE_BRAND_ICON -->
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preload" href="/shared/fonts/public-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/shared/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/shared/fonts/listing-fonts.css">
+  <link rel="preload" href="/jpg/listing-bkg.jpeg" as="image">
   <style>
     :root {
       --ink: #1f2a33;
@@ -580,55 +581,16 @@
     </footer>
   </div>
 
-  <script src="../shared/listings-page.js"></script>
+  <script src="../shared/listings-page.js" data-listing-page="/commercial/"></script>
   <script>
     const menuToggle = document.querySelector('.menu-toggle');
     const mobileNav = document.querySelector('.mobile-nav');
     const closeButton = document.querySelector('.close-nav');
     const mobileLinks = document.querySelectorAll('.mobile-sheet a');
-    const maxVisibleCommercialListings = 6;
 
-    window.renderListingsCollection({
-      gridSelector: '[data-grid="commercial-buy"]',
-      category: 'commercial',
-      transactionGroup: 'sale',
-      defaultKind: 'Commercial Acquisition Listing',
-      collectionLabel: 'Commercial Buy Listings',
-      emptyTitle: 'No active commercial buy listings right now',
-      emptyStatusLabel: 'For Sale',
-      statusLabels: { sale: 'For Sale', rental: 'For Lease' },
-      dataPath: '../data/listings.json',
-      maxVisibleListings: maxVisibleCommercialListings,
-      emptyCtaHref: '../contact-us/',
-      emptyCtaText: 'Ask about commercial availability',
-      emptyPhotoLabel: 'Commercial listing preview unavailable',
-      showKindBadge: false,
-      showStatusBadge: false,
-      showPhotoCopy: false,
-      photoKicker: 'Commercial Preview',
-      fetchErrorMessage: 'Listings sync fetch failed. Rendering commercial buy placeholders.'
-    });
 
-    window.renderListingsCollection({
-      gridSelector: '[data-grid="commercial-lease"]',
-      category: 'commercial',
-      transactionGroup: 'rental',
-      defaultKind: 'Commercial Lease Listing',
-      collectionLabel: 'Commercial Lease Listings',
-      emptyTitle: 'No active commercial lease listings right now',
-      emptyStatusLabel: 'For Lease',
-      statusLabels: { sale: 'For Sale', rental: 'For Lease' },
-      dataPath: '../data/listings.json',
-      maxVisibleListings: maxVisibleCommercialListings,
-      emptyCtaHref: '../contact-us/',
-      emptyCtaText: 'Ask about commercial availability',
-      emptyPhotoLabel: 'Commercial lease preview unavailable',
-      showKindBadge: false,
-      showStatusBadge: false,
-      showPhotoCopy: false,
-      photoKicker: 'Commercial Preview',
-      fetchErrorMessage: 'Listings sync fetch failed. Rendering commercial lease placeholders.'
-    });
+
+
 
     function openNav() {
       mobileNav?.classList.add('open');

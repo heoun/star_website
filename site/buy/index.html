@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Buy Listings | Star Real Estate</title>
   <!-- INLINE_BRAND_ICON -->
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preload" href="/shared/fonts/public-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/shared/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/shared/fonts/listing-fonts.css">
+  <link rel="preload" href="/jpg/buy-bkg.jpeg" as="image">
   <style>
     :root {
       --ink: #1f2a33;
@@ -646,14 +647,12 @@
     </footer>
   </div>
 
-  <script src="../shared/listings-page.js"></script>
+  <script src="../shared/listings-page.js" data-listing-page="/buy/"></script>
   <script>
     const menuToggle = document.querySelector('.menu-toggle');
     const mobileNav = document.querySelector('.mobile-nav');
     const closeButton = document.querySelector('.close-nav');
     const mobileLinks = document.querySelectorAll('.mobile-sheet a');
-    const maxVisibleListings = 9;
-    const targetTransaction = 'sale';
 
     function openNav() {
       mobileNav?.classList.add('open');
@@ -684,24 +683,7 @@
       link.addEventListener('click', closeNav);
     });
 
-    window.renderResidentialListingsPage({
-      gridSelector: '[data-grid="residential"]',
-      transactionGroup: targetTransaction,
-      defaultKind: 'Buy Listing',
-      collectionLabel: 'Buy Listings',
-      emptyTitle: 'No active buy listings right now',
-      emptyStatusLabel: 'For Sale',
-      dataPath: '../data/listings.json',
-      maxVisibleListings,
-      emptyCtaHref: '../contact-us/',
-      emptyCtaText: 'Ask about current availability',
-      emptyPhotoLabel: 'Listing preview unavailable',
-      showKindBadge: false,
-      showStatusBadge: false,
-      showPhotoCopy: false,
-      photoKicker: 'Listing Preview',
-      fetchErrorMessage: 'Listings sync fetch failed. Rendering buy placeholders.'
-    });
+
   </script>
 </body>
 </html>

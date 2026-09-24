@@ -1,3 +1,4 @@
+import { isListingPage, serveListingPage } from "./listing-pages.js";
 import { accountSecurityEnabled } from "./account-security.js";
 import { handleWorkspaceSecurity } from "./workspace-security.js";
 import { handleAuthRequest } from "./auth.js";
@@ -39,6 +40,10 @@ const application = {
       catch {return Response.json({error:'Application options are unavailable.'},{status:503});}
     }
 
+    if ((request.method === "GET" || request.method === "HEAD") && isListingPage(pathname)) {
+      return serveListingPage(request, env, ctx);
+    }
+
     // The listing pages fetch this path; the Worker answers it from Supabase.
     // wrangler.jsonc routes it here instead of to the bundled asset, which is
     // still used as the offline fallback.
@@ -53,7 +58,7 @@ const application = {
 
     // Listing photos, floor plans, and videos stored in R2.
     if (pathname.startsWith("/media/")) {
-      return serveMedia(request, env, pathname);
+      return serveMedia(request, env, pathname, ctx);
     }
 
     // The rebuilt backend, one ring at a time. Off unless BACKEND_V2=on, so

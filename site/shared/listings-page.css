@@ -98,9 +98,7 @@
   padding: 14px;
   display: flex;
   align-items: flex-end;
-  background:
-    linear-gradient(145deg, rgba(18, 38, 48, 0.12), rgba(18, 38, 48, 0.04)),
-    url("../jpg/unit-bkg.jpeg") center / cover no-repeat;
+  background: #edf1f3;
 }
 
 .listing-photo {
@@ -268,3 +266,5 @@
     text-align: left;
   }
 }
+
+.listing-state { grid-column: 1 / -1; padding: 24px 0; }
