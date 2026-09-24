@@ -70,6 +70,11 @@
       "id": "forms",
       "label": "Statutory forms",
       "description": "DHCR consent and the window guard notice."
+    },
+    {
+      "id": "pet",
+      "label": "Pet Addendum",
+      "description": "Included only when the household has pets."
     }
   ],
   "rule_kinds": {
@@ -331,6 +336,87 @@
         "bedbug.other_details"
       ],
       "why": "Complete the blank for the selected disclosure."
+    },
+    {
+      "id": "pet.permission",
+      "kind": "one_of",
+      "label": "Pet permission",
+      "where": "Pet Addendum",
+      "fields": [
+        "pet.mark_unrestricted",
+        "pet.mark_restricted"
+      ],
+      "why": "Complete the applicable choices for the pet addendum before signing."
+    },
+    {
+      "id": "pet.restrictions",
+      "kind": "any_of",
+      "label": "Pet restrictions",
+      "where": "Pet Addendum",
+      "fields": [
+        "pet.mark_count",
+        "pet.mark_weight",
+        "pet.mark_types"
+      ],
+      "why": "Complete the applicable choices for the pet addendum before signing.",
+      "only_when": "pet.mark_restricted"
+    },
+    {
+      "id": "pet.fee_choice",
+      "kind": "one_of",
+      "label": "Pet fee choice",
+      "where": "Pet Addendum",
+      "fields": [
+        "pet.mark_no_fee",
+        "pet.mark_fee"
+      ],
+      "why": "Complete the applicable choices for the pet addendum before signing."
+    },
+    {
+      "id": "pet.refund",
+      "kind": "one_of",
+      "label": "Pet fee refundability",
+      "where": "Pet Addendum",
+      "fields": [
+        "pet.mark_nonrefundable",
+        "pet.mark_refundable"
+      ],
+      "why": "Complete the applicable choices for the pet addendum before signing.",
+      "only_when": "pet.mark_fee"
+    },
+    {
+      "id": "pet.mark_weight_details",
+      "kind": "required_when",
+      "label": "Pet restriction details",
+      "where": "Pet Addendum",
+      "when": "pet.mark_weight",
+      "then": [
+        "pet.max_weight"
+      ],
+      "why": "Supply the value for the selected pet term."
+    },
+    {
+      "id": "pet.mark_types_details",
+      "kind": "required_when",
+      "label": "Pet restriction details",
+      "where": "Pet Addendum",
+      "when": "pet.mark_types",
+      "then": [
+        "pet.type_count",
+        "pet.types"
+      ],
+      "why": "Supply the value for the selected pet term."
+    },
+    {
+      "id": "pet.mark_fee_details",
+      "kind": "required_when",
+      "label": "Pet restriction details",
+      "where": "Pet Addendum",
+      "when": "pet.mark_fee",
+      "then": [
+        "pet.fee"
+      ],
+      "why": "Supply the value for the selected pet term."
     }
   ],
   "fields": [
@@ -2209,6 +2295,171 @@
       "default": "Vacancy lease",
       "scope": "building",
       "template": false
+    },
+    {
+      "id": "pet.count",
+      "label": "Number of pets",
+      "group": "pet",
+      "source": "deal",
+      "type": "integer",
+      "required": false,
+      "default": null,
+      "from": "computed: applications.pets"
+    },
+    {
+      "id": "pet.type_count",
+      "label": "Number of pet types",
+      "group": "pet",
+      "source": "deal",
+      "type": "integer",
+      "required": false,
+      "default": null,
+      "from": "computed: applications.pets"
+    },
+    {
+      "id": "pet.types",
+      "label": "Allowed pet types",
+      "group": "pet",
+      "source": "deal",
+      "type": "text",
+      "required": false,
+      "default": null,
+      "from": "computed: applications.pets"
+    },
+    {
+      "id": "pet.max_weight",
+      "label": "Maximum weight per pet (lb)",
+      "group": "pet",
+      "source": "agent",
+      "type": "integer",
+      "required": false,
+      "default": null
+    },
+    {
+      "id": "pet.fee",
+      "label": "Pet fee",
+      "group": "pet",
+      "source": "agent",
+      "type": "money",
+      "required": false,
+      "default": null
+    },
+    {
+      "id": "pet.mark_unrestricted",
+      "label": "No pet restrictions",
+      "group": "pet",
+      "source": "agent",
+      "type": "checkbox",
+      "required": false,
+      "default": null,
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      }
+    },
+    {
+      "id": "pet.mark_restricted",
+      "label": "Restricted pets",
+      "group": "pet",
+      "source": "agent",
+      "type": "checkbox",
+      "required": false,
+      "default": null,
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      }
+    },
+    {
+      "id": "pet.mark_count",
+      "label": "Limit number of pets",
+      "group": "pet",
+      "source": "agent",
+      "type": "checkbox",
+      "required": false,
+      "default": null,
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      }
+    },
+    {
+      "id": "pet.mark_weight",
+      "label": "Limit weight per pet",
+      "group": "pet",
+      "source": "agent",
+      "type": "checkbox",
+      "required": false,
+      "default": null,
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      }
+    },
+    {
+      "id": "pet.mark_types",
+      "label": "Limit pet types",
+      "group": "pet",
+      "source": "agent",
+      "type": "checkbox",
+      "required": false,
+      "default": null,
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      }
+    },
+    {
+      "id": "pet.mark_no_fee",
+      "label": "No pet fee",
+      "group": "pet",
+      "source": "agent",
+      "type": "checkbox",
+      "required": false,
+      "default": null,
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      }
+    },
+    {
+      "id": "pet.mark_fee",
+      "label": "Pet fee applies",
+      "group": "pet",
+      "source": "agent",
+      "type": "checkbox",
+      "required": false,
+      "default": null,
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      }
+    },
+    {
+      "id": "pet.mark_nonrefundable",
+      "label": "Non-refundable fee",
+      "group": "pet",
+      "source": "agent",
+      "type": "checkbox",
+      "required": false,
+      "default": null,
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      }
+    },
+    {
+      "id": "pet.mark_refundable",
+      "label": "Refundable fee",
+      "group": "pet",
+      "source": "agent",
+      "type": "checkbox",
+      "required": false,
+      "default": null,
+      "marks": {
+        "checked": "[X]",
+        "unchecked": "[ ]"
+      }
     }
   ]
 }
