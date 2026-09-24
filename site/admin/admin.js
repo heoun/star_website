@@ -4,7 +4,7 @@ import {workspaceNavigation,workspaceHome,workspaceRoleLabel,workspaceGroups} fr
 import {propertyGroups, compareNames} from './property-groups.js';
 import { openNewProperty } from "./property-import.js";
 import "./sidebar.js";
-import { syncListingKind, syncListingProperty } from "./listing-editor.js";
+import { syncListingKind, syncListingProperty, setListingTerm, listingTermValue } from "./listing-editor.js";
 import { renderOnboarding } from "./onboarding.js";
 import { renderLandlordProperties } from "./landlord-properties.js";
 import { readDocxText } from "./docx.js";
@@ -39,7 +39,6 @@ import {
 } from "./properties.js";
 import { endDateFor } from "../shared/lease-dates.js";
 import {
-  captionFromFilename,
   classifyFiles,
   parseFolderName,
   parseListingCopy
@@ -123,6 +122,8 @@ let routeId = "";
 let filter = "all";
 let listingSearch = "";
 let editingId = null;
+let listingDirty = false;
+let previewResizeObserver;
 // The properties a listing can be put under, fetched once on the first
 // editor open, and which one the open listing is under as stored — the Worker
 // allows an agent to set that link but not to move it.
@@ -219,7 +220,7 @@ function renderMedia() {
     <div class="photo-item" data-id="${escapeHtml(item.id)}">
       <img src="${escapeHtml(item.url)}" alt="">
       <div class="photo-tools">
-        <input type="text" data-role="caption" placeholder="Caption (Living room)" maxlength="120"
+        <input type="text" data-role="caption" placeholder="Caption (Optional)" maxlength="120"
                value="${escapeHtml(item.caption || "")}">
         <div class="photo-buttons">
           <button type="button" class="small" data-role="left" ${index === 0 ? "disabled" : ""}>←</button>
@@ -235,7 +236,7 @@ function renderMedia() {
       <img src="${escapeHtml(item.preview)}" alt="">
       <div class="photo-tools">
         <span class="pending-flag">Uploads on save</span>
-        <input type="text" data-role="pending-caption" placeholder="Caption (Living room)" maxlength="120"
+        <input type="text" data-role="pending-caption" placeholder="Caption (Optional)" maxlength="120"
                value="${escapeHtml(item.caption || "")}">
         <div class="photo-buttons">
           <button type="button" class="small" data-role="pending-left" ${index === 0 ? "disabled" : ""}>←</button>
@@ -275,7 +276,8 @@ function renderMedia() {
   }
 
   mediaSection.dataset.pending = String(pendingMedia.length > 0 || Boolean(pendingVideo));
-  updateListingPreview();
+  if (editor.open) listingInputChanged();
+  else updateListingPreview();
 }
 
 function queuePhotos(files) {
@@ -283,7 +285,7 @@ function queuePhotos(files) {
     pendingMedia.push({
       file,
       kind: "photo",
-      caption: captionFromFilename(file.name),
+      caption: "",
       preview: URL.createObjectURL(file)
     });
   }
@@ -391,12 +393,13 @@ async function importFolder(files) {
     openEditor(null);
     for (const [field, value] of Object.entries(result.fields)) {
       if (form.elements[field] && value !== null && value !== "") {
-        form.elements[field].value = value;
+        if (field === "term_label") setListingTerm(form.elements[field], value);
+        else form.elements[field].value = value;
       }
     }
     form.elements.category.value = "residential";
     form.elements.transaction_type.value = result.fields.transaction_type || "sale";
-    syncListingKind(form, false);
+    syncListingKind(form, false, result.fields.property_type || "");
 
     queuePhotos(result.photoFiles);
     if (result.planFile) queuePlan(result.planFile);
@@ -563,6 +566,8 @@ function showRoute(name, { rows }) {
 
 async function goto({ name, id }) {
   if (editor.open) editor.close();
+  document.body.append(editor);
+  listingDirty = false;
   if (session.owner && name !== "staff") {
     location.replace("#/staff");
     return;
@@ -637,7 +642,10 @@ async function goto({ name, id }) {
       showRoute("listing", { rows: false });
       const listing = listings.find(row => row.id === id);
       crumbs([{ label: "Listings", href: "#/listings" }, { label: listing?.title || "Not found" }]);
-      if (listing) renderListingDetail(ROUTE_HOSTS.listing, listing, !listing.can_edit);
+      if (listing) {
+        if (listing.can_edit) openEditor(listing);
+        else { renderListingDetail(ROUTE_HOSTS.listing, listing, true); observeListingPreview(); }
+      }
       else ROUTE_HOSTS.listing.innerHTML = '<p class="status">Listing not found. <a href="#/listings">Back to listings</a></p>';
       return;
     }
@@ -1037,12 +1045,14 @@ async function load() {
 function openEditor(listing) {
   if (session.role === "landlord") return;
   if (!isManager() && (listing ? !listing.can_edit : !session.property_ids?.length)) return;
+  if (editor.open) editor.close();
+  document.body.append(editor);
   editingId = listing?.id || null;
   currentMedia = (listing?.listing_media || []).slice();
   for (const item of pendingMedia) URL.revokeObjectURL(item.preview);
   pendingMedia = [];
   clearPendingVideo();
-  editorTitle.textContent = listing ? "Edit listing" : "New listing";
+  editorTitle.textContent = listing ? "Edit Listing" : "New Listing";
 
   form.reset();
   photoFiles.value = "";
@@ -1050,12 +1060,13 @@ function openEditor(listing) {
   videoFile.value = "";
 
   for (const field of TEXT_FIELDS.concat(NUMBER_FIELDS)) {
-    form.elements[field].value = listing?.[field] ?? "";
+    if (field === "term_label") setListingTerm(form.elements[field], listing?.[field]);
+    else form.elements[field].value = listing?.[field] ?? "";
   }
   form.elements.category.value = listing?.category || "residential";
   form.elements.transaction_type.value = listing?.transaction_type || "sale";
   form.querySelector("#listing-form-error").hidden = true;
-  syncListingKind(form, Boolean(editingId));
+  syncListingKind(form, Boolean(editingId), listing?.property_type || "");
 
   renderMedia();
   linkedBuildingId = listing?.building_id || "";
@@ -1066,13 +1077,14 @@ function openEditor(listing) {
   loadBuildings(true).then(() => fillPropertySelect());
   showRoute("listing", { rows: false });
   renderListingDetail(ROUTE_HOSTS.listing, listing || { title: "New listing" }, false);
-  ROUTE_HOSTS.listing.classList.add("is-editing");
-  ROUTE_HOSTS.listing.querySelector("[data-listing-publish]").disabled = true;
-  ROUTE_HOSTS.listing.querySelector("[data-desk-edit-listing]").disabled = true;
-  const unpublish = ROUTE_HOSTS.listing.querySelector("[data-listing-unpublish]");
-  if (unpublish) unpublish.disabled = true;
-  ROUTE_HOSTS.listing.querySelector("[data-listing-preview-status]").textContent = "Editing draft · save to review before publishing";
-  if (!editor.open) editor.show();
+  ROUTE_HOSTS.listing.querySelector(".listing-editor-slot").append(editor);
+  form.querySelector("[data-listing-unpublish]").hidden = !listing?.published;
+  form.querySelector("[data-listing-unpublish]").disabled = false;
+  form.querySelector("#listing-publication-status").textContent = listing?.published ? "Live on Website" : "Draft · Not Published";
+  listingDirty = false;
+  editor.show();
+  editor.scrollTop = 0;
+  observeListingPreview();
   updateListingPreview();
 }
 
@@ -1132,13 +1144,15 @@ function showPropertyName(typedName) {
   syncListingProperty(form, property, Boolean(select.value));
   updateListingPreview();
   document.getElementById("property-hint").textContent = select.value
-    ? (property ? "Building name and address come from this property." : "Property details are unavailable. Close and reopen to retry; the existing link is preserved.")
+    ? (property ? "" : "Property details are unavailable. Close and reopen to retry; the existing link is preserved.")
     : "For a standalone listing, enter its building name and address. Add managed properties through Properties & Settings or landlord onboarding.";
 }
 
 async function resolveBuildingLink() {
   return form.elements.building_id.value || null;
 }
+
+form.elements.term_label.addEventListener("input", () => { delete form.elements.term_label.dataset.originalTerm; });
 
 function collectValues() {
   const values = {
@@ -1147,7 +1161,7 @@ function collectValues() {
   };
 
   for (const field of TEXT_FIELDS) {
-    values[field] = form.elements[field].value.trim();
+    values[field] = field === "term_label" ? listingTermValue(form.elements[field]) : form.elements[field].value.trim();
   }
 
   for (const field of NUMBER_FIELDS) {
@@ -1192,7 +1206,7 @@ form.addEventListener("submit", async (event) => {
         body: JSON.stringify(values)
       });
       editingId = listing.id;
-      editorTitle.textContent = "Edit listing";
+      editorTitle.textContent = "Edit Listing";
     }
 
     await flushPendingMedia();
@@ -1607,9 +1621,6 @@ document.getElementById("listing-search").addEventListener("input", event => {
 ROUTE_HOSTS.overview.addEventListener("click", event => {
   if (event.target.closest("[data-desk-refresh]")) { applicationsLoaded = false; load(); }
 });
-ROUTE_HOSTS.listing.addEventListener("click", event => {
-  if (event.target.closest("[data-desk-edit-listing]")) openEditor(listings.find(row => row.id === routeId));
-});
 ROUTE_HOSTS.properties.addEventListener("click", async event => {
   const button = event.target.closest("[data-desk-new-property]");
   if (!button || !isManager()) return;
@@ -1652,23 +1663,33 @@ window.addEventListener("message", event => {
   const frame = ROUTE_HOSTS.listing.querySelector(".listing-preview-frame");
   if (event.origin !== location.origin || event.source !== frame?.contentWindow) return;
   if (event.data?.type === "listing-preview-ready") updateListingPreview();
-  if (event.data?.type === "listing-preview-rendered" && !editor.open) {
+  if (event.data?.type === "listing-preview-rendered" && !listingDirty) {
     const listing = listings.find(row => row.id === routeId);
     const publish = ROUTE_HOSTS.listing.querySelector("[data-listing-publish]");
     if (publish) publish.disabled = !listing?.can_edit || (listing.published && !listing.has_unpublished_changes);
   }
 });
-form.addEventListener("input", updateListingPreview);
-form.addEventListener("change", updateListingPreview);
+function listingInputChanged() {
+  listingDirty = true;
+  const publish = ROUTE_HOSTS.listing.querySelector("[data-listing-publish]");
+  if (publish) publish.disabled = true;
+  form.querySelector("[data-listing-unpublish]").disabled = true;
+  const status = ROUTE_HOSTS.listing.querySelector("[data-listing-preview-status]");
+  if (status) status.textContent = "Unsaved changes · save draft to review before publishing";
+  updateListingPreview();
+}
+form.addEventListener("input", listingInputChanged);
+form.addEventListener("change", listingInputChanged);
 editor.addEventListener("close", () => ROUTE_HOSTS.listing.classList.remove("is-editing"));
 ROUTE_HOSTS.listing.addEventListener("click", async event => {
   const width = event.target.closest("[data-preview-width]");
   if (width) {
     ROUTE_HOSTS.listing.querySelector(".listing-preview-stage").classList.toggle("is-mobile", width.dataset.previewWidth === "mobile");
     for (const button of ROUTE_HOSTS.listing.querySelectorAll("[data-preview-width]")) button.setAttribute("aria-pressed", String(button === width));
+    resizeListingPreview();
   }
   const button = event.target.closest("[data-listing-publish], [data-listing-unpublish]");
-  if (!button || editor.open) return;
+  if (!button || listingDirty) return;
   const listing = listings.find(row => row.id === routeId);
   if (!listing?.can_edit) return;
   button.disabled = true;
@@ -1689,3 +1710,55 @@ ROUTE_HOSTS.listing.addEventListener("click", async event => {
   } catch (error) { setStatus(error.message, "error"); }
   finally { button.disabled = false; }
 });
+
+function resizeListingPreview() {
+  const viewport = ROUTE_HOSTS.listing.querySelector(".listing-preview-viewport");
+  const frame = viewport?.querySelector("iframe");
+  if (!frame || !viewport.clientWidth) return;
+  const width = viewport.closest(".listing-preview-stage").classList.contains("is-mobile") ? 390 : 1440;
+  const scale = Math.min(1, viewport.clientWidth / width);
+  frame.style.width = `${width}px`;
+  frame.style.height = `${viewport.clientHeight / scale}px`;
+  frame.style.transform = `scale(${scale})`;
+  frame.style.left = `${Math.max(0, (viewport.clientWidth - width * scale) / 2)}px`;
+}
+function observeListingPreview() {
+  previewResizeObserver?.disconnect();
+  const viewport = ROUTE_HOSTS.listing.querySelector(".listing-preview-viewport");
+  if (!viewport) return;
+  setupListingDivider();
+  previewResizeObserver = new ResizeObserver(resizeListingPreview);
+  previewResizeObserver.observe(viewport);
+  resizeListingPreview();
+}
+
+function setupListingDivider() {
+  const host = ROUTE_HOSTS.listing.querySelector(".listing-workbench");
+  const divider = host?.querySelector(".listing-divider");
+  if (!divider) return;
+  const setWidth = width => {
+    const max = Math.max(300, Math.min(650, host.clientWidth - 378));
+    const next = Math.round(Math.max(300, Math.min(max, width)));
+    host.style.setProperty("--listing-editor-width", `${next}px`);
+    divider.setAttribute("aria-valuenow", String(next));
+    divider.setAttribute("aria-valuemax", String(max));
+    try { localStorage.setItem("star.listing.editorWidth", String(next)); } catch {}
+  };
+  try { const saved = Number(localStorage.getItem("star.listing.editorWidth")); if (saved) setWidth(saved); } catch {}
+  divider.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    divider.setPointerCapture(event.pointerId);
+    host.classList.add("is-resizing");
+  });
+  divider.addEventListener("pointermove", event => {
+    if (divider.hasPointerCapture(event.pointerId)) setWidth(host.getBoundingClientRect().right - event.clientX - 9);
+  });
+  const stop = () => host.classList.remove("is-resizing");
+  divider.addEventListener("pointerup", stop);
+  divider.addEventListener("lostpointercapture", stop);
+  divider.addEventListener("keydown", event => {
+    if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    setWidth(Number(divider.getAttribute("aria-valuenow")) + (event.key === "ArrowLeft" ? 20 : -20));
+  });
+}

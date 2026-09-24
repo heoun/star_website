@@ -24,6 +24,11 @@ try {
     unit:"TEST",price_amount:3200,term_label:"12 months",location:"Do not trust this address",property_name:"Wrong name",
     price_display:"$1 (obsolete)",kind_label:"Obsolete badge",neighborhood:"Obsolete neighborhood",position:-100,details_url:"https://example.test/listing"
   });
+  for (const body of [{bedrooms:0},{bathrooms:0},{bedrooms:-1},{bathrooms:0.5},{bedrooms:1.5},{bathrooms:1.5},{bathrooms:2.5}]) {
+    const req = new Request(`http://localhost/api/admin/listings/${listing.id}`, {method:"PATCH",headers:{"Content-Type":"application/json"},body:JSON.stringify(body)});
+    equal((await handleAdminRequest(req,fixture.env,{waitUntil:p=>p.catch(()=>{})},new URL(req.url).pathname)).status,422);
+  }
+  await call(`/listings/${listing.id}`, "PATCH", {bedrooms:1,bathrooms:2});
   equal(fixture.state.listings.length, before + 1);
   equal(listing.published, false);
   equal(listing.location, propertyAddress(property));

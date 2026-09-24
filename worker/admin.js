@@ -173,8 +173,14 @@ function normalizeListingInput(body, { partial = false, identity = null, current
   }
 
   if (body.price_amount !== undefined) values.price_amount = optionalNumber(body.price_amount);
-  if (body.bedrooms !== undefined) values.bedrooms = optionalNumber(body.bedrooms, { integer: true });
-  if (body.bathrooms !== undefined) values.bathrooms = optionalNumber(body.bathrooms);
+  for (const field of ["bedrooms", "bathrooms"]) {
+    if (body[field] === undefined) continue;
+    const raw = body[field];
+    if (raw === null || raw === "") { values[field] = null; continue; }
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 1 || !Number.isInteger(value)) errors.push(field);
+    else values[field] = value;
+  }
   if (!partial || body.published !== undefined) values.published = Boolean(body.published);
 
   // Which property's lease settings this unit inherits. Empty unlinks it,

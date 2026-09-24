@@ -31,13 +31,13 @@ export function renderPermissions(host) {
 export function renderListingDetail(host, listing, landlord) {
   host.innerHTML = `<a class="link" href="#/listings">← All listings</a>` + heading("Website preview", listing.title || "New listing",
     landlord ? "View only. Request changes from your leasing team." : "Review the website appearance, then publish when it is ready.",
-    landlord ? `<a class="desk-button" href="#/requests/${esc(listing.id)}">Request a change</a>` : `<button type="button" data-desk-edit-listing>Edit listing</button>
-      <button type="button" class="primary" data-listing-publish disabled>${listing.published ? "Publish changes" : "Publish listing"}</button>`) +
-    `<div class="listing-preview-toolbar"><div>${pill(listing.published ? "Live on website" : "Draft · not published", listing.published ? "good" : "warn")}
+    landlord ? `<a class="desk-button" href="#/requests/${esc(listing.id)}">Request a change</a>` : "") +
+    `<div class="listing-workbench${landlord ? " is-readonly" : ""}"><section class="listing-preview-panel"><div class="listing-preview-toolbar"><div>${pill(listing.published ? "Live on website" : "Draft · not published", listing.published ? "good" : "warn")}
       <span data-listing-preview-status>${listing.published && listing.has_unpublished_changes ? "Unpublished changes · the website still shows the previous version" : "Website preview"}</span></div>
       <div class="actions"><button type="button" data-preview-width="desktop" aria-pressed="true">Desktop</button><button type="button" data-preview-width="mobile" aria-pressed="false">Mobile</button>
-      ${listing.published ? `<a class="desk-button" href="/property/?id=${encodeURIComponent(listing.id)}" target="_blank" rel="noopener">View live ↗</a>${landlord ? "" : '<button type="button" data-listing-unpublish>Unpublish</button>'}` : ""}</div></div>
-      <div class="listing-preview-stage"><iframe class="listing-preview-frame" title="Listing website preview" src="/property/?preview=listing"></iframe></div>`;
+      ${listing.published ? `<a class="desk-button" href="/property/?id=${encodeURIComponent(listing.id)}" target="_blank" rel="noopener">View live ↗</a>` : ""}</div></div>
+      <div class="listing-preview-stage"><div class="listing-preview-viewport"><iframe class="listing-preview-frame" title="Listing website preview" src="/property/?preview=listing"></iframe></div></div></section>
+      ${landlord ? "" : `<div class="listing-divider" role="separator" tabindex="0" aria-label="Resize Preview and Editor" aria-orientation="vertical" aria-valuemin="300" aria-valuemax="650" aria-valuenow="400"></div><aside class="listing-editor-panel"><div class="listing-editor-actions"><button type="button" class="primary" data-listing-publish disabled>${listing.published ? "Publish Changes" : "Publish Listing"}</button></div><div class="listing-editor-slot"></div></aside>`}</div>`;
 }
 
 export async function renderRequests(host, { api, session, listings, selectedListing }) {

@@ -912,17 +912,29 @@
 
     .form-actions { display: flex; justify-content: flex-end; gap: 10px; margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--line); }
 
-    #editor { width: min(440px, 94vw); position: fixed; inset: 110px 24px 24px auto; margin: 0; max-height: none; height: auto; border: 1px solid var(--line); box-shadow: 0 12px 40px #142f4222; z-index: 30; }
-    .listing-preview-toolbar { display: flex; justify-content: space-between; gap: 16px; align-items: center; flex-wrap: wrap; padding: 14px 18px; background: white; border: 1px solid var(--line); border-radius: 12px 12px 0 0; }
-    .listing-preview-toolbar > div { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; }
+    .listing-workbench { display: grid; grid-template-columns: minmax(0, 1fr) 18px var(--listing-editor-width, 400px); gap: 0; height: max(680px, calc(100vh - 290px)); align-items: stretch; }
+    .listing-divider { cursor: col-resize; touch-action: none; position: relative; border: 0; background: transparent; }
+    .listing-divider::after { content: ""; position: absolute; top: 40%; bottom: 40%; left: 7px; width: 4px; border-radius: 3px; background: #bdcbd3; }
+    .listing-divider:hover::after, .listing-divider:focus::after { background: var(--blue); }
+    .listing-workbench.is-resizing { user-select: none; }
+    .listing-workbench.is-resizing iframe { pointer-events: none; }
+    @media (max-width: 900px) { .listing-divider { display: none; } }
+    .listing-workbench.is-readonly { grid-template-columns: minmax(0, 1fr); }
+    .listing-preview-panel, .listing-editor-panel { min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: white; }
+    .listing-editor-actions { display: flex; justify-content: flex-end; align-items: center; gap: 12px; padding: 16px 20px; border-bottom: 1px solid var(--line); }
+    .listing-editor-slot { flex: 1; min-height: 0; display: flex; }
+    #editor { position: static; inset: auto; width: 100%; max-width: none; height: 100%; max-height: none; margin: 0; border: 0; border-radius: 0; box-shadow: none; overflow-y: auto; }
+    .listing-preview-toolbar { display: flex; justify-content: space-between; gap: 12px; align-items: center; flex-wrap: wrap; padding: 16px; background: white; border-bottom: 1px solid var(--line); }
+    .listing-preview-toolbar > div { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     [data-listing-preview-status] { font-size: 12px; color: var(--soft); }
-    .listing-preview-stage { background: #e8edf1; padding: 16px; border: 1px solid var(--line); border-top: 0; border-radius: 0 0 12px 12px; }
-    .listing-preview-frame { display: block; width: 100%; height: max(680px, calc(100vh - 300px)); margin: auto; border: 0; background: white; }
-    .listing-preview-stage.is-mobile .listing-preview-frame { max-width: 390px; }
-    #route-listing.is-editing { margin-right: 460px; }
+    .listing-preview-stage { flex: 1; min-height: 0; background: #e8edf1; padding: 12px; }
+    .listing-preview-viewport { height: 100%; width: 100%; overflow: hidden; position: relative; }
+    .listing-preview-frame { display: block; border: 0; background: white; transform-origin: top left; position: absolute; top: 0; }
+    [data-preview-width][aria-pressed="true"] { background: var(--blue); color: white; }
     #editor .grid { grid-template-columns: 1fr; }
     #editor .span-2 { grid-column: auto; }
-    @media (max-width: 1100px) { #route-listing.is-editing { margin-right: 0; } #editor { inset: 100px 12px 12px auto; width: min(440px, calc(100vw - 24px)); } }
+    @media (max-width: 1100px) { .listing-workbench { grid-template-columns: minmax(0, 1fr) 18px var(--listing-editor-width, 340px); } }
+    @media (max-width: 900px) { .listing-workbench { grid-template-columns: minmax(0, 1fr); height: auto; } .listing-preview-panel { height: 640px; } .listing-editor-panel { height: 680px; } }
     @media (max-width: 600px) { .listing-preview-stage { padding: 4px; } .listing-preview-toolbar { padding: 12px; } }
 
     #listing-form { padding: 0 28px; }
@@ -936,6 +948,10 @@
     #listing-form .grid { gap: 18px 22px; }
     #listing-form label { font-size: 13px; }
     #listing-form input, #listing-form select, #listing-form textarea { font-size: 14px; }
+    #listing-form #description { min-height: 300px; line-height: 1.6; }
+    .listing-term-input { display: flex; align-items: center; gap: 10px; }
+    .listing-term-input input { min-width: 0; flex: 1; }
+    .listing-term-input span { color: var(--muted); }
     #listing-form input[readonly] { background: #f4f7f8; border-color: #e1e8ec; color: #536674; }
     #listing-form .hint { font-size: 12px; line-height: 1.55; }
     .listing-building-name { margin-top: 16px; }
@@ -1741,7 +1757,7 @@
         <p class="hint">Choose a property, add the unit details, then prepare it for the website.</p>
       </header>
       <section class="listing-editor-section" aria-labelledby="listing-property-heading">
-        <h3 id="listing-property-heading"><span>01</span> Property &amp; unit</h3>
+        <h3 id="listing-property-heading"><span>01</span> Property &amp; Unit</h3>
       <div class="grid">
         <div>
           <label for="category">Category</label>
@@ -1763,85 +1779,85 @@
           <p class="hint" id="property-hint"></p>
         </div>
         <div>
-          <label for="unit">Unit <span class="hint">(e.g. "7A")</span></label>
+          <label for="unit">Unit</label>
           <input id="unit" name="unit" maxlength="30">
         </div>
       </div>
         <div class="listing-building-name">
-          <label for="property_name">Building name</label>
+          <label for="property_name">Building Name</label>
           <input id="property_name" name="property_name" maxlength="120" placeholder="Optional building name">
         </div>
       </section>
       <section class="listing-editor-section" aria-labelledby="listing-specs-heading">
-        <h3 id="listing-specs-heading"><span>02</span> Price &amp; specifications</h3>
+        <h3 id="listing-specs-heading"><span>02</span> Price &amp; Specifications</h3>
       <div class="grid">
         <div>
-          <label for="price_amount"><span id="listing-price-label">Asking price (USD)</span></label>
+          <label for="price_amount"><span id="listing-price-label">Asking Price (USD)</span></label>
           <input id="price_amount" name="price_amount" type="number" min="0" step="1" inputmode="numeric">
         </div>
       </div>
         <div id="listing-property-address" class="listing-address" hidden>
-          <div class="listing-address-head"><b>Property address</b><span class="hint">From the selected property</span></div>
+          <div class="listing-address-head"><b>Property Address</b><span class="hint">From the selected property</span></div>
           <div class="grid">
             <div class="wide"><label for="listing-street">Street</label><input id="listing-street" readonly></div>
             <div><label for="listing-city">City</label><input id="listing-city" readonly></div>
             <div class="listing-state-zip">
               <div><label for="listing-state">State</label><input id="listing-state" readonly></div>
-              <div><label for="listing-zip">ZIP code</label><input id="listing-zip" readonly></div>
+              <div><label for="listing-zip">ZIP Code</label><input id="listing-zip" readonly></div>
             </div>
           </div>
           <p class="hint" id="listing-address-hint">To correct this address, update Properties &amp; Settings.</p>
         </div>
       <div class="grid">
         <div>
-          <label for="location">Full address</label>
-          <input id="location" name="location" maxlength="300" placeholder="Street, City, State ZIP code">
+          <label for="location">Full Address</label>
+          <input id="location" name="location" maxlength="300" placeholder="Street, City, State ZIP Code">
         </div>
         <div>
-          <label for="property_type">Property type</label>
-          <input id="property_type" name="property_type" maxlength="60" placeholder="Apartment, Condo, House" list="listing-property-types">
+          <label for="property_type">Property Type</label>
+          <select id="property_type" name="property_type"></select>
         </div>
         <div>
-          <label for="use_type">Use type <span class="hint">(commercial)</span></label>
+          <label for="use_type">Use Type <span class="hint">(commercial)</span></label>
           <input id="use_type" name="use_type" maxlength="60" placeholder="Retail, Office">
         </div>
         <div>
-          <label for="bedrooms">Bedrooms <span class="hint">(0 = studio)</span></label>
-          <input id="bedrooms" name="bedrooms" type="number" min="0" step="1">
+          <label for="bedrooms">Bedrooms</label>
+          <input id="bedrooms" name="bedrooms" type="number" min="1" step="1">
         </div>
         <div>
           <label for="bathrooms">Bathrooms</label>
-          <input id="bathrooms" name="bathrooms" type="number" min="0" step="0.5">
+          <input id="bathrooms" name="bathrooms" type="number" min="1" step="1">
         </div>
         <div>
           <label for="size">Size <span class="hint">(sq ft)</span></label>
-          <input id="size" name="size" maxlength="60" placeholder="e.g. 1,200 sq ft">
+          <input id="size" name="size" maxlength="60">
         </div>
         <div>
-          <label for="term_label">Term <span class="hint">(lease)</span></label>
-          <input id="term_label" name="term_label" maxlength="60" placeholder="e.g. 12 months">
+          <label for="term_label">Term</label>
+          <div class="listing-term-input"><input id="term_label" name="term_label" type="number" min="1" step="1" inputmode="numeric" aria-describedby="listing-term-unit"><span id="listing-term-unit">months</span></div>
         </div>
       </div>
-        <datalist id="listing-property-types"></datalist>
+
       </section>
       <section class="listing-editor-section" aria-labelledby="listing-content-heading">
-        <h3 id="listing-content-heading"><span>03</span> Website content</h3>
+        <h3 id="listing-content-heading"><span>03</span> Website Content</h3>
       <div class="grid">
         <div class="wide">
-          <label for="title">Listing title <span class="hint">(shown on the website)</span></label>
+          <label for="title">Listing Title <span class="hint">(shown on the website)</span></label>
           <input id="title" name="title" maxlength="200" required>
         </div>
         <div class="wide">
           <label for="description">Description</label>
-          <textarea id="description" name="description" maxlength="4000" placeholder="Modern Comfort at Evergarden&#10;Stylish 2-bed, 2-bath residence featuring..."></textarea>
+          <textarea id="description" name="description" maxlength="4000" placeholder="Modern Comfort at Evergarden&#10;Stylish 2-bed, 2-bath residence featuring..."></textarea><p class="hint">Markdown supported: **bold**, *italic*, headings, lists and links. See the result in the preview.</p>
         </div>
       </div>
         <div class="listing-external-link">
-          <label for="details_url">External details link</label>
+          <label for="details_url">External Details Link</label>
           <input id="details_url" name="details_url" type="url" maxlength="500" placeholder="https://">
         </div>
       <div id="media-section">
-        <h3>Photos, floor plan &amp; video</h3>
+        <h3>Photos, Floor Plan &amp; Video</h3>
         <p class="media-lock" id="media-locked">These files upload when you save the listing.</p>
 
         <div class="media-fields">
@@ -1850,7 +1866,7 @@
           <p class="media-note">Compressed in the browser before upload. The first photo is the card cover; reorder with the arrows and name each room in the caption.</p>
           <div class="photo-grid" id="photo-grid"></div>
 
-          <label for="plan-file">Floor plan</label>
+          <label for="plan-file">Floor Plan</label>
           <input id="plan-file" type="file" accept="image/jpeg,image/png,image/webp,image/avif">
           <div class="plan-preview" id="plan-preview"></div>
 
@@ -1866,14 +1882,14 @@
       <section class="listing-editor-section" aria-labelledby="listing-publish-heading">
         <h3 id="listing-publish-heading"><span>04</span> Publication</h3>
         <div class="listing-publish-box">
-          <strong>Review before publishing</strong>
+          <strong>Publication Status</strong><p id="listing-publication-status"></p><button type="button" data-listing-unpublish hidden>Unpublish Listing</button>
           <p class="hint" id="listing-publish-hint" aria-live="polite">Saved as a draft. Only the leasing team can see it.</p>
         </div>
 
       </section>
       <p id="listing-form-error" class="listing-form-error" role="alert" hidden></p>
       <div class="form-actions">
-        <button type="button" id="cancel">Close</button>
+        <button type="button" id="cancel">Reset Changes</button>
         <button type="submit" class="primary" id="save">Save listing</button>
       </div>
     </form>

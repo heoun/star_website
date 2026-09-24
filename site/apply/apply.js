@@ -260,17 +260,14 @@ import { endDateFor } from "../shared/lease-dates.js";
     document.getElementById("summary-address").textContent =
       [property.location, unit ? `Unit ${unit}` : ""]
         .filter(Boolean).join(" · ");
-    // "0 bedrooms" is what a studio would read as, while the property page the
-    // applicant just came from says "Studio" — and this card exists to confirm
-    // they are applying for the home they were looking at.
-    const count = (value, word) => {
+    const count = (value, word, includeZero = false) => {
       const text = String(value ?? "").trim();
-      if (text === "" || text === "0") return "";
+      if (text === "" || (!includeZero && text === "0")) return "";
       return `${text} ${word}${text === "1" ? "" : "s"}`;
     };
     document.getElementById("summary-facts").textContent = [
       property.property_type,
-      String(property.bedrooms ?? "").trim() === "0" ? "Studio" : count(property.bedrooms, "bedroom"),
+      count(property.bedrooms, "bedroom", true),
       count(property.bathroom, "bathroom")
     ].filter(Boolean).join(" · ");
     // Masked, because the sidebar sits on screen for the whole application:

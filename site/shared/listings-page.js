@@ -101,8 +101,7 @@
 
     if (propertyType) facts.push(propertyType);
     if (useType && useType.toLowerCase() !== propertyType.toLowerCase()) facts.push(useType);
-    if (bedrooms === "0") facts.push("Studio");
-    else if (bedrooms) facts.push(`${bedrooms} bd`);
+    if (bedrooms) facts.push(`${bedrooms} bd`);
     if (bathrooms) facts.push(`${bathrooms} bath`);
     if (size) facts.push(size);
     if (termLabel) facts.push(termLabel);

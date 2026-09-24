@@ -1,3 +1,4 @@
+import { renderListingMarkdown } from "./listing-markdown.js";
 (function () {
   const preview = new URLSearchParams(location.search).get("preview") === "listing" && window.parent !== window;
   let galleryKeyboard = null;
@@ -33,8 +34,7 @@
     const facts = [];
     if (property.property_type) facts.push(property.property_type);
     if (property.use_type && property.use_type !== property.property_type) facts.push(property.use_type);
-    if (property.bedrooms === "0") facts.push("Studio");
-    else if (property.bedrooms) facts.push(`${property.bedrooms} bd`);
+    if (property.bedrooms) facts.push(`${property.bedrooms} bd`);
     if (property.bathroom) facts.push(`${property.bathroom} bath`);
     if (property.size) facts.push(property.size);
     if (property.term_label) facts.push(property.term_label);
@@ -46,7 +46,7 @@
       ["Property", property.property_name],
       ["Unit", property.unit],
       ["Property type", property.property_type],
-      ["Bedrooms", property.bedrooms === "0" ? "Studio" : property.bedrooms],
+      ["Bedrooms", property.bedrooms],
       ["Bathrooms", property.bathroom],
       ["Size", property.size],
       ["Availability", property.status]
@@ -80,7 +80,7 @@
       <div class="stage">
         <img id="stage-image" src="${escapeHtml(first.url)}" alt="${escapeHtml(first.caption || "Property photo")}">
         ${arrows}
-        <span class="caption" id="stage-caption">${escapeHtml(first.caption || "")}</span>
+        <span class="caption" id="stage-caption" ${first.caption?.trim() ? "" : "hidden"}>${escapeHtml(first.caption || "")}</span>
       </div>
       ${thumbs}
     `;
@@ -105,7 +105,7 @@
           <p class="address">${escapeHtml(addressLine || "Address available on request")}</p>
           <div class="facts">${buildFacts(property).map((fact) => `<span class="fact">${escapeHtml(fact)}</span>`).join("")}</div>
 
-          ${property.description ? `<h2>About this home</h2><p class="description">${escapeHtml(property.description)}</p>` : ""}
+          ${property.description ? `<h2>About this home</h2><div class="description">${renderListingMarkdown(property.description)}</div>` : ""}
 
           ${floorPlan && !videoUrl ? `<h2>Floor plan</h2><div class="media-block">
             <img src="${escapeHtml(floorPlan.url)}" alt="${escapeHtml(floorPlan.caption)}" loading="lazy">
@@ -163,6 +163,7 @@
       image.src = photos[index].url;
       image.alt = photos[index].caption || `Photo ${index + 1}`;
       caption.textContent = photos[index].caption || "";
+      caption.hidden = !photos[index].caption?.trim();
       thumbs.forEach((thumb, position) => {
         if (position === index) thumb.setAttribute("aria-current", "true");
         else thumb.removeAttribute("aria-current");
