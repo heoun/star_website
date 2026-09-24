@@ -11,7 +11,7 @@
 // What remains here is structure: which table, row and cell a slot occupies,
 // or which paragraph carries the line. Geometry is the small TAB_GEOMETRY
 // table below, shared by every document and signer.
-export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-23-anchor-v15';
+export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-23-anchor-v16';
 export const SIGNING_LAYOUT_REVIEW_REQUIRED=false;
 
 // PDF points. The tab control includes transparent padding; `ink` describes
@@ -44,8 +44,7 @@ export const SIGNING_DOCUMENTS=[
  {id:'keys',document:'keys',name:'Key Rider',tables:{tenant:1,landlord:2},place:standardCell},
  {id:'insurance',document:'insurance',name:'New York Renters Insurance Rider',tables:{tenant:0,landlord:1},place:standardCell},
  {id:'rules',document:'rules',name:'Community Rules Rider',tables:{tenant:0,landlord:1},place:standardCell},
- // `starts` is where worker/signing-documents.js cuts the rules rider into its second copy.
- {id:'fines',document:'rules',name:'Fine Schedule',starts:'Fine Schedule',tables:{tenant:1,landlord:2},place:standardCell},
+ {id:'fines',document:'fines',name:'Fine Schedule',tables:{tenant:1,landlord:2},place:standardCell},
  // DocuSign resolves Date Signed 4pt to the right of Sign Here at the same
  // anchor x. Compensate so their visible left edges align on these two lines.
  {id:'window_guards',document:'window_guards',name:'Window Guards Required Lease Notice to Tenant',individual:true,tenantOnly:true,

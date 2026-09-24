@@ -35,8 +35,12 @@ export function formatLeaseMoney(value) {
   return Number.isFinite(amount) ? dollars.format(amount) : String(value).trim();
 }
 
+export function formatLeaseFieldValue(field, value) {
+  return field?.type === "money" || field?.id?.startsWith("fine.") ? formatLeaseMoney(value) : value;
+}
+
 export function formatSettingValue(field, value) {
   if (field.type === "checkbox") return value === true ? "Marked" : "Not marked";
-  if (field.type === "money") return formatLeaseMoney(value);
+  if (field.type === "money" || field.id?.startsWith("fine.")) return formatLeaseMoney(value);
   return value === undefined || value === null ? "" : String(value);
 }

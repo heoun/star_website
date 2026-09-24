@@ -25,7 +25,7 @@ import { DOCUMENTS, mapDocuments, verifyDocuments } from "../shared/lease-docume
 import { ADDRESS_FIELD, ADDRESS_PARTS, composeAddress } from "../shared/lease-address.js";
 import { applicationWrite } from "../shared/lease-application.js";
 import { agentMayWriteField } from "../shared/lease-permissions.js";
-import { formatLeaseMoney } from "../shared/lease-values.js";
+import { formatLeaseFieldValue } from "../shared/lease-values.js";
 import {
   defaultsMarkup, handleDefaultsClick, rememberDefaultsNavigation, syncDefaultsNavigation, layerOf, loadLayer, managerFields,
   mayLeaveEditor, newDefaultsUi, propertyOf, resolve
@@ -159,7 +159,7 @@ function targetLabelFor() {
 
 function formattedValues(values) {
   return Object.fromEntries(Object.entries(values).map(([id, value]) =>
-    [id, state.byId.get(id)?.type === 'money' ? formatLeaseMoney(value) : value]));
+    [id, formatLeaseFieldValue(state.byId.get(id), value)]));
 }
 
 async function fetchValues() {
@@ -679,7 +679,7 @@ function onInput(fieldId, rawValue, isCheckbox) {
     else state.checked.delete(fieldId);
     state.values[fieldId] = rawValue ? field.marks.checked : field.marks.unchecked;
   } else {
-    state.values[fieldId] = field.type === 'money' ? formatLeaseMoney(rawValue) : rawValue;
+    state.values[fieldId] = formatLeaseFieldValue(field, rawValue);
   }
 
   state.dirty.add(fieldId);

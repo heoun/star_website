@@ -22,6 +22,13 @@ for(const layout of ['utilities','packages','keys','insurance','rules','fines'])
  for(const signer of signers)eq(tabs.filter(t=>t.recipientId===signer.recipientId).map(t=>t.kind),['signature','full_name']);
 }
 const entries=b=>readEntries(b.buffer.slice(b.byteOffset,b.byteOffset+b.byteLength));
+// Numeric fines are currency in both standalone signing files and the merged preview.
+const fineValues={...values,'fine.smoking_indoors':'150','fine.dog_waste':'$150','fine.furniture_damage':'Actual repair cost'};
+const fineLease=await buildSigningLease({ASSETS:{fetch:async()=>new Response(template)}},new Request('http://localhost/'),fineValues,signers);
+for(const xml of [fineLease.documents.find(d=>d.layout==='fines').xml,await readEntryText(entries(fineLease.docx),'word/document.xml')]){
+ eq(xml.includes('$150.00'),true);eq(xml.includes('Actual repair cost'),true);eq(xml.includes('$$'),false);
+}
+
 // Resources and signature tables are retained. Each one-line notice is a separate copy.
 for(const d of document.documents){
  for(const name of ['word/styles.xml','word/numbering.xml'])eq(await readEntryText(entries(d.bytes),name),await readEntryText(entries(template),name));

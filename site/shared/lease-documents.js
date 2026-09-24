@@ -63,7 +63,14 @@ export const DOCUMENTS = [
     name: "Community Rules Rider",
     starts: "Community Rules Rider",
     why: "property",
-    note: "House rules and the fine schedule."
+    note: "House rules."
+  },
+  {
+    id: "fines",
+    name: "Fine Schedule",
+    starts: "Fine Schedule",
+    why: "property",
+    note: "Penalties for violations."
   },
   {
     id: "window_guards",

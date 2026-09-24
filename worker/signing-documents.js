@@ -1,8 +1,11 @@
 // Split at existing document boundaries; copy the original OOXML and package
 // resources verbatim. Single-tenant notices get one independently filled copy.
 import {readEntries,readEntryText,replaceEntry} from './zip.js';
+import registry from '../lease/schema/fields.json' with {type:'json'};
+import {formatLeaseFieldValue} from '../site/shared/lease-values.js';
 import {DOCUMENTS} from '../site/shared/lease-documents.js';
 import {hasConcession} from '../site/shared/lease-signing-layout.js';
+const fieldById=new Map(registry.fields.map(f=>[f.id,f]));
 export const INDIVIDUAL_NOTICES=new Set(['window_guards','bedbug','dhcr']);
 const unescape=s=>s.replace(/&amp;/g,'&').replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&apos;/g,"'").replace(/&#(\d+);/g,(_,n)=>String.fromCodePoint(+n));
 const visible=xml=>unescape([...xml.matchAll(/<w:t(?:\s[^>]*)?>([\s\S]*?)<\/w:t>/g)].map(m=>m[1]).join('')).replace(/\s+/g,' ').trim();
@@ -24,10 +27,10 @@ export async function splitSigningDocuments(docx,originalXml,values,signers,tena
  const body=originalXml.slice(originalXml.indexOf('<w:body>')+8,originalXml.indexOf('</w:body>'));
  const nodes=elementsOf(body),finalSection=nodes.pop();
  if(!finalSection.startsWith('<w:sectPr'))throw new Error('The source section settings are missing.');
- const markers=[...DOCUMENTS.map(d=>({...d,marker:d.starts})),{id:'fines',name:'Fine Schedule',marker:'Fine Schedule'}];
+ const markers=DOCUMENTS.map(d=>({...d,marker:d.starts}));
  const starts=markers.map(d=>({...d,index:nodes.findIndex(n=>visible(n).startsWith(d.marker))})).sort((a,b)=>a.index-b.index);
  if(starts.some(d=>d.index<0) || new Set(starts.map(d=>d.index)).size!==markers.length)throw new Error('A signing document boundary is missing.');
- const fill=(xml,v)=>xml.replace(/\{\{([a-z0-9_.]+)\}\}/g,(_,id)=>escape(v[id]));
+ const fill=(xml,v)=>xml.replace(/\{\{([a-z0-9_.]+)\}\}/g,(_,id)=>escape(formatLeaseFieldValue(fieldById.get(id),v[id])));
  const result=[],review=[];
  for(let i=0;i<starts.length;i++){
   const d=starts[i],chunks=nodes.slice(d.index,starts[i+1]?.index??nodes.length);

@@ -108,7 +108,7 @@ try{
  await page.route(preparePattern,async route=>{if(route.request().method()!=='POST')return route.fallback();await new Promise(r=>setTimeout(r,1500));await route.continue();});
  const prepared=page.waitForResponse(r=>r.request().method()==='POST' && /\/signing$/.test(r.url()));
  await panel.getByRole('tab',{name:'Documents',exact:true}).click();
- eq(await panel.locator('[data-ws-doc=""]').count(),0);eq(await panel.locator('[data-ws-doc]').count(),15);
+ eq(await panel.locator('[data-ws-doc=""]').count(),0);eq(await panel.locator('[data-ws-doc]').count(),16);
  eq(await panel.locator('[data-preview-status="loading"]').count(),1);
  eq(await page.locator('#lease-draft').isDisabled(),true);
  await page.getByRole('button',{name:/Back to Rental/}).click();
@@ -238,7 +238,7 @@ try{
   const {DOCUMENTS}=await import('/shared/lease-documents.js');
   const fold=t=>String(t).replace(/\s+/g,' ').trim();
   const nodes=[...document.querySelectorAll('#lease-doc section.docx > article > *')];
-  const starts=[...DOCUMENTS,{id:'fines',starts:'Fine Schedule'}].map(d=>({id:d.id,index:nodes.findIndex(n=>fold(n.textContent).startsWith(fold(d.starts)))})).sort((a,b)=>a.index-b.index);
+  const starts=DOCUMENTS.map(d=>({id:d.id,index:nodes.findIndex(n=>fold(n.textContent).startsWith(fold(d.starts)))})).sort((a,b)=>a.index-b.index);
   const at=starts.findIndex(s=>s.id===id);
   const paragraphs=nodes.slice(starts[at].index,starts[at+1]?.index??nodes.length).flatMap(n=>n.matches('p')?[n]:[...n.querySelectorAll('p')]);
   const slots=paragraphs.flatMap(p=>[...p.querySelectorAll('[data-lease-slot]')]);
@@ -314,8 +314,7 @@ try{
  await page.screenshot({path:`${out}/signing-fields-47.png`,fullPage:true});
  // Every rider opens its own copy with its original tenant/landlord lines and navigation.
  for(const layout of ['utilities','packages','keys','insurance','rules','fines']){
-  if(layout==='fines')await detail.locator('[data-preview-layout="fines"]').click();
-  else await panel.locator(`[data-ws-doc="${layout}"]`).click();
+  await panel.locator(`[data-ws-doc="${layout}"]`).click();
   await savedFrame.locator(`[data-signing-field="${layout}-1-signature"].current`).waitFor();
   eq(await savedFrame.locator('.signing-field-box').count(),6);
   eq(await savedFrame.locator('.signing-field-box[data-kind="initial"]').count(),0);
@@ -325,14 +324,14 @@ try{
   if(layout==='utilities')await page.screenshot({path:`${out}/filled-values-utilities.png`,fullPage:true});
   eq(await savedFrame.locator(`[data-signing-field="${layout}-3-full_name"]`).innerText(),owner.name);
   eq(await frameTop(),0);
-  eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),layout==='fines'?'rules':layout);
+  eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),layout);
   eq(await page.locator('#lease-doc-name').innerText(),({utilities:'Utilities Rider',packages:'Packages Rider',keys:'Key Rider',insurance:'Renters Insurance Rider',rules:'Community Rules Rider',fines:'Fine Schedule'})[layout]);
   await detail.locator(`[data-preview-signing-fields="${layout}-3-signature"]`).click();
   await savedFrame.locator(`[data-signing-field="${layout}-3-signature"].current`).waitFor();
   eq(await currentInView(),true);
   await page.screenshot({path:`${out}/signing-fields-${layout}.png`,fullPage:true});
  }
- eq(await detail.locator('[data-preview-layout]').allTextContents(),['Community Rules Rider','Fine Schedule']);
+ eq(await detail.locator('[data-preview-layout]').allTextContents(),[]);
  // Switching quickly settles on the last document only.
  await panel.locator('[data-ws-doc="utilities"]').click();
  await panel.locator('[data-ws-doc="packages"]').click();
@@ -345,7 +344,7 @@ try{
  eq(await page.locator('#lease-doc-name').innerText(),'Packages Rider');
  // Fields are drawn on the anchor tokens the saved document carries, so a
  // signer the package was not prepared for cannot be previewed into it.
- await panel.locator('[data-ws-doc="rules"]').click();await detail.locator('[data-preview-layout="fines"]').click();
+ await panel.locator('[data-ws-doc="fines"]').click();
  await savedFrame.locator('[data-signing-field="fines-1-signature"].current').waitFor();
  const slotCheck=await savedFrame.locator('#lease-doc').evaluate(async host=>{
   const {showSigningFields,clearSigningFields}=await import('/admin/signing-field-preview.js');
