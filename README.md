@@ -812,4 +812,6 @@ The listing detail workspace embeds the actual `/property/` page. The editor sen
 
 Apply `supabase/listing-publication.sql` **before deploying this version** (also included in `npm run db:bundle`). It captures existing published listings and media once, adds draft revisions, and provides an atomic publication RPC that refuses stale previews. Public feeds, detail pages, and applicant listing lookups use the published snapshot. Unpublishing retains the draft. Removed media bytes remain available for published snapshots and cached pages until the listing is deleted.
 
-Validation: `npm run test:listings`, `npm run test:listings:db`, and `npm run test:listings:ui` (isolated fixtures; no live database writes).
+Validation: `npm run test:listings` covers listing API behavior and public image caching; `npm run test:listings:db` checks publication storage; `npm run test:listings:ui` covers the editor plus server-rendered public pages under slow image/font loading at desktop and mobile widths. These checks use isolated fixtures and do not write to the live database. Browser screenshots go to the system temporary directory.
+
+Keep regression tests, database migrations, and self-hosted font licenses in Git. Build output (`dist/`), browser reports/snapshots, Python bytecode, local credentials, and local runtime state stay ignored. Do not delete `.wrangler/state/`, `.local/`, or `notes/` as generic build cleanup: they may contain local databases or review records.
