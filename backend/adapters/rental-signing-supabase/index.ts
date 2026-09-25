@@ -20,8 +20,8 @@ export function makeSigningStore(config:{url:string;key:string}) {
     async release(id,token,retry){await rpc('release_rental_signing',{p_id:id,p_token:token,p_retry:retry});}
   };
   return {...store,
-    async previews(id:string):Promise<{record:RentalSigningRecord;member_versions:Record<string,number>}[]> {
-      return request(`rental_signing_packages?${new URLSearchParams({rental_id:`eq.${id}`,reserved:'eq.false',created_at:`gt.${new Date(Date.now()-55*60000).toISOString()}`,order:'created_at.desc',limit:'3',select:'record,member_versions'})}`);
+    async previews(id:string,includeExpired=false):Promise<{record:RentalSigningRecord;member_versions:Record<string,number>}[]> {
+      return request(`rental_signing_packages?${new URLSearchParams({rental_id:`eq.${id}`,reserved:'eq.false',...(includeExpired?{}:{created_at:`gt.${new Date(Date.now()-55*60000).toISOString()}`}),order:'created_at.desc',limit:'3',select:'record,member_versions'})}`);
     },
     async preview(pkg:RentalSigningPackage,versions:Record<string,number>) {
       const record:RentalSigningRecord={package:pkg,version:0,phase:'preparing',envelope:null,updatedAt:new Date().toISOString()};

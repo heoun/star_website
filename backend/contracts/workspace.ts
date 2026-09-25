@@ -59,6 +59,8 @@ export interface WorkspaceState {
   ready_notice?: { status: 'queued' | 'sent' | 'preview' | 'failed' | 'cancelled'; at: string; attempts?: number };
   invitations?: import('./rentals.ts').RentalInvitation[];
   screening_result?: ScreeningResult;
+  // Unverified imported evidence for staff display only; never a progression gate.
+  external_credit_report?: {credit_score:number; provider:string; model:string; date:string|null; document_id:string; imported_at:string; status:'pending_review'};
   demo_screening_status?: 'pending' | 'no_score';
   delivery?: {revision: number; status: string; attempt_at: string; key: string};
   lease_draft?: {values: Record<string, unknown>; missing: string[]; error?: string; at: string; revision: number};

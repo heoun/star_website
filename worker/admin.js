@@ -1,3 +1,5 @@
+import {handlePropertyCollaboration,propertyCollaborationAccess} from './property-collaboration.js';
+import {renderWorkspaceShell} from './workspace-shell.js';
 import { propertyAddress } from "../site/shared/property-address.js";
 import { parseDate as parseLeaseDate } from "../site/shared/lease-dates.js";
 import { handleAdministration } from "./administration.js";
@@ -33,6 +35,7 @@ import {
   fetchMediaRow,
   insertBuilding,
   createPropertyWithDefaults,
+  publishListing,
   insertListing,
   insertMedia,
   toAdminListing,
@@ -42,7 +45,7 @@ import {
   updateMedia
 } from "./supabase.js";
 import {
-  DOCUMENT_TYPES,
+  STAFF_DOCUMENT_TYPES,
   deleteDocumentsByPrefix,
   requireDocsBucket,
   serveDocumentFile
@@ -64,7 +67,6 @@ import { decryptSsn, formatSsn } from "./ssn.js";
 import {
   IMAGE_TYPES,
   VIDEO_TYPES,
-  deleteObject,
   deleteObjectsByPrefix,
   isValidKey,
   putObject
@@ -171,8 +173,14 @@ function normalizeListingInput(body, { partial = false, identity = null, current
   }
 
   if (body.price_amount !== undefined) values.price_amount = optionalNumber(body.price_amount);
-  if (body.bedrooms !== undefined) values.bedrooms = optionalNumber(body.bedrooms, { integer: true });
-  if (body.bathrooms !== undefined) values.bathrooms = optionalNumber(body.bathrooms);
+  for (const field of ["bedrooms", "bathrooms"]) {
+    if (body[field] === undefined) continue;
+    const raw = body[field];
+    if (raw === null || raw === "") { values[field] = null; continue; }
+    const value = Number(raw);
+    if (!Number.isFinite(value) || value < 1 || !Number.isInteger(value)) errors.push(field);
+    else values[field] = value;
+  }
   if (!partial || body.published !== undefined) values.published = Boolean(body.published);
 
   // Which property's lease settings this unit inherits. Empty unlinks it,
@@ -250,7 +258,7 @@ export async function handleAdminRequest(request, env, ctx, pathname) {
     const resolved = await resolveStaff(env, authenticated);
     const response = resolved.identity
       ? await handleAuthenticatedAdmin(request, env, ctx, pathname, resolved.identity)
-      : json({ error: resolved.error }, resolved.status || 403);
+      : json({ error: resolved.error, code:resolved.code }, resolved.status || 403);
     response.headers.set("Cache-Control", "no-store");
     if (authenticated.setCookie) response.headers.append("Set-Cookie", authenticated.setCookie);
     return response;
@@ -271,12 +279,20 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
         email: identity.email,
         role: identity.role,
         owner: identity.owner === true,
+        user_id: identity.user_id,
+        owner_account: identity.is_owner===true,
+        admin_enabled: identity.admin_enabled===true,
+        owner_version: identity.version,
+        onboarding_pending:identity.onboarding_pending===true,
         demo: identity.development === true && Boolean(env.LOCAL_EMAIL_SINK),
         name: identity.name || "",
         property_ids: identity.property_ids || [],
+        property_collaboration_ids: await propertyCollaborationAccess(env,identity),
         ...describeEnvironment(request, env)
       });
     }
+
+    if(identity.onboarding_pending)return json({error:"Complete landlord onboarding and wait for approval before accessing business records."},403);
 
     // Owner governs access only, including when following an old business URL.
     if (identity.owner === true) {
@@ -286,6 +302,8 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
       }
       return json({ error: "Platform Owner manages accounts and permissions only. Business operations require an Admin account." }, 403);
     }
+
+    if(resource === "property-collaborations") return await handlePropertyCollaboration(request,env,identity,segments);
 
     if (resource === "requests" && !subresource) {
       return await handleChangeRequests(request, env, identity, id);
@@ -347,13 +365,23 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
       return await handleMediaCreate(request, env, ctx, id);
     }
 
+    if (id && subresource === "publish" && request.method === "POST") {
+      if (!UUID_PATTERN.test(id)) return json({ error: "Listing not found." }, 404);
+      const { revision } = await request.json();
+      if (!Number.isSafeInteger(revision) || revision < 1) return json({ error: "Reload the preview before publishing." }, 422);
+      const row = await publishListing(env, id, revision);
+      if (!row) return json({ error: "This draft changed. Reload and review the latest preview before publishing." }, 409);
+      ctx.waitUntil(purgeListingsCache(request, id));
+      return json({ listing: row });
+    }
+
     if (subresource) {
       return json({ error: "Unknown endpoint." }, 404);
     }
 
     if (!id && request.method === "GET") {
       const rows = await fetchListings(env, { publishedOnly: false });
-      return json({ listings: rows.filter(row => isManager(identity) || row.published || (identity.property_ids || []).includes(row.building_id))
+      return json({ listings: rows.filter(row => isManager(identity) || (identity.property_ids || []).includes(row.building_id))
         .map(row => ({ ...toAdminListing(row), can_edit: isManager(identity) || (identity.property_ids || []).includes(row.building_id) })) });
     }
 
@@ -362,6 +390,7 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
         await request.json(), { identity });
       if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
       if (refused.length > 0) return listingRefusal(refused);
+      if (values.published) return json({ error: "Save a draft and review the website preview before publishing." }, 422);
       const named = await nameFromProperty(env, values);
       if (named) return named;
 
@@ -391,6 +420,7 @@ async function handleAuthenticatedAdmin(request, env, ctx, pathname, identity) {
       if (errors.length > 0) return json({ error: `Invalid fields: ${errors.join(", ")}` }, 422);
       if (refused.length > 0) return listingRefusal(refused);
       if (Object.keys(values).length === 0) return json({ error: "Nothing to update." }, 400);
+      if (values.published === true) return json({ error: "Use the preview publication action to publish this draft." }, 422);
       const named = await nameFromProperty(env, values, current);
       if (named) return named;
 
@@ -485,7 +515,7 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
       const rows = summaries;
       // The checklist registry rides along so the admin page names document
       // types the same way the portal does, from the same list.
-      return json({ applications: rows, document_types: DOCUMENT_TYPES });
+      return json({ applications: rows, document_types: STAFF_DOCUMENT_TYPES });
     }
     return json({ error: "Method not allowed." }, 405);
   }
@@ -493,7 +523,7 @@ async function handleApplications(request, env, ctx, identity, id, subresource) 
   if (!UUID_PATTERN.test(id)) {
     return json({ error: "Application not found." }, 404);
   }
-  if (request.method === "GET") return json({ application: projectCase(identity, scoped, true), document_types: DOCUMENT_TYPES });
+  if (request.method === "GET") return json({ application: projectCase(identity, scoped, true), document_types: STAFF_DOCUMENT_TYPES });
 
   if (request.method === "PATCH") {
     const body = await request.json().catch(() => null);
@@ -669,7 +699,8 @@ async function handleMediaItem(request, env, ctx, mediaId) {
     if (!row) return json({ error: "Media not found." }, 404);
 
     await deleteMediaRow(env, mediaId);
-    ctx.waitUntil(deleteObject(env, row.path));
+    // Published snapshots may still reference this object, including cached pages.
+    // Keep listing-owned media until the listing itself is removed.
     ctx.waitUntil(purgeListingsCache(request, row.listing_id));
     return json({ deleted: true });
   }
@@ -692,12 +723,14 @@ export async function guardAdminPage(request, env) {
       if (authenticated.setCookie) response.headers.append("Set-Cookie", authenticated.setCookie);
       return response;
     }
-    // The caller may continue serving assets; refreshed cookies must survive page loads too.
-    if (!authenticated.setCookie) return null;
+    // Serve the authorized shell here, preserving refreshed session cookies.
     const asset = await env.ASSETS.fetch(request);
-    const response = new Response(asset.body, asset);
-    response.headers.set("Cache-Control", "no-store");
-    response.headers.append("Set-Cookie", authenticated.setCookie);
+    const isHtml = asset.ok && (asset.headers.get('Content-Type') || '').includes('text/html');
+    const response = new Response(isHtml ? renderWorkspaceShell(await asset.text(), {...resolved.identity, property_collaboration_ids: await propertyCollaborationAccess(env,resolved.identity), demo: resolved.identity.development === true && Boolean(env.LOCAL_EMAIL_SINK)}, describeEnvironment(request, env)) : asset.body, asset);
+    response.headers.set("Cache-Control", "private, no-store");
+    response.headers.set("Vary", "Cookie");
+    if(isHtml){response.headers.delete('ETag');response.headers.delete('Content-Length');}
+    if(authenticated.setCookie)response.headers.append("Set-Cookie", authenticated.setCookie);
     return response;
   } catch { return deniedPage("The workspace could not check your account. Please try again.", 503); }
 }

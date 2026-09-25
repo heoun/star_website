@@ -1,0 +1,15 @@
+import {readFileSync} from 'node:fs';
+import {createHmac,randomUUID} from 'node:crypto';
+import {makeDocusign} from '../backend/adapters/esign-docusign/index.ts';
+const e=Object.fromEntries(readFileSync('.dev.vars','utf8').split('\n').filter(l=>/^\w+=/.test(l)).map(l=>{const i=l.indexOf('=');return[l.slice(0,i),l.slice(i+1).trim().replace(/^["']|["']$/g,'')]}));
+if(e.SUPABASE_URL!=='https://shlodyxlnepxnafthvod.supabase.co' || e.DOCUSIGN_ENVIRONMENT!=='demo')throw new Error('Star Dev / Sandbox required.');
+const webhookUrl='https://dev.starreusa.com/api/webhooks/docusign';
+const health=await fetch('https://dev.starreusa.com/api/health');if(!health.ok)throw new Error('Dev is not healthy.');
+const negative=await fetch(webhookUrl,{method:'POST',body:'{}'});if(negative.status!==401)throw new Error('HMAC rejection check failed.');
+const body=JSON.stringify({event:'testing-health',generatedDateTime:new Date().toISOString(),data:{accountId:e.DOCUSIGN_ACCOUNT_ID,envelopeId:randomUUID()}});
+const signature=createHmac('sha256',e.DOCUSIGN_CONNECT_HMAC_SECRET).update(body).digest('base64');
+const positive=await fetch(webhookUrl,{method:'POST',headers:{'Content-Type':'application/json','x-docusign-signature-1':signature},body});
+if(!positive.ok)throw new Error('Authenticated callback check failed: '+positive.status);
+const provider=makeDocusign({environment:'demo',integrationKey:e.DOCUSIGN_INTEGRATION_KEY,userId:e.DOCUSIGN_USER_ID,accountId:e.DOCUSIGN_ACCOUNT_ID,privateKey:e.DOCUSIGN_PRIVATE_KEY,hmacSecret:e.DOCUSIGN_CONNECT_HMAC_SECRET,webhookUrl});
+await provider.configureTestingWebhook(webhookUrl,'Star staging testing shlodyxlnepxnafthvod.supabase.co');
+console.log('Verified Dev health, unsigned rejection, signed inbox delivery and dedicated Sandbox Connect callback. No signing invitations sent.');

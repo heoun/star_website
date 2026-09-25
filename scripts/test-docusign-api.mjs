@@ -2,6 +2,24 @@ import assert from 'node:assert/strict';
 import {generateKeyPairSync,verify} from 'node:crypto';
 import {makeDocusign,boundedBytes,envelopeDefinition} from '../backend/adapters/esign-docusign/index.ts';
 let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
+{
+ const pkg={id:'subject-test',propertyLabel:'Evergarden Unit 4D',values:{},documents:[],tabs:[],signers:[
+  {recipientId:'1',role:'tenant',name:'Angelica Su-Lee Budram',email:'shared@example.test',routingOrder:1},
+  {recipientId:'2',role:'tenant',name:'Ahman Jai Smith',email:' SHARED@example.test ',routingOrder:1},
+  {recipientId:'3',role:'landlord',name:'Yong Chen',email:'owner@example.test',routingOrder:2}]};
+ const subject='Please sign your lease for Evergarden Unit 4D — Star Real Estate';
+ let def=envelopeDefinition(pkg,[],'https://example.test/webhook');
+ eq(def.emailSubject,subject);
+ pkg.carbonCopies=[{recipientId:'cc-1',name:'Agent',email:'agent@example.test',routingOrder:3}];
+ const withCopies=envelopeDefinition(pkg,[],'https://example.test/webhook');
+ eq(withCopies.recipients.carbonCopies,[{recipientId:'cc-1',name:'Agent',email:'agent@example.test',routingOrder:'3'}]);
+ eq(withCopies.recipients.signers.length,3);
+ eq(def.recipients.signers.map(s=>s.emailNotification.emailSubject),[`Angelica Su-Lee Budram ${subject}`,`Ahman Jai Smith ${subject}`,subject]);
+ pkg.signers[1].email='separate@example.test';
+ eq(envelopeDefinition(pkg,[],'https://example.test/webhook').recipients.signers.map(s=>s.emailNotification.emailSubject),[subject,subject,subject]);
+ delete pkg.propertyLabel;pkg.values={'property.street':'81-07 Kew Gardens Road','property.unit':'4D'};
+ eq(envelopeDefinition(pkg,[],'https://example.test/webhook').emailSubject,'Please sign your lease for 81-07 Kew Gardens Road Unit 4D — Star Real Estate');
+}
 const pair=generateKeyPairSync('rsa',{modulusLength:2048}),id=crypto.randomUUID();
 for(const format of ['pkcs1','pkcs8']) {
  const calls=[];let status='created',creationTimeout=false,bounced=false,recipientCap=false;

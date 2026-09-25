@@ -1,5 +1,6 @@
 import { createApplicantSession } from '../shared/applicant-session.js';
-(function () {
+import {mountGipAuth} from '../shared/gip-auth-ui.js';
+(async function () {
   const container = document.getElementById("portal");
   if (!container) return;
 
@@ -43,11 +44,16 @@ import { createApplicantSession } from '../shared/applicant-session.js';
 
   const applicantSession=createApplicantSession(invitedEmail);
 
+  const authOptions=await fetch('/api/auth/options').then(r=>r.json()).catch(()=>({}));
+  const gip=authOptions.provider==='gip';
   const state = {
+    isolatedAuth: false,
     email: invitedEmail,      // carried between the auth steps
     data: null      // the signed-in payload: email, document_types, applications
   };
   let testTools=null,selectedId=new URLSearchParams(location.search).get('application'),pollTimer;
+  // Retained only in this page's memory until mailbox verification, never storage.
+  let registrationPassword='';
 
   // One reusable file input for every Upload button; which slot it feeds is
   // remembered while the picker is open.
@@ -62,6 +68,7 @@ import { createApplicantSession } from '../shared/applicant-session.js';
     const response = await applicantSession.fetch(`/api/portal${path}`, { credentials: "same-origin", ...options });
     const isJson = (response.headers.get("Content-Type") || "").includes("application/json");
     const payload = isJson ? await response.json().catch(() => null) : null;
+    if (payload?.auth_realm === 'applicant') state.isolatedAuth = true;
 
     if (!response.ok) {
       const error = new Error(payload?.error || `Request failed (${response.status})`);
@@ -114,26 +121,34 @@ import { createApplicantSession } from '../shared/applicant-session.js';
   }
 
   // ---- signing in ---------------------------------------------------------
+  const accountNote = () => state.isolatedAuth
+    ? '<p class="portal-note">Your applicant account and password are separate from the team workspace, even if you use the same email. First time here? Create your applicant account. Previously applied? Use “Forgot your password?” to set your applicant password and access your applications.</p>'
+    : '';
+
+  function renderGip(mode){return mountGipAuth(container,{scope:'applicant',email:state.email,mode,post:(resource,body)=>postJson('/'+resource,body),enter:()=>load()});}
 
   function renderSignIn() {
+    if(gip)return renderGip('login');
+    registrationPassword='';
     container.innerHTML = `
       <h1>Applicant Portal</h1>
+      ${accountNote()}
       <p class="lede">${invitedEmail
-        ? `This invitation was sent to ${escapeHtml(invitedEmail)}. Sign in with that address, or create your account with it, to continue the application.`
+        ? `This invitation was sent to ${escapeHtml(invitedEmail)}. Sign In with that address, or create your account with it, to continue the application.`
         : nextPath.startsWith("/apply/")
-          ? "Sign in, or create your account, to continue your application. Your account is where you follow its progress and upload your documents afterwards."
-          : "Follow your rental application and upload your supporting documents. Sign in with your applicant account."}</p>
+          ? "Sign In, or create your account, to continue your application. Your account is where you follow its progress and upload your documents afterwards."
+          : "Follow your rental application and upload your supporting documents. Sign In with your applicant account."}</p>
       <form class="portal-login" id="signin-form" novalidate>
         <label for="login-email">Email</label>
         <input id="login-email" type="email" maxlength="180" autocomplete="email" required
                value="${escapeHtml(state.email)}" ${invitedEmail ? 'readonly' : ''}>
         <label for="login-password">Password</label>
         <input id="login-password" type="password" maxlength="200" autocomplete="current-password" required>
-        <button type="submit" class="submit">Sign in</button>
+        <button type="submit" class="submit">Sign In</button>
         <p class="form-error" hidden></p>
       </form>
       <p class="portal-note">
-        <a href="#" id="to-register">Create an account</a> ·
+        <a href="#" id="to-register">Create an Account</a> ·
         <a href="#" id="to-reset">Forgot your password?</a>
       </p>
       <p class="portal-note">Haven’t applied yet? <a href="../rental/">Browse the rentals</a>
@@ -153,7 +168,7 @@ import { createApplicantSession } from '../shared/applicant-session.js';
       const email = document.getElementById("login-email").value.trim();
       const password = document.getElementById("login-password").value;
       if (!validEmail(email)) throw new Error("Please enter a valid email address.");
-      if (invitedEmail && email.toLowerCase() !== invitedEmail) throw new Error("Sign in with the email this invitation was sent to.");
+      if (invitedEmail && email.toLowerCase() !== invitedEmail) throw new Error("Sign In with the email this invitation was sent to.");
       if (!password) throw new Error("Please enter your password.");
 
       state.email = email.toLowerCase();
@@ -165,8 +180,10 @@ import { createApplicantSession } from '../shared/applicant-session.js';
   // ---- creating an account ------------------------------------------------
 
   function renderRegister() {
+    if(gip)return renderGip('register');
     container.innerHTML = `
       <h1>Create your account</h1>
+      ${accountNote()}
       <p class="lede">${invitedEmail ? `You’re invited to join a rental application. Create your own account with ${escapeHtml(invitedEmail)}, or sign in below if you already have one.` : 'Use the email address you want your application filed under.'}
         We will send a code to confirm it is yours.</p>
       <form class="portal-login" id="register-form" novalidate>
@@ -181,10 +198,10 @@ import { createApplicantSession } from '../shared/applicant-session.js';
           <label for="website">Website</label>
           <input id="website" tabindex="-1" autocomplete="off">
         </div>
-        <button type="submit" class="submit">Send confirmation code</button>
+        <button type="submit" class="submit">Send Confirmation Code</button>
         <p class="form-error" hidden></p>
       </form>
-      <p class="portal-note">Already have an account? <a href="#" id="to-signin">Sign in</a></p>
+      <p class="portal-note">Already have an account? <a href="#" id="to-signin">Sign In</a></p>
     `;
 
     document.getElementById("to-signin").addEventListener("click", (event) => {
@@ -211,7 +228,7 @@ import { createApplicantSession } from '../shared/applicant-session.js';
 
       // A project with email confirmation turned off signs the account in on
       // the spot; otherwise the code is on its way.
-      if (result && result.confirm) renderRegisterCode();
+      if (result && result.confirm) { registrationPassword=password; renderRegisterCode(); }
       else await arrived();
     });
   }
@@ -225,7 +242,7 @@ import { createApplicantSession } from '../shared/applicant-session.js';
         <label for="login-code">Code</label>
         <input id="login-code" inputmode="numeric" autocomplete="one-time-code" minlength="6" maxlength="8"
                placeholder="Email code" required>
-        <button type="submit" class="submit">Create account</button>
+        <button type="submit" class="submit">Create Account</button>
         <p class="form-error" hidden></p>
       </form>
       <p class="portal-note">
@@ -254,7 +271,8 @@ import { createApplicantSession } from '../shared/applicant-session.js';
       const code = document.getElementById("login-code").value.replace(/\D/g, "");
       if (!/^\d{6,8}$/.test(code)) throw new Error("Please enter the complete 6–8 digit code from the email.");
 
-      await postJson("/verify-register", { email: state.email, code });
+      await postJson("/verify-register", { email: state.email, code, password:registrationPassword });
+      registrationPassword='';
       await arrived();
     });
   }
@@ -264,16 +282,17 @@ import { createApplicantSession } from '../shared/applicant-session.js';
   function renderResetRequest() {
     container.innerHTML = `
       <h1>Reset your password</h1>
+      ${state.isolatedAuth ? '<p class="portal-note">This resets only your applicant password. Your team workspace password stays the same.</p>' : ''}
       <p class="lede">Enter your account email. If it has an account, a verification code
         is on its way to it.</p>
       <form class="portal-login" id="reset-form" novalidate>
         <label for="reset-email">Email</label>
         <input id="reset-email" type="email" maxlength="180" autocomplete="email" required
                value="${escapeHtml(state.email)}" ${invitedEmail ? 'readonly' : ''}>
-        <button type="submit" class="submit">Email me a code</button>
+        <button type="submit" class="submit">Email Me a Code</button>
         <p class="form-error" hidden></p>
       </form>
-      <p class="portal-note"><a href="#" id="to-signin">Back to sign in</a></p>
+      <p class="portal-note"><a href="#" id="to-signin">Back to Sign In</a></p>
     `;
 
     document.getElementById("to-signin").addEventListener("click", (event) => {
@@ -305,12 +324,12 @@ import { createApplicantSession } from '../shared/applicant-session.js';
         <input id="new-password" type="password" maxlength="200" autocomplete="new-password" required>
         <label for="new-confirm">New password, again</label>
         <input id="new-confirm" type="password" maxlength="200" autocomplete="new-password" required>
-        <button type="submit" class="submit">Set password</button>
+        <button type="submit" class="submit">Set Password</button>
         <p class="form-error" hidden></p>
       </form>
       <p class="portal-note">
         <a href="#" id="resend">Send a new code</a> ·
-        <a href="#" id="to-signin">Back to sign in</a>
+        <a href="#" id="to-signin">Back to Sign In</a>
       </p>
     `;
     document.getElementById("login-code").focus();
@@ -521,7 +540,7 @@ import { createApplicantSession } from '../shared/applicant-session.js';
     container.innerHTML = `
       <div class="portal-bar">
         <span>Signed in as <b>${escapeHtml(data.email)}</b></span>
-        <button type="button" id="sign-out">Sign out</button>
+        <button type="button" id="sign-out">Sign Out</button>
       </div>
       <h1>Your application${apps.length === 1 ? "" : "s"}</h1>
       ${pending.length
@@ -664,5 +683,6 @@ import { createApplicantSession } from '../shared/applicant-session.js';
     }
   }
 
-  load();
+  if(gip&&new URLSearchParams(location.hash.slice(1)).has('oob'))await renderGip('login');
+  else load();
 })();

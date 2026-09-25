@@ -6,9 +6,9 @@ Static real-estate website for Star Realty, hosted on Cloudflare Workers at http
 
 Requirements:
 
-- Node.js 18 or newer
+- Node.js 24 or newer
 
-Run `npm ci` to install the locked development dependencies for type checking and architecture checks. The development server and build use Node.js built-in modules; Cloudflare's wrangler CLI is fetched on demand through npx. CI uses Node.js 24.
+Run `npm ci` to install the locked development dependencies for type checking and architecture checks. The development server and build use Node.js built-in modules; Releases use the locked Wrangler dependency. CI uses Node.js 24.
 
 ```bash
 npm ci
@@ -22,11 +22,15 @@ npm run dev
 # Rebuild the dist/ output
 npm run build
 
-# Manual deploy to Cloudflare (normally not needed; pushing to main auto-deploys)
+# Release an accepted revision (requires target database credentials and Dev acceptance)
 npm run deploy
 ```
 
 ## Development
+
+See [development and release environments](docs/environments.md) for the persistent
+Dev site, database version checks and explicit production promotion. A push to
+`main` no longer deploys directly to production.
 
 `npm run dev` runs `worker/index.js` under `wrangler dev`, exactly as Cloudflare
 runs it, and watches `site/` so a saved edit appears on the next reload without
@@ -800,3 +804,14 @@ Run `npm run dev:testing` and wait for **TESTING READY**. This supervises the
 Worker, payment/credit simulator, DocuSign Sandbox callback tunnel, Connect
 subscription and background jobs together. Ctrl+C stops the stack. Existing
 test applications remain available. See [testing setup](docs/backoffice/internal-testing.md).
+
+
+### Listing preview and publication
+
+The listing detail workspace embeds the actual `/property/` page. The editor sends draft data to its same-origin frame; desktop/mobile previews share the public renderer and formatting. Saving a draft, uploading media, or changing captions/order does not update the public listing. Staff publish the saved, reviewed revision explicitly. Authorized Agents retain their existing property scope; Landlords remain read-only.
+
+Apply `supabase/listing-publication.sql` **before deploying this version** (also included in `npm run db:bundle`). It captures existing published listings and media once, adds draft revisions, and provides an atomic publication RPC that refuses stale previews. Public feeds, detail pages, and applicant listing lookups use the published snapshot. Unpublishing retains the draft. Removed media bytes remain available for published snapshots and cached pages until the listing is deleted.
+
+Validation: `npm run test:listings` covers listing API behavior and public image caching; `npm run test:listings:db` checks publication storage; `npm run test:listings:ui` covers the editor plus server-rendered public pages under slow image/font loading at desktop and mobile widths. These checks use isolated fixtures and do not write to the live database. Browser screenshots go to the system temporary directory.
+
+Keep regression tests, database migrations, and self-hosted font licenses in Git. Build output (`dist/`), browser reports/snapshots, Python bytecode, local credentials, and local runtime state stay ignored. Do not delete `.wrangler/state/`, `.local/`, or `notes/` as generic build cleanup: they may contain local databases or review records.

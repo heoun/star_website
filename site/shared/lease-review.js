@@ -1,3 +1,4 @@
+import {hasPets} from './lease-signing-layout.js';
 // Whether the lease about to be produced will be right.
 //
 // resolveValues() answers the easy half: a required value nobody supplied is
@@ -70,6 +71,7 @@ function ruleFindings(registry, values, fields) {
   });
 
   for (const rule of registry.rules || []) {
+    if (rule.id.startsWith("pet.") && !hasPets(values)) continue;
     // A branch nobody is standing in has no unanswered questions.
     if (rule.only_when && !ticked(fields.get(rule.only_when), values)) continue;
 

@@ -80,6 +80,8 @@ export function contextualLeaseData(text) {
   const record = (role, kind, raw, i, reason, confidence = 90) => {
     const id = CONTACT_FIELDS[role]?.[kind]; if (!id) return false;
     let value = clean(raw);
+    // The defined party label is not part of the legal entity name.
+    if (kind === 'name') value = value.replace(/\s*\((?:the\s+)?["“”]?(?:Landlord|Owner|Lessor)["“”]?\)\s*$/i, '');
     // An address the pattern cannot parse is kept only when it still reads as one.
     if (kind === 'address') value = findAddress(value) || (/\d/.test(value) && value.length <= 120 && !/[:：]/.test(value) && !/\b(?:signature|date|print|initials?|call|phone|tel)\b/i.test(value) ? value : '');
     if (!value || FIELD_LABEL.test(value) || /^(?:Email|Fax)\s*:/i.test(value)) return false;

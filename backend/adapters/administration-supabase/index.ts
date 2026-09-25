@@ -1,5 +1,5 @@
 import type { AccountRepository, OnboardingRepository } from "../../contracts/administration.ts";
-export function makeAdministrationRepositories(config: { url: string; key: string }) {
+export function makeAdministrationRepositories(config: { url: string; key: string; ownerAdminEmail?:string }) {
   async function request(path: string, init: RequestInit = {}) {
     const response = await fetch(`${config.url.replace(/\/$/, "")}/rest/v1/${path}`, { ...init, headers: {
       apikey: config.key, Authorization: `Bearer ${config.key}`, "Content-Type": "application/json", Prefer: "return=representation", ...init.headers
@@ -37,7 +37,7 @@ export function makeAdministrationRepositories(config: { url: string; key: strin
     create: async row => (await request("landlord_onboarding?on_conflict=id", { method: "POST", headers: { Prefer: "resolution=ignore-duplicates,return=representation" }, body: JSON.stringify(row) })).length === 1,
     save: async (id, version, patch) => (await rpc("update_landlord_onboarding", { p_id: id, p_version: version, p_patch: patch }))[0] || null,
     delivery: async (id, hash, state) => { await request(`landlord_onboarding?${new URLSearchParams({ id: `eq.${id}`, token_hash: `eq.${hash}` })}`, { method: "PATCH", body: JSON.stringify({ email_state: state }) }); },
-    approve: (id, version, actor, owner) => rpc("approve_landlord_onboarding", { p_id: id, p_version: version, p_actor: actor, p_owner_email: owner }),
+    approve: (id, version, actor, owner) => rpc("approve_landlord_onboarding", { p_id: id, p_version: version, p_actor: actor, p_owner_email: actor===config.ownerAdminEmail?"":owner }),
     account
   };
   return { accounts, onboarding };

@@ -26,7 +26,7 @@ try{
  await flow.execute(admin,ids.b,{action:'checks',version:row.workspace_version,member_id:mate().id,...reportFields(mate().id),fee:'paid',screening:'received',documents:'verified',credit_score:728,score_model:'VantageScore 3.0',reason:'Mock external provider receipt'});
  eq(raw().status,'sent_to_landlord');eq(fixture.state.emails.length,1);eq(raw().workspace.recommendation.members.length,2);
  assert(fixture.state.emails[0].text.includes('728'));checks++;
- assert(fixture.state.emails[0].text.includes('Agree to proceed:'));checks++;
+ assert(fixture.state.emails[0].text.includes('Agree to Proceed:'));checks++;
  assert(!fixture.state.emails[0].text.includes('ADMIN-ONLY'));checks++;
  // Independent resends must have distinct subjects, while delivery retries stay
  // byte-for-byte stable for Resend idempotency. Decision links must not change.

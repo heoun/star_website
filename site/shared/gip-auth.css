@@ -1,0 +1,41 @@
+/* Auxiliary auth actions keep the original text-link appearance in both portals. */
+.gip-auth-links {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 14px;
+  margin: 14px 0 0;
+  color: var(--primary, #325b6f);
+  font-size: 13.5px;
+  font-weight: 700;
+  line-height: 1.55;
+}
+.gip-auth-links button {
+  appearance: none;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  padding: 2px 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  cursor: pointer;
+}
+.gip-auth-links button:focus-visible {
+  outline: 2px solid var(--primary, #325b6f);
+  outline-offset: 4px;
+}
+.login-panel .gip-auth-links {
+  margin-top: 18px;
+  color: #325b6f;
+  font-size: 12px;
+  font-weight: 400;
+}
+
+/* MFA uses the same field layout in both account portals. */
+.portal-login label{display:grid;gap:6px}
+.portal-login select{box-sizing:border-box;display:block;width:100%;min-width:0;min-height:46px;padding:10px 12px;font:inherit;color:inherit;background:#fff;border:1px solid #cbd6dc;border-radius:9px}
+.portal-login select:focus-visible{outline:3px solid #b3d2df;outline-offset:3px}

@@ -1,6 +1,16 @@
-import { esc, day, heading as pageHeading, empty, send, generation } from "./admin-ui.js";
+import {renderAccountHistory} from './account-history.js';
+import { esc, heading as pageHeading, empty, send as sendRequest, generation } from "./admin-ui.js";
+import {verifyWorkspaceIdentity} from '../shared/workspace-verify.js';
+async function send(api,path,body,method) {
+  try { return await sendRequest(api,path,body,method); }
+  catch(error) {
+    if(error.code!=='mfa_required')throw error;
+    await verifyWorkspaceIdentity();
+    return sendRequest(api,path,body,method);
+  }
+}
 const titles = { manager: "Admins", agent: "Agents", landlord: "Landlords" };
-const invitationMessage = invitation => invitation?.status === "sent" ? "Account saved. An activation code has been emailed." : invitation?.status === "failed" ? "Account saved, but the activation email failed. Use Send activation code to retry." : invitation?.status === "preview" ? "Account saved in the local demo. No activation email was sent." : "Account saved.";
+const invitationMessage = invitation => invitation?.status === "sent" ? "Account saved. An invitation has been emailed." : invitation?.status === "failed" ? "Account saved, but the invitation email failed. Use Send Invitation to retry." : invitation?.status === "preview" ? "Account saved in the local demo. No invitation email was sent." : "Account saved.";
 const nameOf = role => ({ manager: "Admin", agent: "Agent", landlord: "Landlord" }[role]);
 export async function renderAccounts(host, { api, session, tab = "manager", selected = "" }) {
   const heading = (title, note, actions = "") => pageHeading(title, note, actions, session.owner ? "Access management" : "Admin workspace");
@@ -30,10 +40,10 @@ export async function renderAccounts(host, { api, session, tab = "manager", sele
         ${member.role === "agent" ? `<fieldset ${editable ? "" : "disabled"}><legend>${member.role==="agent" ? "Marketing properties" : "Property access"}</legend>${buildings.map(b => `<label class="desk-check"><input type="checkbox" name="property_ids" value="${esc(b.id)}" ${member.property_ids?.includes(b.id) ? "checked" : ""}><span class="desk-check-caption">${esc(b.name)}</span></label>`).join("") || '<p>No properties registered yet.</p>'}</fieldset>` : ""}
         ${member.role === "landlord" ? `<section aria-label="Registered properties"><h3>Registered properties</h3><p class="soft">Bound through approved landlord onboarding. Property access cannot be changed here.</p><ul>${(member.property_ids || []).map(id => `<li>${esc(buildings.find(b => b.id === id)?.name || id)}</li>`).join("") || "<li>No registered properties</li>"}</ul></section>` : ""}
         <label class="desk-check"><input type="checkbox" name="active" ${member.active ? "checked" : ""} ${editable && !(isNew && member.role === "manager") ? "" : "disabled"}><span class="desk-check-caption">Account active</span></label>${editable && member.role==="manager" ? `<label>${isNew ? 'Authorization reason' : 'Reason for any suspension or reactivation'}<textarea name="reason" maxlength="1000" ${isNew ? 'required minlength="5"' : ''}></textarea></label>` : ""}
-        ${editable ? `<button type="submit" class="primary">${isNew && member.role === "manager" ? "Add Admin" : "Save account"}</button>` : ""}<p role="status"></p></form>
-        ${member.allowed_actions?.some(a=>a==="grant_admin" || a==="revoke_admin") ? `<details class="case-disclosure account-authorization"><summary>${member.role==="manager" ? "Revoke Admin access" : "Grant Admin access"}</summary><p>${member.role==="manager" ? "The person will return to Agent access and see only assigned or collaborating rentals." : "Admin access includes all applications, private notes, property settings and team account management."}</p><form class="desk-form" id="account-authorize"><label>Authorization reason<textarea name="reason" required minlength="5" maxlength="1000"></textarea></label><button class="primary">${member.role==="manager" ? "Revoke Admin access" : "Grant Admin access"}</button><p role="status"></p></form></details>` : ""}
-        ${member.allowed_actions?.some(action => ["remove_admin", "remove_account"].includes(action)) ? `<details class="case-disclosure account-authorization"><summary>Remove ${nameOf(member.role)}</summary><p>Removes this person's platform access. Historical rentals, property bindings and audit records are preserved. ${member.role === "agent" ? "Review their open rentals and reassign work to an active Agent." : member.role === "landlord" ? "Property ownership and lease records remain unchanged; this only removes account access." : "They will not retain Agent access."}</p><form id="account-remove" class="desk-form"><label>Removal reason<textarea name="reason" required minlength="5" maxlength="1000"></textarea></label><button type="submit">Remove ${nameOf(member.role)}</button><p role="status"></p></form></details>` : ""}
-        ${!isNew && editable && member.active ? '<button type="button" id="account-invite">Send activation code</button><p id="invite-status" role="status"></p>' : ""}
+        ${editable ? `<button type="submit" class="primary">${isNew && member.role === "manager" ? "Add Admin" : "Save Account"}</button>` : ""}<p role="status"></p>
+        ${!isNew && editable && member.active && member.invitation_state?.activated !== true ? `<div class="account-invitation-actions"><button type="button" id="account-invite">Send Invitation</button><button type="button" id="account-revoke-invite" ${member.invitation_state?.pending ? "" : "disabled"}>Revoke Pending Invitation</button></div><p id="invite-status" role="status"></p>` : ""}</form>
+        ${member.allowed_actions?.some(a=>a==="grant_admin" || a==="revoke_admin") ? `<details class="case-disclosure account-authorization"><summary>${member.role==="manager" ? "Demote to Agent" : "Promote to Admin"}</summary><p>${member.role==="manager" ? "Changes the role from Admin to Agent. The account keeps its current active or suspended status and marketing property assignments. Agent access is limited to assigned marketing properties and assigned or collaborating rentals." : "Admin access includes all applications, private notes, property settings and team account management."}</p><form class="desk-form" id="account-authorize"><label>${member.role==="manager" ? "Demotion Reason" : "Promotion Reason"}<textarea name="reason" required minlength="5" maxlength="1000"></textarea></label><button class="primary">${member.role==="manager" ? "Demote to Agent" : "Promote to Admin"}</button><p role="status"></p></form></details>` : ""}
+        ${member.allowed_actions?.some(action => ["remove_admin", "remove_account"].includes(action)) ? `<details class="case-disclosure account-authorization"><summary>Remove Workspace Access</summary><p>Disables this person's Workspace access without changing their role. Historical rentals, property bindings and audit records are preserved. ${member.role === "agent" ? "Review their open rentals and reassign work to an active Agent." : member.role === "landlord" ? "Property ownership and lease records remain unchanged; this only removes account access." : "They will not be able to use either Admin or Agent access."}</p><form id="account-remove" class="desk-form"><label>Removal Reason<textarea name="reason" required minlength="5" maxlength="1000"></textarea></label><button type="submit">Remove Workspace Access</button><p role="status"></p></form></details>` : ""}
         ${isNew ? '<p class="soft">An activation code will be emailed to this person. They will choose their own password at /login/.</p>' : '<details class="case-disclosure"><summary>Access history</summary><div id="account-history">Loading history…</div></details>'}`;
       panel.querySelector("#account-form").onsubmit = async event => {
         event.preventDefault(); if (!editable) return;
@@ -50,10 +60,15 @@ export async function renderAccounts(host, { api, session, tab = "manager", sele
         invite.disabled = true;
         try {
           const result = await send(api, `/staff/${encodeURIComponent(member.email)}/invite`, {});
-          if (current() && ticket === detailGeneration) panel.querySelector("#invite-status").textContent = invitationMessage(result.invitation).replace("Account saved. ", "");
+          if (current() && ticket === detailGeneration) {
+            await renderAccounts(host, {api, session, tab, selected: member.email});
+            host.querySelector('#account-detail')?.insertAdjacentHTML('afterbegin', `<p role="status">${invitationMessage(result.invitation)}</p>`);
+          }
         } catch (error) { if (current() && ticket === detailGeneration) panel.querySelector("#invite-status").textContent = error.message; }
         finally { invite.disabled = false; }
       };
+      const revokeInvite=panel.querySelector('#account-revoke-invite');
+      if(revokeInvite)revokeInvite.onclick=async()=>{revokeInvite.disabled=true;try{await send(api,`/staff/${encodeURIComponent(member.email)}/revoke-invitation`,{});if (!current() || ticket !== detailGeneration) return; await renderAccounts(host,{api,session,tab,selected:member.email}); host.querySelector('#account-detail')?.insertAdjacentHTML('afterbegin','<p role="status">Pending invitation revoked.</p>');}catch(error){panel.querySelector('#invite-status').textContent=error.message;}finally{revokeInvite.disabled=false;}};
       const removal = panel.querySelector("#account-remove");
       if (removal) removal.onsubmit = async event => {
         event.preventDefault(); const button = removal.querySelector("button"); button.disabled = true;
@@ -61,7 +76,7 @@ export async function renderAccounts(host, { api, session, tab = "manager", sele
           await send(api, `/staff/${encodeURIComponent(member.email)}/actions`, {action:member.role === "manager" ? "remove_admin" : "remove_account", version:member.account_version || 0, reason:new FormData(removal).get("reason")});
           if (!current() || ticket !== detailGeneration) return;
           await renderAccounts(host, {api,session,tab,selected:member.email});
-          host.querySelector("#account-detail")?.insertAdjacentHTML("afterbegin", `<p role="status" class="case-saved">${nameOf(member.role)} removed. Platform access has been disabled; historical records are preserved.</p>`);
+          host.querySelector("#account-detail")?.insertAdjacentHTML("afterbegin", `<p role="status" class="case-saved">Workspace access removed. Historical records are preserved.</p>`);
         } catch(error) { removal.querySelector('[role="status"]').textContent=error.message; button.disabled=false; }
       };
       const authorization = panel.querySelector("#account-authorize");
@@ -71,11 +86,11 @@ export async function renderAccounts(host, { api, session, tab = "manager", sele
           const { member: saved } = await send(api, `/staff/${encodeURIComponent(member.email)}/actions`, { action: member.role==="manager" ? "revoke_admin" : "grant_admin", version: member.account_version || 0, reason: new FormData(authorization).get("reason") });
           if (!current() || ticket !== detailGeneration) return;
           await renderAccounts(host, { api, session, tab: saved.role, selected: saved.email });
-          host.querySelector("#account-detail")?.insertAdjacentHTML("afterbegin", '<p class="case-saved" role="status">Authorization recorded.</p>');
+          host.querySelector("#account-detail")?.insertAdjacentHTML("afterbegin", `<p class="case-saved" role="status">${member.role==="manager" ? "Demoted to Agent. Account status and marketing property assignments are unchanged." : "Promoted to Admin."}</p>`);
         } catch(error) { authorization.querySelector('[role="status"]').textContent=error.message; button.disabled=false; }
       };
       if (!isNew) {
-        try { const { history } = await api(`/staff/${encodeURIComponent(member.email)}/history`); if (current() && ticket===detailGeneration) panel.querySelector("#account-history").innerHTML = history.length ? `<ol class="case-history">${history.map(h=>`<li><b>${esc(h.action.replaceAll("_"," "))}</b><small>${esc(h.actor)} · ${esc(day(h.created_at))}</small><p>${esc(h.reason || "Account details updated")}</p></li>`).join("")}</ol>` : '<p>No recorded changes yet.</p>'; }
+        try { const { history } = await api(`/staff/${encodeURIComponent(member.email)}/history`); if (current() && ticket===detailGeneration) panel.querySelector("#account-history").innerHTML = renderAccountHistory(history, buildings); }
         catch(error) { if(current() && ticket===detailGeneration) panel.querySelector("#account-history").textContent=error.message; }
       }
     }

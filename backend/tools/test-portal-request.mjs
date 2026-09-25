@@ -2,8 +2,9 @@
 // and that a database without the workspace column still lists applications.
 // No network, no database: the one read is answered by a stub.
 import assert from "node:assert/strict";
-import { toPortalApplication } from "../../worker/portal.js";
+import { STAFF_DOCUMENT_TYPES, DOCUMENT_TYPES, toPortalApplication } from "../../worker/portal.js";
 import { fetchApplicationsByEmail } from "../../worker/supabase.js";
+import { documentSummary } from "../../site/admin/application-view.js";
 import { testRunBody } from '../../site/portal/internal-test.js';
 
 let checks = 0;
@@ -17,6 +18,13 @@ const row = {
   workspace: { info_request: { message: "Please upload the back of your ID.", at: "2026-09-09T01:00:00Z", by: "agent-a@example.test" },
     admin_note: "ADMIN-ONLY", checks: { reference: "REF-SECRET" } }
 };
+
+row.application_documents.push({id:'external-1',doc_type:'external_source',file_name:'private-report.pdf',uploaded_by:'staff'});
+assert(!JSON.stringify(toPortalApplication(row)).includes('private-report.pdf'));
+assert(!DOCUMENT_TYPES.some(t=>t.id==='external_source'));
+assert(STAFF_DOCUMENT_TYPES.some(t=>t.id==='external_source' && t.required===0));
+assert.equal(documentSummary(row,STAFF_DOCUMENT_TYPES).requiredMet,documentSummary(row,DOCUMENT_TYPES).requiredMet);
+assert.equal(documentSummary(row,STAFF_DOCUMENT_TYPES).rows.find(r=>r.type.id==='external_source').files.length,1);
 
 const shown = toPortalApplication(row);
 ok(shown.request.message === "Please upload the back of your ID." && shown.request.at === "2026-09-09T01:00:00Z", "the request reaches the applicant while it stands");

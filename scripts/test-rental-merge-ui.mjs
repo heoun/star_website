@@ -34,7 +34,7 @@ function independent(name,complete=true) {
  for(const d of state.documents.filter(d=>d.application_id===ids.shared)) state.documents.push({...structuredClone(d),id:crypto.randomUUID(),application_id:id,path:`${id}/${d.file_name}`});
  return id;
 }
-const login=async email=>{await page.goto(`${base}/login/`);await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/admin/**');};
+const login=async email=>{await page.goto(`${base}/login/`);await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign In',exact:true}).click();await page.waitForURL('**/admin/**');};
 try{
  const flow=rentalWorkflow(env,new Request(base)),landlord={role:'landlord',email:'owner@example.test',property_ids:[ids.property]};
  const host=independent('Host Applicant'),guest=independent('Guest Applicant'),signed=independent('Signed Applicant'),locked=independent('Locked Applicant');

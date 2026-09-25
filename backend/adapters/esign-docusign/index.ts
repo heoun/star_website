@@ -47,8 +47,12 @@ function envelopeSnapshot(accountId:string,envelopeId:string,e:Record<string,unk
   return {accountId,envelopeId,status:e.status as RentalSigningEnvelope['status'],statusChangedAt:String(e.statusChangedDateTime),recipients};
 }
 export function envelopeDefinition(pkg: RentalSigningPackage, documents: {documentId:string;bytes:Uint8Array}[], webhookUrl: string) {
+  const clean=(value:unknown)=>String(value || '').replace(/[\u0000-\u001f\u007f]/g,' ').replace(/\s+/g,' ').trim();
+  const property=clean(pkg.propertyLabel) || [clean(pkg.values?.['property.street']),pkg.values?.['property.unit'] && `Unit ${clean(pkg.values['property.unit'])}`].filter(Boolean).join(' ');
+  const subject=`Please sign your lease${property?` for ${property}`:''} — Star Real Estate`;
+  const tenantEmails=pkg.signers.filter(s=>s.role==='tenant').map(s=>s.email.trim().toLowerCase());
   return {
-    status:'created',transactionId:pkg.id,emailSubject:'Please sign your lease — Star Real Estate',
+    status:'created',transactionId:pkg.id,emailSubject:subject,
     documents:documents.map(d=>({documentId:d.documentId,name:pkg.documents.find(f=>f.documentId===d.documentId)?.name || 'Residential lease and riders',fileExtension:'docx',documentBase64:base64(d.bytes)})),
     recipients:{signers:pkg.signers.map(s=>{
       const tabs:Record<string,unknown[]>={signHereTabs:[],initialHereTabs:[],dateSignedTabs:[],fullNameTabs:[]};
@@ -62,8 +66,9 @@ export function envelopeDefinition(pkg: RentalSigningPackage, documents: {docume
           anchorXOffset:String(t.xOffset/96),anchorYOffset:String(t.yOffset/96),anchorIgnoreIfNotPresent:'false',
           anchorCaseSensitive:'true',anchorMatchWholeWord:'false',...(t.kind==='signature'||t.kind==='initial'?{scaleValue:String(t.scale??.6)}:{fontSize:t.fontSize || 'Size9',font:'TimesNewRoman'})});
       }
-      return {recipientId:s.recipientId,name:s.name,email:s.email,routingOrder:String(s.routingOrder),tabs};
-    })},
+      const shared=s.role==='tenant' && tenantEmails.filter(e=>e===s.email.trim().toLowerCase()).length>1;
+      return {recipientId:s.recipientId,name:s.name,email:s.email,routingOrder:String(s.routingOrder),emailNotification:{emailSubject:`${shared?`${clean(s.name)} `:''}${subject}`},tabs};
+    }),...(pkg.carbonCopies?.length?{carbonCopies:pkg.carbonCopies.map(c=>({recipientId:c.recipientId,name:c.name,email:c.email,routingOrder:'3'}))}:{})},
     allowReassign:'false',
     eventNotification:{url:webhookUrl,requireAcknowledgment:'true',includeHMAC:'true',deliveryMode:'SIM',
       eventData:{version:'restv2.1',format:'json',includeData:['recipients']},
@@ -119,7 +124,7 @@ export function makeDocusign(config: Config, http: typeof fetch=fetch): RentalSi
       await api('/connect/envelopes/publish/historical','POST',{envelopes:[id],config:{configurationType:'custom',name:'Star local testing recovery',urlToPublishTo:config.webhookUrl,allowEnvelopePublish:'true',includeHMAC:'true',requiresAcknowledgement:'true',includeDocuments:'false',deliveryMode:'SIM',eventData:{version:'restv2.1',format:'json',includeData:['recipients']}}});
     },
     async configureTestingWebhook(url,name) {
-      if(config.environment!=='demo' || !name.startsWith('Star local testing ') || new URL(url).protocol!=='https:' || new URL(url).pathname!=='/api/webhooks/docusign')throw fail('Testing webhooks require the sandbox account and a dedicated HTTPS listener.');
+      if(config.environment!=='demo' || !(name.startsWith('Star local testing ') || (name==='Star staging testing shlodyxlnepxnafthvod.supabase.co' && url==='https://dev.starreusa.com/api/webhooks/docusign')) || new URL(url).protocol!=='https:' || new URL(url).pathname!=='/api/webhooks/docusign')throw fail('Testing webhooks require the sandbox account and a dedicated HTTPS listener.');
       const list=await json(await api('/connect'));
       const existing=(list.configurations || []).filter((c:{name:string})=>c.name===name);
       if(existing.length>1)throw fail('Duplicate testing Connect configurations. Keep one before restarting.');

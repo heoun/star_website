@@ -4,7 +4,7 @@
   "compatibility_date": "2026-07-01",
   "workers_dev": false,
   "preview_urls": false,
-  "vars": { "STORAGE_BACKEND": "supabase", "RENTAL_AUTOMATION": "off" },
+  "vars": { "APP_ENV":"production", "ACCOUNT_SECURITY":"on", "OWNER_EMAIL":"info@starreusa.com", "STORAGE_BACKEND": "supabase", "RENTAL_AUTOMATION": "off" },
   // Enable RENTAL_AUTOMATION after applying supabase/rental-flow.sql.
   "triggers": { "crons": ["*/1 * * * *"] },
   "assets": {
@@ -14,7 +14,7 @@
     "not_found_handling": "404-page",
     // These paths must reach the Worker even though matching assets exist:
     // the listings feed is served from Supabase, and /admin is access-checked.
-    "run_worker_first": ["/data/listings.json", "/data/property.json", "/admin", "/admin/*", "/api/*", "/media/*"]
+    "run_worker_first": ["/rental", "/rental/*", "/buy", "/buy/*", "/commercial", "/commercial/*", "/data/listings.json", "/data/property.json", "/admin", "/admin/*", "/api/*", "/media/*"]
   },
   // Retained for local/offline development with STORAGE_BACKEND=r2.
   "r2_buckets": [
@@ -23,6 +23,44 @@
     // only through authenticated portal and admin routes, never at /media/.
     { "binding": "APPLICANT_DOCS", "bucket_name": "applicant-docs" }
   ],
+  "env": {
+    "staging": {
+      "name": "star-website-staging",
+      "workers_dev": false,
+      "preview_urls": false,
+      "routes": [{"pattern":"dev.starreusa.com","custom_domain":true}],
+      "r2_buckets": [],
+      "assets": {
+        "directory":"./dist",
+        "binding":"ASSETS",
+        "html_handling":"auto-trailing-slash",
+        "not_found_handling":"404-page",
+        "run_worker_first":true
+      },
+      "services": [{"binding":"SCREENING_SIMULATOR","service":"star-screening-staging"}],
+      "vars": {
+        "APP_ENV":"staging",
+        "AUTH_PROVIDER":"gip",
+        "ACCOUNT_SECURITY":"on",
+        "OWNER_EMAIL":"info@starreusa.com",
+        "STORAGE_BACKEND":"supabase",
+        "SITE_ORIGIN":"https://dev.starreusa.com",
+        "SUPABASE_URL":"https://shlodyxlnepxnafthvod.supabase.co",
+        "INTERNAL_TEST_DATABASE_HOST":"shlodyxlnepxnafthvod.supabase.co",
+        "DEV_SUPABASE_LABEL":"Star Dev",
+        "INTERNAL_TESTING":"on",
+        "RENTAL_AUTOMATION":"on",
+        "RENTAL_SCREENING":"simulator",
+        "DOCUSIGN_ENABLED":"on",
+        "DOCUSIGN_ENVIRONMENT":"demo",
+        "DOCUSIGN_WEBHOOK_URL":"https://dev.starreusa.com/api/webhooks/docusign",
+        "DEV_DOCUSIGN_SEND":"on",
+        "LEASE_REVIEW_ONLY_CASE_IDS":"276594d5-1491-4518-b9cd-5fd4bf02f072",
+        "EMAIL_LOGO_URL":"https://dev.starreusa.com/png/email-logo-v1.png"
+      },
+      "triggers":{"crons":["* * * * *"]}
+    }
+  },
   "observability": {
     "enabled": true
   }

@@ -4,8 +4,8 @@ Turns an approved rental application into a ready-to-sign New York residential
 lease. Agent-facing, admin only — nothing here is reachable from the public
 site.
 
-The lease is a 46-page bundle: the lease itself plus the riders and statutory
-notices that have to travel with it (utilities, packages, keys, renters
+The lease is a bundle: the lease itself plus the riders and statutory
+notices that have to travel with it (utilities, optional pet addendum, packages, keys, renters
 insurance, community rules and fine schedule, window guards, bedbug disclosure,
 sprinkler notice, indoor allergen certification, gas and CO alarms, smoking
 policy, the rent concession, the DHCR electronic-signature consent, and the
@@ -30,14 +30,14 @@ wrong by hand.
 | `tools/reflow-template.py` | One-off. Replaces the PDF conversion's layout tricks with text, and builds the footers. Idempotent. |
 | `tools/space-signature-tables.py` | One-off. Opens the signature tables so the e-signature stamp clears the text above each line. Idempotent. |
 
-The one-off tools are the template, in order: `build-template.py "Lease
-Template (2).docx"`, then `restyle-template.py`, then `reflow-template.py`,
-then `space-signature-tables.py`.
-Running the four of them against the landlord's source lease reproduces
-`template/lease-template.docx` part for part — every one of the forty parts
-identical, the same parts in the same order, differing only in the timestamp
-the zip stamps on each entry. That is what makes it safe to change one of them
-and rebuild: a diff of the result is a diff of the change.
+The DOCX is the current source of truth. The one-off tools record the original
+conversion; rerunning them alone does not reproduce later template edits.
+
+The Pet Addendum is included only when `pet.count` is greater than zero.
+Application pets are combined across household members; count and pet types
+prefill the rider. Permission restrictions and fee choices require review.
+Downloads and signing packages omit the rider when there are no pets. Its
+signature tables match Utilities, including all eight tenant slots.
 
 The admin screen is three modules: `site/admin/lease-doc.js` renders and patches
 the document, `site/admin/lease-form.js` draws the fields, and

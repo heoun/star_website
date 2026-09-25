@@ -17,6 +17,9 @@ create index if not exists applications_collaborators_idx on public.applications
 create or replace function public.bump_application_workspace_version() returns trigger
 language plpgsql set search_path = '' as $$
 begin
+  -- Identity binding changes no lease facts and must not invalidate a reviewed package.
+  if (to_jsonb(new)->'user_id') is distinct from (to_jsonb(old)->'user_id')
+    and (to_jsonb(new)-'user_id')=(to_jsonb(old)-'user_id') then return new; end if;
   new.workspace_version := old.workspace_version + 1;
   return new;
 end $$;

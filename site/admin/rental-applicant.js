@@ -8,9 +8,9 @@ const fact = (label,v) => `<div class="rg-fact"><span>${e(label)}</span><b>${e(v
 const facts = entries => `<div class="rg-fields">${entries.map(([label,v])=>fact(label,v)).join('')}</div>`;
 const sub = (title,body) => `<div class="rg-subsection"><h4>${e(title)}</h4>${body}</div>`;
 const empty = text => `<p class="rg-empty">${e(text)}</p>`;
-const employment = (x={},income) => facts([['Employer',x.employer],['Position',x.position],['Employed since',x.start],['Annual income',income ?? x.income],['Supervisor',x.supervisor_name],['Supervisor phone',x.supervisor_phone],['Supervisor email',x.supervisor_email]]);
+const employment = (x,income) => { x ??= {}; return facts([['Employer',x.employer],['Position',x.position],['Employed since',x.start],...(x.end ? [['Employed until',x.end]] : []),['Annual income',income ?? x.income],['Supervisor',x.supervisor_name],['Supervisor phone',x.supervisor_phone],['Supervisor email',x.supervisor_email]]); };
 const rental = (x={}) => facts([['Address',x.address],['From',x.start],['Until',x.end],['Monthly rent',x.monthly_rent],['Landlord',x.landlord_name],['Contact',x.contact],['Landlord phone',x.landlord_phone],['Landlord email',x.landlord_email]]);
-const contact = x => facts([['Name',x.name],['Relationship',x.relationship],['Phone',x.phone],['Email',x.email]]);
+const contactCard = (x,i,label) => `<article class="rg-contact-card" aria-label="${e(label)} ${i+1}"><header><span>${e(label)} ${i+1}</span><h4>${e(x.name || 'Name not provided')}</h4></header>${facts([['Relationship',x.relationship],['Phone',x.phone],['Email',x.email]])}</article>`;
 const descriptor = (name,label,v,type='text')=>({name,label,value:v,type});
 export function correctionFields(m,key) {
  const d=descriptor;
@@ -30,7 +30,7 @@ export function applicantColumns(m,ctx,summary,money) {
   roommates:`${ctx.row.household.members.length-1} other applicant(s) · ${ctx.row.household.invitations.filter(i=>!i.accepted).length} awaiting submission`,
   pets:(m.pets || []).length?`${m.pets.length} pet(s)`:'No pets listed',
   identity:[m.dob,m.id_type==='passport'?'Passport on file':m.ssn_last4?`SSN ending ${m.ssn_last4}`:'SSN not provided'].filter(Boolean).join(' · '),
-  employment:m.employment_status==='student'?m.student?.school_name:[m.current_employer?.position,m.current_employer?.employer].filter(Boolean).join(' · '),
+  employment:[...(m.employment_status==='student'?['Student',m.student?.school_name]:[m.current_employer?.position,m.current_employer?.employer]),(m.employment_history || []).length?`${m.employment_history.length} previous employment record(s)`:null].filter(Boolean).join(' · '),
   history:`${(m.rental_history || []).length} address record(s)`,
   contacts:`${(m.reference_contacts || []).length} references · ${(m.emergency_contacts || []).length} emergency contact(s)`
  };
@@ -44,21 +44,24 @@ export function applicantColumns(m,ctx,summary,money) {
  +section('tenancy','The tenancy applied for',facts([['Listing',l.title],['Property',l.property_name],['Unit',l.unit],['Requested lease start date',m.move_in],['Preferred term',m.lease_term_months?`${m.lease_term_months} months`:null]])+'<p class="cw-note">As requested by this applicant. Final group terms are managed below.</p>')
  +section('guards','Window guard notice',facts([['Children 10 or younger',m.children_under_11],['Wants window guards anyway',m.wants_window_guards]]))
  +section('roommates','Roommates',roommates.length?roommates.map(x=>sub(x.name,facts([['Email',x.email],['Status',x.status]]))).join(''):empty('No roommates listed.'))
- +section('pets','Pets',(m.pets || []).length?m.pets.map((x,i)=>sub(`Pet ${i+1}`,facts([['Species',x.type],['Breed / description',x.breed || x.species],['Pet name',x.name || 'Not collected on this application']]))).join(''):empty('No pets listed.'));
+ +section('pets','Pets',(m.pets || []).length?m.pets.map((x,i)=>sub(`Pet ${i+1}`,facts([['Type',({dog:'Dog',cat:'Cat',other:'Other'})[x.type] || x.type],['Breed or species',x.species || x.breed],['Weight in pounds',x.weight]]))).join(''):empty('No pets listed.'));
  const histories=m.rental_history || [],current=histories.find(x=>String(x.address || '').trim().toLowerCase()===String(m.current_address || '').trim().toLowerCase()),previous=histories.filter(x=>x!==current);
- const employmentBody=m.employment_status==='student'?sub('Education',facts([['School',m.student?.school_name],['Major',m.student?.major],['Entry year',m.student?.entry_year],['Graduation year',m.student?.graduation_year],['Country',m.student?.country]])) : sub('Current employment',employment(m.current_employer,money(m.income_note)))+sub('Previous employment',(m.employment_history || []).length?m.employment_history.map(x=>employment(x,money(x.income))).join(''):empty('No previous employment provided.'));
+ const employmentBody=(m.employment_status==='student'?sub('Education',facts([['School',m.student?.school_name],['Major',m.student?.major],['Entry year',m.student?.entry_year],['Graduation year',m.student?.graduation_year],['Country',m.student?.country]])) : sub('Current employment',employment(m.current_employer,money(m.income_note))))+sub('Previous employment',(m.employment_history || []).length?m.employment_history.map(x=>employment(x,money(x.income))).join(''):empty('No previous employment provided.'));
  const docs=ctx.documentSummary(m,ctx.types);
  summaries.documents=docs?`${docs.requiredMet} of ${docs.required} requirements received${docs.missing?` · ${docs.missing} outstanding`:''}`:'Checklist unavailable';
  const documents=docs?`<p class="cw-note">${m.employment_status==='student'?'Studying':'Working'} · ${docs.requiredMet} of ${docs.required} requirements received</p><div class="rg-documents">${docs.rows.map(({type,files,state})=>`<div class="rg-document"><div><b>${e(type.label)}</b><span class="pill is-${['received','covered'].includes(state)?'good':state==='optional'?'off':'warn'}">${e(({received:'Received',covered:'Alternative received',optional:'Optional',missing:'Missing',partial:`${files.length} / ${type.required} received`})[state])}</span></div>${files.length?files.map(f=>`<a href="/api/admin/documents/${e(f.id)}" target="_blank" rel="noopener">${e(f.file_name)}</a>`).join(''):''}${type.either?'<small>One of the alternatives in this requirement is sufficient.</small>':''}</div>`).join('')}</div>`:empty('Document checklist unavailable.');
- const reportLink=m.workspace?.screening_result?.report_url?.startsWith('https://') && summary.report_status!=='Pending'
+ const external=m.workspace?.external_credit_report;
+ const sourceFile=(m.application_documents || []).find(doc=>doc.id===external?.document_id && doc.doc_type==='external_source');
+ const showExternal=summary.credit_score == null && sourceFile && Number.isInteger(external?.credit_score) && external.credit_score>=300 && external.credit_score<=850;
+ const reportLink=showExternal ? `<a class="rg-report-link" href="/api/admin/documents/${e(sourceFile.id)}" target="_blank" rel="noopener">View External Report ↗</a>` : m.workspace?.screening_result?.report_url?.startsWith('https://') && summary.report_status!=='Pending'
   ? `<a class="rg-report-link" href="${e(m.workspace.screening_result.report_url)}" target="_blank" rel="noopener noreferrer">View Report ↗</a>`
   : hasMockReport(m) ? `<button type="button" class="rg-report-link" data-view-mock-report="${e(m.id)}">View Report ↗</button>`
   : '<button type="button" class="rg-report-link" disabled title="Report not available yet">View Report ↗</button>';
- const overview=`<div class="rg-applicant-summary" aria-label="${e(m.name)} summary"><div class="rg-key-data">${fact('Credit Score',summary.credit_score ?? (summary.report_status==='Needs review'?'Needs review':'Awaiting report'))}${fact('Annual Income',money(m.income_note))}</div>${reportLink}</div>`;
+ const overview=`<div class="rg-applicant-summary" aria-label="${e(m.name)} summary"><div class="rg-key-data">${fact(showExternal?'External Credit Score':'Credit Score',showExternal ? external.credit_score : summary.credit_score ?? (summary.report_status==='Needs review'?'Needs review':'Awaiting report'))}${fact('Annual Income',money(m.income_note))}</div>${reportLink}</div>`;
  const screening=section('identity','Applicant details',facts([['Date of birth',m.dob],[m.id_type==='passport'?'Passport number':'Social Security number',m.ssn_last4?`•••• ${m.ssn_last4}`:'Not provided']]))
  +section('employment','Employment and income',employmentBody)
  +section('history','Rental history',sub("Tenant’s current address",rental(current || {address:m.current_address}))+sub("Tenant’s previous address",previous.length?previous.map(rental).join(''):empty('No previous address history provided.')))
  +section('documents','Documents',documents)
- +section('contacts','References and contacts',sub(`References · ${(m.reference_contacts || []).length} / 2 minimum`,(m.reference_contacts || []).length?m.reference_contacts.map((x,i)=>sub(`Reference ${i+1}`,contact(x))).join(''):empty('References not provided.'))+sub(`Emergency contacts · ${(m.emergency_contacts || []).length} / 1 minimum`,(m.emergency_contacts || []).length?m.emergency_contacts.map(contact).join(''):empty('Emergency contact not provided.')));
+ +section('contacts','References and contacts',sub(`References · ${(m.reference_contacts || []).length}`,(m.reference_contacts || []).length?`<div class="rg-contact-list">${m.reference_contacts.map((x,i)=>contactCard(x,i,'Reference')).join('')}</div>`:empty('References not provided.'))+sub(`Emergency contacts · ${(m.emergency_contacts || []).length}`,(m.emergency_contacts || []).length?`<div class="rg-contact-list">${m.emergency_contacts.map((x,i)=>contactCard(x,i,'Emergency contact')).join('')}</div>`:empty('Emergency contact not provided.')));
  return {lease,screening,overview};
 }

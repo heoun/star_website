@@ -1,4 +1,7 @@
+import { renderListingMarkdown } from "./listing-markdown.js";
 (function () {
+  const preview = new URLSearchParams(location.search).get("preview") === "listing" && window.parent !== window;
+  let galleryKeyboard = null;
   const container = document.getElementById("property");
   if (!container) return;
 
@@ -13,6 +16,7 @@
   // anything else must be a real http(s) URL.
   const safeUrl = (value) => {
     const text = String(value ?? "").trim();
+    if (preview && text.startsWith("blob:" + location.origin + "/")) return text;
     if (text.startsWith("/") && !text.startsWith("//")) return text;
     try {
       const parsed = new URL(text);
@@ -30,8 +34,7 @@
     const facts = [];
     if (property.property_type) facts.push(property.property_type);
     if (property.use_type && property.use_type !== property.property_type) facts.push(property.use_type);
-    if (property.bedrooms === "0") facts.push("Studio");
-    else if (property.bedrooms) facts.push(`${property.bedrooms} bd`);
+    if (property.bedrooms) facts.push(`${property.bedrooms} bd`);
     if (property.bathroom) facts.push(`${property.bathroom} bath`);
     if (property.size) facts.push(property.size);
     if (property.term_label) facts.push(property.term_label);
@@ -43,7 +46,7 @@
       ["Property", property.property_name],
       ["Unit", property.unit],
       ["Property type", property.property_type],
-      ["Bedrooms", property.bedrooms === "0" ? "Studio" : property.bedrooms],
+      ["Bedrooms", property.bedrooms],
       ["Bathrooms", property.bathroom],
       ["Size", property.size],
       ["Availability", property.status]
@@ -77,7 +80,7 @@
       <div class="stage">
         <img id="stage-image" src="${escapeHtml(first.url)}" alt="${escapeHtml(first.caption || "Property photo")}">
         ${arrows}
-        <span class="caption" id="stage-caption">${escapeHtml(first.caption || "")}</span>
+        <span class="caption" id="stage-caption" ${first.caption?.trim() ? "" : "hidden"}>${escapeHtml(first.caption || "")}</span>
       </div>
       ${thumbs}
     `;
@@ -89,7 +92,7 @@
       ? { ...property.floor_plan, url: safeUrl(property.floor_plan.url) }
       : null;
     const videoUrl = safeUrl(property.video_url);
-    const isHostedVideo = videoUrl.startsWith("/media/");
+    const isHostedVideo = videoUrl.startsWith("/media/") || (preview && videoUrl.startsWith("blob:"));
     const externalDetails = safeUrl(property.details_url);
     const addressLine = [property.location].filter(Boolean).join(" · ");
 
@@ -102,7 +105,7 @@
           <p class="address">${escapeHtml(addressLine || "Address available on request")}</p>
           <div class="facts">${buildFacts(property).map((fact) => `<span class="fact">${escapeHtml(fact)}</span>`).join("")}</div>
 
-          ${property.description ? `<h2>About this home</h2><p class="description">${escapeHtml(property.description)}</p>` : ""}
+          ${property.description ? `<h2>About this home</h2><div class="description">${renderListingMarkdown(property.description)}</div>` : ""}
 
           ${floorPlan && !videoUrl ? `<h2>Floor plan</h2><div class="media-block">
             <img src="${escapeHtml(floorPlan.url)}" alt="${escapeHtml(floorPlan.caption)}" loading="lazy">
@@ -144,6 +147,8 @@
 
     document.title = `${property.title || "Property"} | Star Real Estate`;
 
+    if (galleryKeyboard) document.removeEventListener("keydown", galleryKeyboard);
+    galleryKeyboard = null;
     if (photos.length > 1) wireGallery(photos);
   };
 
@@ -158,6 +163,7 @@
       image.src = photos[index].url;
       image.alt = photos[index].caption || `Photo ${index + 1}`;
       caption.textContent = photos[index].caption || "";
+      caption.hidden = !photos[index].caption?.trim();
       thumbs.forEach((thumb, position) => {
         if (position === index) thumb.setAttribute("aria-current", "true");
         else thumb.removeAttribute("aria-current");
@@ -172,11 +178,27 @@
       thumb.addEventListener("click", () => show(Number(thumb.dataset.index)));
     }
 
-    document.addEventListener("keydown", (event) => {
+    galleryKeyboard = (event) => {
       if (event.key === "ArrowLeft") show(index - 1);
       if (event.key === "ArrowRight") show(index + 1);
-    });
+    };
+    document.addEventListener("keydown", galleryKeyboard);
   };
+
+  if (preview) {
+    // No draft endpoint or URL payload: only the same-origin workspace parent supplies data.
+    showState("Loading website preview…");
+    document.addEventListener("click", event => {
+      if (event.target.closest("a")) event.preventDefault();
+    }, true);
+    window.addEventListener("message", event => {
+      if (event.origin !== location.origin || event.source !== parent || event.data?.type !== "listing-preview") return;
+      render(event.data.property);
+      parent.postMessage({ type: "listing-preview-rendered" }, location.origin);
+    });
+    parent.postMessage({ type: "listing-preview-ready" }, location.origin);
+    return;
+  }
 
   const id = new URLSearchParams(window.location.search).get("id") || "";
 

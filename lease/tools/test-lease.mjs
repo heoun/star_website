@@ -22,6 +22,7 @@ import {
   LEASE_REGISTRY,
   dealValues,
   fieldProvenance,
+  formatOverrides,
   fillTemplate,
   isManagerField,
   leaseFilename,
@@ -194,6 +195,22 @@ check("filling the template produces a document", docx instanceof Uint8Array && 
 const xml = await readDocumentXml(docx);
 check("no placeholder survives into the finished lease", !xml.includes("{{"));
 check("the tenant's name reaches the document", xml.includes(application.name));
+
+// Every money field carries its currency even when an edit supplies only digits.
+const moneyFields = LEASE_REGISTRY.fields.filter(field => field.type === "money");
+const numericMoney = Object.fromEntries(moneyFields.map(field => [field.id, "3210.50"]));
+const resolvedMoney = resolveValues({ layers, deal, overrides: numericMoney });
+const frozenMoney = formatOverrides(numericMoney);
+check("all monetary overrides include dollars in live and frozen leases",
+  moneyFields.every(field => resolvedMoney.values[field.id] === "$3,210.50" && frozenMoney[field.id] === "$3,210.50"));
+check("empty money remains unanswered and zero retains its unit",
+  formatOverrides({ "deposit.amount": "", "fee.returned_payment": "0" })["deposit.amount"] === "" &&
+  formatOverrides({ "fee.returned_payment": "0" })["fee.returned_payment"] === "$0.00");
+check("existing currency symbols are not duplicated",
+  formatOverrides({ "rent.monthly": "$3,210.50" })["rent.monthly"] === "$3,210.50");
+const moneyXml = await readDocumentXml(await fillTemplate(env, request, { ...complete, ...numericMoney }));
+check("bare amounts get their unit in the generated document",
+  moneyXml.includes("$3,210.50") && !moneyXml.includes("3210.50") && !moneyXml.includes("$$"));
 
 // A name with XML metacharacters must not be able to close the run it sits in.
 const risky = await fillTemplate(env, request, { ...complete, "tenant.names": 'Smith & Jones <Co>' });

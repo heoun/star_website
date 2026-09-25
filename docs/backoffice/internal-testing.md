@@ -1,5 +1,10 @@
 # Repeatable application-to-lease rehearsal
 
+For the persistent online Dev environment and release workflow, see
+[Development, acceptance and production releases](../environments.md).
+The commands below describe the optional local rehearsal. Online Dev does not
+need this command, a running laptop, or a temporary callback tunnel.
+
 This is a development-only test profile over the real listing, authentication,
 application, document upload, rental decision, lease, and DocuSign paths. It does
 not grant the applicant an Admin role. Payment and screening alone use a separate

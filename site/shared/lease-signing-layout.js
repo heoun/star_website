@@ -11,7 +11,7 @@
 // What remains here is structure: which table, row and cell a slot occupies,
 // or which paragraph carries the line. Geometry is the small TAB_GEOMETRY
 // table below, shared by every document and signer.
-export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-19-anchor-v11';
+export const SIGNING_TEMPLATE_VERSION='star-lease-2026-09-24-anchor-v24';
 export const SIGNING_LAYOUT_REVIEW_REQUIRED=false;
 
 // PDF points. The tab control includes transparent padding; `ink` describes
@@ -44,8 +44,7 @@ export const SIGNING_DOCUMENTS=[
  {id:'keys',document:'keys',name:'Key Rider',tables:{tenant:1,landlord:2},place:standardCell},
  {id:'insurance',document:'insurance',name:'New York Renters Insurance Rider',tables:{tenant:0,landlord:1},place:standardCell},
  {id:'rules',document:'rules',name:'Community Rules Rider',tables:{tenant:0,landlord:1},place:standardCell},
- // `starts` is where worker/signing-documents.js cuts the rules rider into its second copy.
- {id:'fines',document:'rules',name:'Fine Schedule',starts:'Fine Schedule',tables:{tenant:1,landlord:2},place:standardCell},
+ {id:'fines',document:'fines',name:'Fine Schedule',tables:{tenant:1,landlord:2},place:standardCell},
  // DocuSign resolves Date Signed 4pt to the right of Sign Here at the same
  // anchor x. Compensate so their visible left edges align on these two lines.
  {id:'window_guards',document:'window_guards',name:'Window Guards Required Lease Notice to Tenant',individual:true,tenantOnly:true,
@@ -57,6 +56,7 @@ export const SIGNING_DOCUMENTS=[
   tables:{landlord:0},place:(role,slot,kind)=>({table:'landlord',row:{signature:0,full_name:1,date_signed:2}[kind],cell:1})},
  {id:'alarms',document:'alarms',name:'Gas Leak, Carbon Monoxide and Smoke Alarm Rider',tables:{tenant:1,landlord:2},place:standardCell},
  {id:'smoking',document:'smoking',name:'Smoking Policy Rider',tables:{tenant:2,landlord:3},place:standardCell},
+ {id:'pet',document:'pet',name:'Pet Addendum',tables:{tenant:0,landlord:1},place:standardCell},
  {id:'concession',document:'concession',name:'Rent Concession Rider',conditional:true,tables:{tenant:0,landlord:1},place:standardCell},
  {id:'dhcr',document:'dhcr',name:'DHCR Electronic Lease Consent',individual:true,kinds:['signature','date_signed'],tables:{tenant:3,landlord:1},
   place:(role,slot,kind)=>({table:role,row:0,cell:kind==='signature'?1:0,lineWidth:kind==='signature'?311.6:235.4,align:'center'})},
@@ -67,7 +67,8 @@ export function hasConcession(values={}){
  const text=String(values['concession.terms'] || '').trim();
  return !!text && !/^(?:none|n\/a|not applicable|no(?: rent)? concession(?:s)?(?:\b.*)?|mock test only.*)[.!]?$/i.test(text);
 }
-const CODES={lease:'LEASE',utilities:'UTIL',packages:'PKG',keys:'KEYS',insurance:'INS',rules:'RULES',fines:'FINES',window_guards:'WG',bedbug:'BEDBUG',sprinkler:'SPRK',allergen:'ALRG',alarms:'ALARM',smoking:'SMOKE',concession:'CONC',dhcr:'DHCR',good_cause:'GCE'};
+export const hasPets=(values={})=>Number(values['pet.count'])>0;
+const CODES={pet:'PET',lease:'LEASE',utilities:'UTIL',packages:'PKG',keys:'KEYS',insurance:'INS',rules:'RULES',fines:'FINES',window_guards:'WG',bedbug:'BEDBUG',sprinkler:'SPRK',allergen:'ALRG',alarms:'ALARM',smoking:'SMOKE',concession:'CONC',dhcr:'DHCR',good_cause:'GCE'};
 const KIND_CODES={signature:'SIG',full_name:'NAME',date_signed:'DATE',initial:'INIT'};
 // Unique across the envelope: one recipient signs each layout once, so the
 // pair identifies the field even where a layout appears in several copies.
@@ -105,7 +106,7 @@ export function signingFields(signers,layoutId,values={}){
  if(layoutId && !layouts.length)throw new Error('Signing positions have not been configured for this document.');
  const fields=layoutId?[]:main;
  for(const layout of layouts){
-  if(layout.conditional && !hasConcession(values))continue;
+  if((layout.conditional && !hasConcession(values)) || (layout.id==='pet' && !hasPets(values)))continue;
   let tenantSlot=0;
   for(const signer of signers){
    const tenant=signer.role==='tenant';

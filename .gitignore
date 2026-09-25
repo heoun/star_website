@@ -18,6 +18,7 @@ notes/
 # copy of the template, not a second source of truth.
 *.docx.bak
 __pycache__/
+*.py[cod]
 
 # Share configuration templates, never local credentials.
 !.dev.vars.example
@@ -26,6 +27,7 @@ __pycache__/
 # Browser automation output and local test/build caches.
 .playwright-mcp/
 playwright-report/
+blob-report/
 test-results/
 coverage/
 *.log

@@ -45,6 +45,10 @@ for (const name of ["cmaps", "standard_fonts", "wasm"]) {
   fs.cpSync(path.join(pdfjs, name), path.join(pdfDest, name), { recursive: true });
 }
 
+fs.mkdirSync(path.join(dist, "shared", "vendor"), { recursive: true });
+fs.copyFileSync(path.join(root, "node_modules", "marked", "lib", "marked.esm.js"), path.join(dist, "shared", "vendor", "marked.js"));
+fs.copyFileSync(path.join(root, "node_modules", "marked", "LICENSE"), path.join(dist, "shared", "vendor", "marked-LICENSE.md"));
+
 console.log("Build complete. Deploy files from ./dist");
 
 function copyRendered(source, destination) {

@@ -21,6 +21,8 @@ export function isLocalRequest(request) {
 // the list of roles, and a typo there should say so rather than quietly hand
 // out the wider of the two.
 export function devIdentity(request, env) {
+  // Real account tests never inherit a local administrator after sign-out.
+  if(env.ACCOUNT_SECURITY==='on' && typeof env.LOCAL_EMAIL_SINK?.send!=='function')return null;
   const email = (env.DEV_ADMIN_EMAIL || "").trim();
   if (!email || !isLocalRequest(request)) return null;
   return {
@@ -43,7 +45,7 @@ export function devIdentity(request, env) {
 // typed by hand and can be stale; the ref is read from the URL actually in use
 // and cannot be, which is why both appear.
 export function describeEnvironment(request, env) {
-  const local = isLocalRequest(request);
+  const local = isLocalRequest(request) || env.APP_ENV==='staging';
   const host = (() => {
     try {
       return new URL(env.SUPABASE_URL || "").hostname;

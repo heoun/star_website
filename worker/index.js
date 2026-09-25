@@ -1,3 +1,6 @@
+import { isListingPage, serveListingPage } from "./listing-pages.js";
+import { accountSecurityEnabled } from "./account-security.js";
+import { handleWorkspaceSecurity } from "./workspace-security.js";
 import { handleAuthRequest } from "./auth.js";
 import { handleWorkspaceAuth } from "./workspace-auth.js";
 import { handlePublicOnboarding } from "./administration.js";
@@ -14,8 +17,10 @@ import { readSession } from './auth.js';
 import { internalTesting,internalTestParticipant,internalTestListing } from '../backend/app/internal-testing.ts';
 import { handleLandlordDecision } from './landlord-decision.js';
 import { invitedTestContext } from './internal-testing.js';
+import {deploymentError,deploymentResponse} from './deployment.js';
+import {handleGipAuth} from './gip-flow.js';
 
-export default {
+const application = {
   async scheduled(_event,env,ctx) {
     ctx.waitUntil(reconcileRentals(env,new Request(env.SITE_ORIGIN || 'https://starreusa.com/')));
     ctx.waitUntil(reconcileSigning(env,new Request(env.SITE_ORIGIN || 'https://starreusa.com/')));
@@ -35,6 +40,10 @@ export default {
       catch {return Response.json({error:'Application options are unavailable.'},{status:503});}
     }
 
+    if ((request.method === "GET" || request.method === "HEAD") && isListingPage(pathname)) {
+      return serveListingPage(request, env, ctx);
+    }
+
     // The listing pages fetch this path; the Worker answers it from Supabase.
     // wrangler.jsonc routes it here instead of to the bundled asset, which is
     // still used as the offline fallback.
@@ -49,7 +58,7 @@ export default {
 
     // Listing photos, floor plans, and videos stored in R2.
     if (pathname.startsWith("/media/")) {
-      return serveMedia(request, env, pathname);
+      return serveMedia(request, env, pathname, ctx);
     }
 
     // The rebuilt backend, one ring at a time. Off unless BACKEND_V2=on, so
@@ -66,7 +75,11 @@ export default {
 
     if (pathname.startsWith("/api/auth/")) {
       const resource = pathname.slice(pathname.startsWith('/api/auth/workspace/') ? '/api/auth/workspace/'.length : '/api/auth/'.length);
-      if (["workspace-code", "workspace-activate"].includes(resource)) return handleWorkspaceAuth(request, env, resource);
+      if(env.AUTH_PROVIDER==='gip')return handleGipAuth(request,env,resource,pathname.startsWith('/api/auth/workspace/')||resource.startsWith('workspace-')?'workspace':'applicant');
+      if(pathname==='/api/auth/options')return Response.json({provider:'supabase'},{headers:{'Cache-Control':'no-store'}});
+      if(pathname==='/api/auth/workspace/options')return new Response(JSON.stringify({secure:accountSecurityEnabled(env)}),{headers:{'Content-Type':'application/json','Cache-Control':'no-store'}});
+      if(pathname.startsWith('/api/auth/workspace/') && accountSecurityEnabled(env) && ['security','reset-password','setup-password','mfa-enroll','mfa-verify','switch-role','owner-admin'].includes(resource))return handleWorkspaceSecurity(request,env,resource);
+      if (["workspace-code", "workspace-activate", "workspace-invitation", "workspace-accept"].includes(resource)) return handleWorkspaceAuth(request, env, resource);
       return handleAuthRequest(request, env, ctx, resource);
     }
 
@@ -106,12 +119,7 @@ export default {
 
     // Resolve the Supabase session and business role before serving workspace assets.
     if (pathname === "/admin" || pathname.startsWith("/admin/")) {
-      const denied = await guardAdminPage(request, env);
-      if (denied) return denied;
-      const asset = await env.ASSETS.fetch(request);
-      const response = new Response(asset.body, asset);
-      response.headers.set("Cache-Control", "no-store");
-      return response;
+      return guardAdminPage(request, env);
     }
 
     // /contact-us/submit-inquiry.php is kept as an alias so cached pages that
@@ -129,5 +137,31 @@ export default {
     }
 
     return env.ASSETS.fetch(request);
+  }
+};
+
+export default {
+  async fetch(request,env,ctx) {
+    if(deploymentError(env))return Response.json({error:'Environment configuration is incomplete.'},{status:503});
+    if(new URL(request.url).pathname==='/api/health' && request.method==='GET') {
+      try {
+        const result=await fetch(env.SUPABASE_URL+'/rest/v1/star_schema_release?select=revision&limit=1',{headers:{apikey:env.SUPABASE_SERVICE_ROLE_KEY,Authorization:`Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`},signal:AbortSignal.timeout(5000)});
+        if(!result.ok)throw new Error('Database unavailable');
+        const schema=(await result.json())[0]?.revision;if(!schema)throw new Error('Schema not initialized');
+        let simulatorMigrations;
+        if(env.APP_ENV==='staging') {const simulator=await env.SCREENING_SIMULATOR.fetch('https://screening.internal/health');if(!simulator.ok)throw new Error('Simulator unavailable');simulatorMigrations=(await simulator.json()).migrations;}
+        return Response.json({ok:true,environment:env.APP_ENV || 'production',schema,simulatorMigrations},{headers:{'Cache-Control':'no-store'}});
+      }catch{return Response.json({ok:false},{status:503,headers:{'Cache-Control':'no-store'}});}
+    }
+    if(new URL(request.url).pathname==='/api/release' && request.method==='GET')return Response.json({environment:env.APP_ENV || 'production',revision:env.RELEASE_SHA || 'local'},{headers:{'Cache-Control':'no-store'}});
+    // Operator-controlled cutover window: never allow new writes while business
+    // identities are being rebound. Webhooks receive 503 so senders can retry.
+    if(env.AUTH_MIGRATION==='maintenance')return Response.json({error:'Account migration is in progress. Please try again shortly.'},{status:503,headers:{'Cache-Control':'no-store','Retry-After':'60'}});
+    return deploymentResponse(await application.fetch(request,env,ctx),env,request);
+  },
+  async scheduled(event,env,ctx) {
+    if(deploymentError(env))throw new Error('Background jobs blocked: environment configuration is invalid.');
+    if(env.AUTH_MIGRATION==='maintenance')return;
+    return application.scheduled(event,env,ctx);
   }
 };

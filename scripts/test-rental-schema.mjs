@@ -10,8 +10,12 @@ try{
  const invite={id:crypto.randomUUID(),email:'mate@example.test',name:'Mate',expires:'2099-01-01T00:00:00Z'};
  const lead=await submit({name:'Lead',email:'lead@example.test',workspace:{invitations:[invite]}});
  eq(lead.rental_group_id,lead.id);eq(lead.workspace.rental_flow,'automatic');
+ const external = await submit({name:"External fixture",email:"external@example.test"});
+ await db.query("insert into application_documents(application_id,doc_type,path,uploaded_by)values($1,'external_source','fixture/external.pdf','staff')",[external.id]);
+ await rejects(()=>db.query("insert into application_documents(application_id,doc_type,path,uploaded_by)values($1,'external_source','fixture/rejected.pdf','applicant')",[lead.id]));
+
  await rejects(()=>submit({name:'Wrong',email:'wrong@example.test'},lead.id,invite.id));
- eq((await db.query('select count(*)::int n from applications')).rows[0].n,1);
+ eq((await db.query('select count(*)::int n from applications')).rows[0].n,2);
  const mate=await submit({name:'Mate',email:'mate@example.test'},lead.id,invite.id);eq(mate.rental_group_id,lead.id);
  await rejects(()=>submit({name:'Mate',email:'mate@example.test'},lead.id,invite.id));
  const all=async()=> (await db.query('select * from applications where rental_group_id=$1 order by id',[lead.id])).rows;

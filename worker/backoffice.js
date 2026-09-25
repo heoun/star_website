@@ -3,7 +3,7 @@
 import { fetchListings, fetchListing, toAdminListing, requireConfig, fetchStaff, fetchApplicationForLease, fetchBuilding, fetchBuildings, fetchLeaseLayers, fetchLeaseSettingsLayer } from "./supabase.js";
 import { dealValues, resolveValues, LEASE_REGISTRY } from "./lease.js";
 import { parseDate } from "../site/shared/lease-dates.js";
-import { DOCUMENT_TYPES, requireDocsBucket, deleteDocumentsByPrefix } from "./portal.js";
+import { DOCUMENT_TYPES, STAFF_DOCUMENT_TYPES, requireDocsBucket, deleteDocumentsByPrefix } from "./portal.js";
 import { documentSummary } from "../site/admin/application-view.js";
 import { sendEmail } from "./email.js";
 import { rentalMode, rentalWorkflow } from "./rentals.js";
@@ -32,7 +32,7 @@ export async function handleCaseWorkspace(request, env, identity, id, subresourc
     if(id && subresource==='signing')return handleRentalSigning(request,env,identity,id,ctx);
     // The document checklist rides along for staff, so a queue row can say
     // "2 documents missing" with the same list the portal shows applicants.
-    const types = identity.role === "landlord" ? [] : DOCUMENT_TYPES;
+    const types = identity.role === "landlord" ? [] : STAFF_DOCUMENT_TYPES;
     if(rentalMode(env)) {
       const flow=rentalWorkflow(env,request);
       if(!id && request.method==='GET') return json({cases:await flow.list(identity),document_types:types});

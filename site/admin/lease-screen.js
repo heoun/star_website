@@ -25,6 +25,7 @@ import { DOCUMENTS, mapDocuments, verifyDocuments } from "../shared/lease-docume
 import { ADDRESS_FIELD, ADDRESS_PARTS, composeAddress } from "../shared/lease-address.js";
 import { applicationWrite } from "../shared/lease-application.js";
 import { agentMayWriteField } from "../shared/lease-permissions.js";
+import { formatLeaseFieldValue } from "../shared/lease-values.js";
 import {
   defaultsMarkup, handleDefaultsClick, rememberDefaultsNavigation, syncDefaultsNavigation, layerOf, loadLayer, managerFields,
   mayLeaveEditor, newDefaultsUi, propertyOf, resolve
@@ -156,6 +157,11 @@ function targetLabelFor() {
 
 // ------------------------------------------------------------------ loading
 
+function formattedValues(values) {
+  return Object.fromEntries(Object.entries(values).map(([id, value]) =>
+    [id, formatLeaseFieldValue(state.byId.get(id), value)]));
+}
+
 async function fetchValues() {
   if (state.mode === "lease") {
     const id=encodeURIComponent(state.application.id);
@@ -166,21 +172,22 @@ async function fetchValues() {
     ]);
     state.caseRow=caseRow;
     state.signing=signing;
+    state.carbonCopies=signing.carbonCopies || signing.signing?.carbonCopies || [];
     const phase=caseRow.workspace?.signing?.phase;
     state.readOnly=state.requestedReadOnly || ['lease_sent','lease_signed','declined'].includes(caseRow.status) || !!(phase && !['voided','declined'].includes(phase));
     state.landlordEmail=state.signing?.signing?.signers?.find(s=>s.role==='landlord')?.email || caseRow.workspace?.recommendation?.landlord_email || '';
-    if(!state.landlordEmail){
+    if(!state.landlordEmail || signing?.configuration?.reviewOnly){
       const [{landlords=[]},buildingData]=await Promise.all([
         api(`/cases/${id}/participants`).catch(()=>({})),
         buildings.length?Promise.resolve({buildings}):api('/buildings').catch(()=>({buildings:[]}))
       ]);
       buildings=buildingData.buildings;
       const building=buildings.find(b=>b.id===caseRow.listings?.building_id);
-      state.landlordEmail=landlords.find(l=>l.email===building?.landlord_signer_email)?.email || (landlords.length===1?landlords[0].email:'');
+      state.landlordEmail=signing?.configuration?.reviewOnly ? (building?.landlord_signer_email || '') : (landlords.find(l=>l.email===building?.landlord_signer_email)?.email || (landlords.length===1?landlords[0].email:''));
     }
-    state.values = payload.values;
+    state.values = formattedValues(payload.values);
     state.frozen=payload.frozen;
-    state.baseValues=structuredClone(payload.values);
+    state.baseValues=structuredClone(state.values);
     state.provenance = payload.provenance || {};
     state.missingLabels = {};
     for (let i = 0; i < payload.missing.length; i += 1) {
@@ -194,7 +201,7 @@ async function fetchValues() {
     method: "POST",
     body: JSON.stringify({ mode: "values", listing_id: state.listingId || null })
   });
-  state.values = payload.values;
+  state.values = formattedValues(payload.values);
   state.provenance = payload.provenance || {};
   state.missing = new Set(payload.missing);
   state.missingLabels = {};
@@ -458,6 +465,7 @@ function leaseStatus() {
   if (applicationStatus === "declined") return { label: "Cancelled", tone: "off" };
   if (applicationStatus === "lease_signed") return { label: "Fully signed", tone: "good" };
   if (applicationStatus === "lease_sent") return { label: "Sent for signature", tone: "busy" };
+  if(state.signing?.configuration?.reviewOnly)return {label:"Admin Review Only · Not Sent",tone:"off"};
   if (state.missing.size > 0) return { label: "Draft", tone: "off" };
   if(state.dirty.size)return {label:'Unsaved Corrections',tone:'off'};
   if(state.mode==='lease' && !['landlord_approved','lease_sent','lease_signed'].includes(applicationStatus))return {label:'Awaiting Approval',tone:'off'};
@@ -508,6 +516,7 @@ function renderShell() {
           <div class="lease-warnings" id="lease-warnings"></div>
           <button type="button" id="lease-save" disabled>Save settings</button>
           <button type="button" id="lease-draft" hidden>Preview package</button>
+          <button type="button" id="lease-pdf" hidden>Download PDF</button>
           <button type="button" class="primary" id="lease-final" hidden disabled>Generate lease package</button>
         </div>
       </div>
@@ -670,7 +679,7 @@ function onInput(fieldId, rawValue, isCheckbox) {
     else state.checked.delete(fieldId);
     state.values[fieldId] = rawValue ? field.marks.checked : field.marks.unchecked;
   } else {
-    state.values[fieldId] = rawValue;
+    state.values[fieldId] = formatLeaseFieldValue(field, rawValue);
   }
 
   state.dirty.add(fieldId);
@@ -803,6 +812,10 @@ function updateActions() {
   }
 
   screen.querySelector("#lease-actions").hidden = false;
+  const pdfButton=screen.querySelector('#lease-pdf');
+  pdfButton.hidden=state.mode!=='lease' || !state.signing?.configuration?.enabled;
+  pdfButton.disabled=!!state.dirty.size || signingBusy || signingLoading;
+  pdfButton.title=state.dirty.size?'Save changes before downloading the lease PDF.':'';
   if(state.mode==='lease' && state.caseRow?.workspace?.rental_flow==='automatic') {
     const save=screen.querySelector('#lease-save'),review=screen.querySelector('#lease-final'),draft=screen.querySelector('#lease-draft');
     const problems=workspace.reviewIssues(state).length;
@@ -810,7 +823,7 @@ function updateActions() {
     draft.hidden=state.readOnly || !!signingEntry?.reviewed;draft.textContent='Review Lease for Signatures';
     review.hidden=false;review.textContent=state.readOnly?'View Signing Status':'Send With DocuSign';
     review.disabled=!!state.dirty.size || !state.signing?.configuration?.enabled || !screen.querySelector('#lease-alarm').hidden || (!state.readOnly && (problems>0 || state.caseRow.status!=='landlord_approved'));
-    draft.disabled=review.disabled || signingLoading || signingBusy;
+    draft.disabled=state.signing?.configuration?.reviewOnly ? !!state.dirty.size || signingLoading || signingBusy : review.disabled || signingLoading || signingBusy;
     if(signingLoading || signingBusy || (!state.readOnly && !state.signing?.configuration?.canSend))review.disabled=true;
     if(state.signing?.configuration?.placementReviewRequired && !state.readOnly)review.disabled=true;
     screen.querySelector('#lease-warnings').textContent=state.dirty.size?`${state.dirty.size} unsaved correction${state.dirty.size===1?'':'s'} · This lease only`:state.caseRow.status==='sent_to_landlord'?'Waiting for landlord approval':'';
@@ -970,8 +983,8 @@ function previewBlocker(){
   if(state.readOnly)return 'This lease is locked, so signing fields cannot be previewed.';
   if(!state.signing?.configuration?.enabled)return 'DocuSign is not connected, so signing fields cannot be previewed.';
   const row=state.caseRow;
-  if(row.status!=='landlord_approved' || !row.workspace?.lease_preparation || row.progression_blocked)return 'Signing fields can be previewed once the landlord has approved this lease.';
-  if(workspace.reviewIssues(state).length)return 'Resolve the items under Lease Information to preview signing fields.';
+  if(!state.signing?.configuration?.reviewOnly && (row.status!=='landlord_approved' || !row.workspace?.lease_preparation || row.progression_blocked))return 'Signing fields can be previewed once the landlord has approved this lease.';
+  if(!state.signing?.configuration?.reviewOnly && workspace.reviewIssues(state).length)return 'Resolve the items under Lease Information to preview signing fields.';
   if(!screen.querySelector('#lease-alarm').hidden)return 'This screen does not match the template, so signing fields cannot be previewed.';
   return '';
 }
@@ -1078,7 +1091,7 @@ async function previewDocumentFields(options={}){
     // A copy with no signing box (the concession rider when none is agreed)
     // is still mounted for its filled values; its note stands in for the
     // ready text once the frame has marked them.
-    if(!fields.length)docPreview.message=layout.id==='concession'?'No rent concession is specified. This rider does not require signatures.':'This document has no signing fields.';
+    if(!fields.length)docPreview.message=layout.id==='concession'?'No rent concession is specified. This rider does not require signatures.':layout.id==='pet'?'No pets are listed. This rider is omitted from the lease package.':'This document has no signing fields.';
     docPreview.part=part;docPreview.fields=fields;
     if(!fields.some(f=>f.id===docPreview.selected))docPreview.selected=fields[0]?.id || '';
     screen.querySelector('#lease-doc-name').textContent=part.name || layout.name;
@@ -1279,6 +1292,24 @@ function bindOnce() {
   });
 
   screen.addEventListener("click", async (event) => {
+    const cc=event.target.closest('[data-cc-action]');
+    if(cc){
+      const host=formHost.querySelector('[data-cc-editor]');
+      const rows=()=>[...host.querySelectorAll('[data-cc-row]')].map(r=>({name:r.querySelector('[data-cc-name]').value,email:r.querySelector('[data-cc-email]').value}));
+      if(cc.dataset.ccAction==='remove')cc.closest('[data-cc-row]').remove();
+      if(cc.dataset.ccAction==='add'){state.carbonCopies=[...rows(),{name:'',email:''}];host.outerHTML=workspace.carbonCopyEditor(state);}
+      if(cc.dataset.ccAction==='save'){
+        cc.disabled=true;
+        try{
+          if(state.dirty.size)throw new Error('Save lease corrections before saving CC recipients.');
+          const result=await api(`/cases/${encodeURIComponent(state.application.id)}/signing`,{method:'POST',body:JSON.stringify({action:'prepare',version:state.caseRow.workspace_version,carbonCopies:rows()})});
+          if(result.reserved)throw new Error('This signing package has already been sent. CC recipients are locked.');
+          invalidateSigningReview(state.application.id);clearSigningDocument();
+          await fetchValues();workspace.renderTab(formHost,state);renderSigningPanel();setStatus('CC recipients saved. No email has been sent.','ok');
+        }catch(error){setStatus(error.message,'error');}finally{cc.disabled=false;}
+      }
+      return;
+    }
     if(state?.mode==='lease' && state.dirty.size && event.target.closest('a[href^="#"]') && !window.confirm('Leave without saving these lease corrections?')){event.preventDefault();return;}
     // The property editor owns its panels, its two dialogs and its writes.
     // Asked first, because a dialog's backdrop is not a button.
@@ -1311,6 +1342,20 @@ function bindOnce() {
       return;
     }
     if (button.id === "lease-save") return saveSettings();
+    if(button.id==='lease-pdf'){
+      if(state.dirty.size || signingBusy)return;
+      signingBusy=true;updateActions();button.textContent='Preparing PDF…';setStatus('Preparing the complete lease PDF. No signing invitations will be sent.');
+      try{
+        const current=state.signing?.signing;
+        const pkg=current && !['voided','declined'].includes(current.phase)?current:(await prepareSigningPackage(signingContext()))?.preview;
+        if(!pkg)throw new Error('Refresh the signing status and try again.');
+        const response=await fetch(`/api/admin/cases/${encodeURIComponent(state.application.id)}/signing`,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'download_pdf',packageId:pkg.id,version:state.caseRow.workspace_version})});
+        if(!response.ok)throw new Error((await response.json().catch(()=>({}))).error || 'Unable to download the lease PDF.');
+        const blob=await response.blob();if(!blob.type.includes('application/pdf'))throw new Error('The server did not return a PDF.');
+        const url=URL.createObjectURL(blob),link=document.createElement('a');link.href=url;link.download='lease-for-review.pdf';link.click();setTimeout(()=>URL.revokeObjectURL(url),60000);setStatus('Lease PDF downloaded.','ok');
+      }catch(error){setStatus(error.message,'error');}finally{signingBusy=false;button.textContent='Download PDF';updateActions();}
+      return;
+    }
     if(button.dataset.previewSigningFields){
       docPreview.selected=button.dataset.previewSigningFields;
       screen.dataset.tab='doc';

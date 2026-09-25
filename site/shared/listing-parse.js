@@ -48,7 +48,7 @@ export function parseListingCopy(text) {
     title: lines[1] || "",
     location: addressParts.slice(1).join(", "),
     property_type: (factsLine.split(",")[0] || "").trim(),
-    bedrooms: bedroomsMatch ? Number(bedroomsMatch[1]) : (/\bstudio\b/i.test(factsLine) ? 0 : null),
+    bedrooms: bedroomsMatch ? Number(bedroomsMatch[1]) : null,
     bathrooms: bathroomsMatch ? Number(bathroomsMatch[1]) : null,
     description: lines.slice(4).join("\n").replace(/[“”]/g, "").trim()
   };

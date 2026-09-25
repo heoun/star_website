@@ -2,7 +2,9 @@
 export function internalTesting(env:Record<string,any>, request:Request) {
   const loopback=['127.0.0.1','localhost','[::1]'].includes(new URL(request.url).hostname);
   const database=(()=>{try{return new URL(env.SUPABASE_URL).hostname;}catch{return '';}})();
-  return loopback && env.INTERNAL_TESTING==='on' && !!env.INTERNAL_TEST_DATABASE_HOST
+  const staging=env.APP_ENV==='staging' && env.SITE_ORIGIN==='https://dev.starreusa.com'
+    && new URL(request.url).origin===env.SITE_ORIGIN;
+  return (loopback || staging) && env.APP_ENV!=='production' && env.INTERNAL_TESTING==='on' && !!env.INTERNAL_TEST_DATABASE_HOST
     && database===env.INTERNAL_TEST_DATABASE_HOST && env.DOCUSIGN_ENVIRONMENT==='demo';
 }
 export function internalTestAccount(env:Record<string,any>,request:Request,session:{email:string;subject:string}|null) {

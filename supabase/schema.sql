@@ -534,6 +534,16 @@ create table if not exists public.application_documents (
   created_at timestamptz not null default now()
 );
 
+-- External records are staff evidence, not applicant checklist completion.
+alter table public.application_documents drop constraint if exists application_documents_doc_type_check;
+alter table public.application_documents add constraint application_documents_doc_type_check check (doc_type in (
+  'government_id_front', 'government_id_back', 'job_offer_letter',
+  'paystub', 'school_offer_letter', 'student_visa_i20',
+  'bank_statement', 'tax_return', 'landlord_reference', 'external_source'));
+alter table public.application_documents drop constraint if exists application_documents_external_staff_check;
+alter table public.application_documents add constraint application_documents_external_staff_check
+  check (doc_type <> 'external_source' or uploaded_by = 'staff');
+
 create index if not exists application_documents_application_idx
   on public.application_documents (application_id, doc_type, created_at);
 

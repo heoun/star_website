@@ -1,3 +1,4 @@
+import {omitAbsentPetRider} from '../worker/signing-documents.js';
 import { toFeedListing } from "../worker/supabase.js";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -37,7 +38,7 @@ try {
     equal(Object.keys(values).sort(),LEASE_REGISTRY.fields.filter(f=>f.source==="manager").map(f=>f.id).sort(),"Every property has all 125 stored lease defaults");
     for (const f of LEASE_REGISTRY.fields.filter(f=>f.source==="manager")) {
       if(f.type==="checkbox")assert.equal(typeof values[f.id],"boolean");
-      else assert(String(values[f.id]).trim(),f.id);
+      else if(!f.required_when || values[f.required_when]===true) assert(String(values[f.id]).trim(),f.id);
       if(f.type==="choice")assert(f.options.includes(values[f.id]),f.id);
       assert(!String(values[f.id]).includes("(mock)"),"Labels must not contaminate stored values");
     }
@@ -45,12 +46,12 @@ try {
     const listing=fixture.state.listings.find(l=>l.building_id===b.id);
     const app=fixture.state.applications.find(a=>a.listing_id===listing.id);
     if(!listing.published)equal(app,undefined,"Draft listing has no generated application");
-    const result=resolveValues({layers:{building:values,unit:{}},deal:dealValues({building:b,listing,application:app,today:parseDate("2026-09-09")}),overrides:app?{}:MOCK_PREVIEW_TENANCY});
+    const result=resolveValues({layers:{building:values,unit:{}},deal:dealValues({building:b,listing,application:app,today:parseDate("2026-09-09")}),overrides:app?{"pet.mark_restricted":true,"pet.mark_count":true,"pet.mark_types":true,"pet.mark_no_fee":true}:MOCK_PREVIEW_TENANCY});
     equal(result.missing,[],"Mock data resolves every required lease field");
     equal(reviewLease({registry:LEASE_REGISTRY,...result,application:app}).findings.blank,[],"Checkbox disclosures must form a consistent scenario");
     const docx=await fillTemplate(env,{url:"http://localhost/admin/"},result.values),xml=await xmlOf(docx);
     assert(!xml.includes("{{"));assert(xml.includes("MOCK LEASE - DEMONSTRATION ONLY"));checks++;
-    equal((xml.match(/\(mock\)/g)||[]).length,(await xmlOf(originalTemplate)).match(/\{\{/g).length,"Every printed placeholder carries (mock)");
+    equal((xml.match(/\(mock\)/g)||[]).length,omitAbsentPetRider(await xmlOf(originalTemplate),result.values).match(/\{\{/g).length,"Every printed placeholder carries (mock)");
     const preview = await handleAdminRequest(new Request("http://localhost/api/admin/lease/document",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"values",listing_id:listing.id,overrides:MOCK_PREVIEW_TENANCY})}),env,{},"/api/admin/lease/document");
     equal(preview.status,200);
     equal((await preview.json()).missing,[],"Standalone property previews include a complete independent sample tenancy");

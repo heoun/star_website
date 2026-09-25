@@ -5,9 +5,10 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Property Details | Star Real Estate</title>
   <!-- INLINE_BRAND_ICON -->
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Sora:wght@500;600;700;800&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="preload" href="/shared/fonts/public-sans-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="preload" href="/shared/fonts/sora-latin.woff2" as="font" type="font/woff2" crossorigin>
+  <link rel="stylesheet" href="/shared/fonts/listing-fonts.css">
+  <link rel="preload" href="/jpg/unit-bkg.jpeg" as="image">
   <style>
     :root {
       --ink: #1f2a33;
@@ -284,6 +285,7 @@
       display: block;
     }
 
+    .stage .caption[hidden] { display: none; }
     .stage .caption {
       position: absolute;
       left: 16px;
@@ -410,7 +412,12 @@
       margin: 28px 0 10px;
     }
 
-    .description { margin: 0; color: var(--text); line-height: 1.7; white-space: pre-line; }
+    .description > :first-child { margin-top: 0; }
+    .description pre { overflow-x: auto; padding: 12px; background: #eef2f4; border-radius: 8px; }
+    .description blockquote { margin-left: 0; padding-left: 16px; border-left: 3px solid #9eb5c2; }
+    .description table { display: block; max-width: 100%; overflow-x: auto; border-collapse: collapse; }
+    .description th, .description td { padding: 6px 10px; border: 1px solid #ccd7de; }
+    .description { margin: 0; color: var(--text); line-height: 1.7; white-space: normal; }
 
     .media-block img,
     .media-block video {
@@ -560,7 +567,7 @@
     </main>
   </div>
 
-  <script src="../shared/property-page.js"></script>
+  <script type="module" src="../shared/property-page.js"></script>
   <script>
     const menuToggle = document.querySelector('.menu-toggle');
     const mobileNav = document.querySelector('.mobile-nav');

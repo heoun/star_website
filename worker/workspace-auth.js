@@ -1,3 +1,5 @@
+import { accountSecurityEnabled } from "./account-security.js";
+import { sendWorkspaceInvitation, handleSecureWorkspaceActivation } from "./workspace-invitations.js";
 // Invitation and activation adapter. The directory is the allowlist; email
 // verification alone never grants a role, and user metadata is never trusted.
 import { authRequest, signedIn, cleanEmail, validPassword, sameOriginMutation } from "./auth.js";
@@ -16,6 +18,7 @@ export async function inviteWorkspaceAccount(request, env, email) {
   // Local role demos never trigger Supabase's real email service.
   if (isLocalRequest(request) && env.DEV_REAL_EMAIL !== "true") return { status: "preview" };
   try {
+    if(accountSecurityEnabled(env))return await sendWorkspaceInvitation(request,env,email);
     if (!await eligible(env, email)) return { status: "failed" };
     const result = await authRequest(env, "otp", { body: { email, create_user: true } });
     return { status: result.ok ? "sent" : "failed" };
@@ -36,6 +39,7 @@ export async function handleWorkspaceAuth(request, env, resource) {
     }
     let body;
     try { body = JSON.parse(await new Blob(parts).text()); } catch { return json({ error: "Invalid form data." }, 400); }
+    if(accountSecurityEnabled(env))return await handleSecureWorkspaceActivation(request,env,resource,body);
     const email = cleanEmail(body?.email);
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return json({ error: "Enter your email address." }, 422);
     if (resource === "workspace-code") {

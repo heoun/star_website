@@ -892,6 +892,24 @@ function renderLandlordCase(host, { api, session, id, row }) {
 
 function bindCase(host, ctx, reload) {
   const { row, id, api, session } = ctx;
+  const syncCollaborators = form => {
+    const owner = String(form.elements.responsible_email.value).trim().toLowerCase();
+    form.querySelectorAll('input[name="collaborator_emails"]').forEach(input => {
+      const responsible = input.value.trim().toLowerCase() === owner;
+      input.disabled = responsible;
+      if (responsible) input.checked = false;
+      input.closest('label').hidden = responsible;
+    });
+    form.querySelectorAll('.cw-collaborator-group').forEach(group => {
+      group.hidden = !group.querySelector('input:not(:disabled)');
+    });
+  };
+  host.querySelectorAll('form[data-action="assign"]').forEach(syncCollaborators);
+  host.onchange = event => {
+    if (event.target.name !== 'responsible_email') return;
+    const form = event.target.closest('form[data-action="assign"]');
+    if (form) syncCollaborators(form);
+  };
   const selectTab = key => {
     if (!host.querySelector(`[data-case-tab="${key}"]`)) return;
     if (ctx.viewKey) detailViews.set(ctx.viewKey, key);

@@ -29,7 +29,7 @@ import { internalTestParticipant,internalTestListing } from './internal-testing.
 // bank statement must not be one bug away from that. Every document read or
 // write here checks the session email against the application's email first.
 
-import { authConfig, readSession, handleAuthRequest, sameOriginMutation } from "./auth.js";
+import { authConfigured, readSession, handleAuthRequest, sameOriginMutation } from "./auth.js";
 export { readSession } from "./auth.js";
 import { sendEmail } from "./email.js";
 import {
@@ -85,6 +85,14 @@ export const DOCUMENT_TYPES = [
   { id: "landlord_reference", label: "Rental Payment Record", required: 0, max: 4,
     hint: "Optional. Proof of rent paid on time, such as a payment ledger or a letter from a previous landlord." }
 ];
+
+// Imported source evidence stays with staff; it is not an applicant upload
+// requirement and does not establish a verified screening result.
+export const STAFF_DOCUMENT_TYPES = [...DOCUMENT_TYPES, {
+  id: "external_source", label: "External Application & Reports · Pending Review",
+  required: 0, max: 20, when: "staff",
+  hint: "Original external records. Receipt does not mean verified or approved."
+}];
 
 // The types this application is asked for. Applications from before the
 // work-or-school question — employment_status null — all had an employer on
@@ -254,7 +262,7 @@ export function toPortalApplication(row) {
       unit: row.listings.unit,
       location: row.listings.location
     } : null,
-    documents: (row.application_documents || []).map(toPortalDocument),
+    documents: (row.application_documents || []).filter(doc => doc.doc_type !== "external_source").map(toPortalDocument),
     // Only while the request stands. Once the status has moved on, what was
     // asked is history, not an instruction.
     request: row.status === "needs_info" && asked && asked.message
@@ -265,7 +273,7 @@ export function toPortalApplication(row) {
 
 async function handleList(env, session,request) {
   const [rows,pending_applications] = await Promise.all([
-    fetchApplicationsByEmail(env, session.email),
+    fetchApplicationsByEmail(env, session.email, session.user_id),
     rentalMode(env) ? pendingOwnedApplications(env,session) : []
   ]);
   const applications = rows.map(toPortalApplication);
@@ -278,7 +286,7 @@ async function handleUpload(request, env, ctx, session, applicationId) {
   }
 
   const application = await fetchPortalApplication(env, applicationId);
-  if (!application || String(application.email || "").trim().toLowerCase() !== session.email) {
+  if (!application || (env.ACCOUNT_SECURITY==='on' ? !session.user_id || application.user_id!==session.user_id : String(application.email || "").trim().toLowerCase() !== session.email)) {
     return json({ error: "Application not found." }, 404);
   }
 
@@ -346,9 +354,9 @@ async function handleUpload(request, env, ctx, session, applicationId) {
 async function fetchOwnedDocument(env, session, id) {
   if (!UUID_PATTERN.test(id)) return null;
   const row = await fetchApplicationDocument(env, id);
-  if (!row) return null;
+  if (!row || row.doc_type === "external_source") return null;
   const owner = String(row.applications?.email || "").trim().toLowerCase();
-  return owner === session.email ? row : null;
+  return (env.ACCOUNT_SECURITY==='on' ? !!session.user_id && row.applications?.user_id===session.user_id : owner===session.email) ? row : null;
 }
 
 async function handleDownload(env, session, id) {
@@ -382,8 +390,8 @@ async function sendCompletionNotice(request, env, application) {
 }
 
 export async function handlePortalRequest(request, env, ctx, pathname) {
-  if (!authConfig(env)) {
-    console.error("SUPABASE_URL or SUPABASE_ANON_KEY is not configured; the applicant portal is unavailable.");
+  if (!authConfigured(env, 'applicant')) {
+    console.error("Applicant authentication is unavailable or in maintenance.");
     return json({ error: "The portal is temporarily unavailable. Please try again shortly." }, 503);
   }
 
@@ -392,14 +400,14 @@ export async function handlePortalRequest(request, env, ctx, pathname) {
 
   try {
     if (!sameOriginMutation(request)) return json({ error: "Use this website to submit the form." }, 403);
-    if (!id && ["register", "resend", "verify-register", "login", "request-reset", "verify-reset", "sign-out"].includes(resource)) {
+    if (!id && (["register", "resend", "verify-register", "login", "request-reset", "verify-reset", "sign-out"].includes(resource)||env.AUTH_PROVIDER==='gip'&&['options','check-action','mfa-login'].includes(resource))) {
       return handleAuthRequest(request, env, ctx, resource);
     }
 
     // Everything below is somebody's private data, so it needs a session.
     const session = await readSession(request, env);
     if (!session) {
-      return json({ error: "Please sign in." }, 401);
+      return json({ error: "Please sign in.", ...(env.APPLICANT_AUTH_MODE==='isolated'||env.AUTH_PROVIDER==='gip' ? {auth_realm:'applicant'} : {}) }, 401);
     }
 
     let response;

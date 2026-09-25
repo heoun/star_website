@@ -1,7 +1,8 @@
 import type { ApplicantChecksProvider, PaymentReceipt, ScreeningOrder } from '../../contracts/applicant-checks.ts';
-export function makeScreeningSimulator(origin:string,token:string,http:typeof fetch=fetch):ApplicantChecksProvider {
+export function makeScreeningSimulator(origin:string,token:string,http:typeof fetch=fetch,serviceBinding=false):ApplicantChecksProvider {
   const url=new URL(origin);
-  if(url.protocol!=='http:' || !['127.0.0.1','localhost','[::1]'].includes(url.hostname) || !token)throw new Error('Internal screening simulator is not configured.');
+  const bound=serviceBinding && origin==='https://screening.internal' && http!==fetch;
+  if(!token || (!bound && (url.protocol!=='http:' || !['127.0.0.1','localhost','[::1]'].includes(url.hostname))))throw new Error('Internal screening simulator is not configured.');
   async function call(path:string,body?:unknown) {
     let response:Response;
     try {response=await http(new URL(path,url),{method:body?'POST':'GET',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},...(body?{body:JSON.stringify(body)}:{}),signal:AbortSignal.timeout(10000)});}

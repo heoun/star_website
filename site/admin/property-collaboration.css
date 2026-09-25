@@ -1,0 +1,13 @@
+
+/* Scoped collaboration controls and review tables. */
+[data-property-collaboration] { margin: 1.5rem 0; }
+[data-draft-status]:empty { display: none; }
+.workspace-verify { width: min(30rem, calc(100vw - 2rem)); box-sizing: border-box; padding: 1.5rem; border: 1px solid #dce4eb; border-radius: 1rem; color: #20313d; }
+.workspace-verify::backdrop { background: rgb(15 35 48 / 45%); }
+.workspace-verify .desk-form { padding: 0; }
+.workspace-verify [role=status]:empty { display: none; }
+.collab-assignments { display: grid; gap: .75rem; margin: 1.25rem 0; }
+.collab-assignments button { text-align: left; }
+.collab-diff { overflow-x: auto; margin: 1rem 0; }
+.collab-diff table { width: 100%; border-collapse: collapse; }
+.collab-diff th, .collab-diff td { padding: .75rem; text-align: left; vertical-align: top; border-bottom: 1px solid #dce4eb; overflow-wrap: anywhere; min-width: 8rem; }

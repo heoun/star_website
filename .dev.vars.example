@@ -1,3 +1,5 @@
+# Local runtime only; online environments are set in wrangler.jsonc.
+APP_ENV=local
 # Copy to .dev.vars and fill in. .dev.vars is gitignored, is never uploaded by
 # `wrangler deploy`, and does not exist in GitHub Actions — nothing here can
 # reach production.
@@ -52,6 +54,16 @@ SUPABASE_SERVICE_ROLE_KEY=
 # enabled: unverified identities cannot access either portal.
 SUPABASE_PUBLISHABLE_KEY=
 SUPABASE_ANON_KEY=
+
+# Optional, coordinated applicant authentication cutover. Leave unset until the
+# new project, identity migration and mail delivery have been verified.
+# ACCOUNT_SECURITY must be on. The new project must differ from SUPABASE_URL.
+# maintenance temporarily closes applicant login while preserving workspace auth.
+APPLICANT_AUTH_MODE=
+APPLICANT_AUTH_URL=
+APPLICANT_AUTH_PUBLISHABLE_KEY=
+# Never upload the new project's service-role key to the Worker. Keep migration
+# operator credentials in a separate protected file.
 
 # What to call this project in the admin banner. Supabase keeps the display
 # name in its dashboard only — neither the URL nor the key carries it — so

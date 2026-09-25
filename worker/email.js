@@ -18,11 +18,18 @@ import { prepareMail } from './mail-layout.js';
 const RESEND_ENDPOINT = "https://api.resend.com/emails";
 
 // Returns whether the message was delivered — or, locally, shown.
-export async function sendEmail(request, env, message, { idempotencyKey } = {}) {
+export async function sendEmail(request, env, message, { idempotencyKey, workspaceInvitationRecipient } = {}) {
   message=prepareMail(env,message);
   const local = isLocalRequest(request);
-  if(local && env.INTERNAL_TESTING==='on' && env.DEV_REAL_EMAIL==='true') {
+  if(env.APP_ENV==='staging' || (local && env.INTERNAL_TESTING==='on' && env.DEV_REAL_EMAIL==='true')) {
     const allowed=[env.INTERNAL_TEST_EMAIL,env.INTERNAL_TEST_LANDLORD_EMAIL,...internalTestRoommates(env)].filter(Boolean).map(v=>v.toLowerCase());
+    // Only the authenticated account-invitation adapter supplies this option,
+    // after checking the active directory member. It is not a message/body field.
+    // This exception covers one explicit workspace invite, never general test mail.
+    const recipients=[].concat(message.to||[],message.cc||[],message.bcc||[]);
+    if(env.APP_ENV==='staging'&&typeof workspaceInvitationRecipient==='string'&&recipients.length===1&&recipients[0]===workspaceInvitationRecipient){
+      allowed.push(workspaceInvitationRecipient.toLowerCase());
+    }
     if([].concat(message.to || [],message.cc || [],message.bcc || []).some(v=>typeof v!=='string' || !allowed.includes(v.toLowerCase()))) {
       console.error('Internal test email blocked: recipient is outside the configured test inboxes.');return false;
     }

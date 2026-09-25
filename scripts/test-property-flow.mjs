@@ -45,7 +45,7 @@ assert.equal(ui.activeSection,'payments');assert.equal(ui.editingGroup,'');
 ui.editingGroup='payments';
 let redrawn=false;
 await handleDefaultsClick({target:{closest:selector=>selector==='[data-property-step]'?{dataset:{propertyStep:'keys'},closest:()=>null}:null}}, {...ctx,host:{querySelector:()=>null},rerender:async()=>{redrawn=true;}});
-assert.equal(ui.activeSection,'payments'); assert.equal(redrawn,false,'Step change cannot discard an open edit');
+assert.equal(ui.activeSection,'keys'); assert.equal(redrawn,true,'Unchanged direct editor allows step navigation');
 ui.activeSection='signing';ui.editingGroup='signing';
 const contactValues={'landlord.signer_mailing_address':'123 Example Lane','landlord.phone':'212-555-0199'};
 const contactPanel={querySelectorAll:selector=>selector==='[data-setting]'?Object.entries(contactValues).map(([setting,value])=>({dataset:{setting},value})):[]};

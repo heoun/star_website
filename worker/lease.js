@@ -1,3 +1,4 @@
+import {omitAbsentPetRider} from './signing-documents.js';
 // Fills the lease template for one approved application.
 //
 // lease/schema/fields.json lists all 147 placeholders in the template and says
@@ -21,6 +22,7 @@ import registry from "../lease/schema/fields.json" with { type: "json" };
 import { readEntries, readEntryText, replaceEntry } from "./zip.js";
 import { ADDRESS_FIELD, composeAddress } from "../site/shared/lease-address.js";
 import { applicationColumns } from "../site/shared/lease-application.js";
+import { formatLeaseFieldValue } from "../site/shared/lease-values.js";
 // The date rules are shared with the lease workspace, which shows the end date
 // moving as the term changes. Two copies of that arithmetic is two answers.
 import { leaseEndDate, longDate, parseDate, shortDate } from "../site/shared/lease-dates.js";
@@ -111,6 +113,9 @@ export function dealValues({ application, listing, building, today }) {
     [state || abbr, zip].filter(Boolean).join(" ")
   ].filter(Boolean).join(", ");
 
+  const pets=Array.isArray(application?.pets)?application.pets:[];
+  const petTypes=[...new Set(pets.map(p=>p.type==='other'?p.species:p.type).filter(Boolean))];
+  const petDescriptions=[...new Set(pets.map(p=>p.type==='other'?p.species:[p.type,p.species?`(${p.species})`:''].filter(Boolean).join(' ')).filter(Boolean))];
   const values = {
     "lease.effective_date": longDate(today),
     "lease.commencement_date": shortDate(start),
@@ -122,6 +127,9 @@ export function dealValues({ application, listing, building, today }) {
     "tenant.names": application?.name || "",
     "tenant.email": application?.email || "",
     "tenant.mailing_address": application?.current_address || "",
+    "pet.count": pets.length,
+    "pet.type_count": petTypes.length || "",
+    "pet.types": petDescriptions.join(", "),
     "concession.terms": application?.concession_terms || "",
     "property.address_full": addressFull,
     "property.street": street,
@@ -174,7 +182,7 @@ export function formatOverrides(overrides) {
       const parts = parseDate(text);
       if (parts) text = shortDate(parts);
     }
-    out[id] = text;
+    out[id] = formatLeaseFieldValue(field, text);
   }
   return out;
 }
@@ -202,6 +210,9 @@ export function fieldProvenance(layers) {
 // Resolves every placeholder, and reports what is still unanswered rather than
 // quietly substituting a blank.
 export function resolveValues({ layers, deal, overrides = {} }) {
+  // An omitted optional rental due day inherits the property's standing term.
+  overrides={...overrides};
+  if(overrides['rent.due_day']==null || String(overrides['rent.due_day']).trim()==='')delete overrides['rent.due_day'];
   const settings = mergeLayers(layers);
   // Property-level choices provide starting values; explicit rental overrides win.
   deal={...deal};
@@ -211,9 +222,7 @@ export function resolveValues({ layers, deal, overrides = {} }) {
     deal['dhcr.mark_renewal']=settings['dhcr.lease_type']==='Renewal lease';
   }
   const sprinkler={...settings,...overrides};
-  if(sprinkler['sprinkler.mark_option2']===true && sprinkler['sprinkler.mark_option1']!==true){
-    if(!settings['sprinkler.last_inspection'])settings['sprinkler.last_inspection']=deal['lease.vacancy_lease_date'] || '';
-  } else settings['sprinkler.last_inspection']='';
+  if(sprinkler['sprinkler.mark_option2']!==true || sprinkler['sprinkler.mark_option1']===true) settings['sprinkler.last_inspection']='';
   const values = {};
   const missing = [];
 
@@ -249,8 +258,8 @@ export function resolveValues({ layers, deal, overrides = {} }) {
       if (parts) text = shortDate(parts);
     }
 
-    if (text === "" && field.required) missing.push(field.id);
-    values[field.id] = text;
+    if (text.trim() === "" && (field.required || (field.required_when && sprinkler[field.required_when] === true))) missing.push(field.id);
+    values[field.id] = formatLeaseFieldValue(field, text);
   }
 
   // The registry's idle_unless rules. A spare row nobody named prints its idle
@@ -322,14 +331,14 @@ export async function fillTemplate(env, request, values, transform) {
       unknown.add(id);
       return match;
     }
-    return escapeXml(values[id]);
+    return escapeXml(formatLeaseFieldValue(FIELD_BY_ID.get(id), values[id]));
   });
 
   if (unknown.size > 0) {
     throw new Error(`The template uses fields the registry does not define: ${[...unknown].join(", ")}.`);
   }
 
-  return replaceEntry(entries, "word/document.xml", transform ? await transform(filled, xml) : filled);
+  return replaceEntry(entries, "word/document.xml", transform ? await transform(filled, xml) : omitAbsentPetRider(filled,values));
 }
 
 // Values reach the document as XML text, so a tenant named "Smith & Jones"

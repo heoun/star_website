@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import {readFileSync} from 'node:fs';
+import {generateKeyPairSync} from 'node:crypto';
 import {createWorkspaceFixtures,ids} from '../backend/tools/workspace-fixtures.mjs';
 import {completeDemoState} from './demo-data.mjs';
 import {seedRentalDemo} from './rental-demo-data.mjs';
@@ -7,13 +8,23 @@ import {rentalWorkflow} from '../worker/rentals.js';
 import {handleRentalSigning,handleDocusignWebhook} from '../worker/signing.js';
 const fixture=createWorkspaceFixtures();await completeDemoState(fixture.state);await seedRentalDemo(fixture.state);
 const original=globalThis.fetch,records=new Map();let reserves=0,checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
+let pdfDrafts=0,pdfSends=0;
 globalThis.fetch=async(url,init={})=>{
+ if(String(url).includes('docusign.com/oauth/token'))return Response.json({access_token:'pdf-token'});
+ if(String(url).includes('docusign.com/oauth/userinfo'))return Response.json({accounts:[{account_id:'test',base_uri:'https://demo.docusign.net'}]});
+ if(String(url).includes('demo.docusign.net')){
+  if(String(url).includes('/envelopes/status?'))return Response.json({envelopes:[]});
+  if(String(url).endsWith('/envelopes') && init.method==='POST'){const b=JSON.parse(init.body);eq(b.status,'created');pdfDrafts++;return Response.json({envelopeId:'pdf-draft'});}
+  if(String(url).endsWith('/documents/combined'))return new Response('%PDF-test-download');
+  if(init.method==='PUT')pdfSends++;
+  throw new Error('Unexpected PDF provider call');
+ }
  const u=new URL(url),body=init.body?JSON.parse(init.body):{},name=u.pathname.split('/').at(-1);
  if(name==='rental_signing_packages') {
   if(init.method==='POST'){records.set(body.id,{...body});return Response.json([body]);}
   const id=u.searchParams.get('id')?.slice(3),rental=u.searchParams.get('rental_id')?.slice(3);
   // JSONB preserves values, not the insertion order of object keys.
-  const persisted=[...records.values()].filter(r=>(!id || r.id===id)&&(!rental || r.rental_id===rental)&&(!u.searchParams.has('reserved') || !!r.reserved===(u.searchParams.get('reserved')==='eq.true')));
+  const persisted=[...records.values()].reverse().filter(r=>(!id || r.id===id)&&(!rental || r.rental_id===rental)&&(!u.searchParams.has('reserved') || !!r.reserved===(u.searchParams.get('reserved')==='eq.true')));
   return Response.json(persisted.map(r=>({...r,record:{...r.record,package:{...r.record.package,signers:r.record.package.signers.map(s=>Object.fromEntries(Object.entries(s).sort(([a],[b])=>a.localeCompare(b))))}}})));
  }
  if(name==='reserve_rental_signing') {
@@ -73,5 +84,41 @@ try {
  eq(reserves,1); // Reading legacy state must not resend or reserve another package.
  record.envelope.status='created';
  eq((await(await get(agent)).json()).signing.signers.map(s=>s.status),['pending','pending','pending']);
+ // A scoped staging exception permits incomplete review, never sending.
+ records.clear();row.status='review';row.lease_snapshot=null;
+ delete row.workspace.signing;delete row.workspace.recommendation;delete row.workspace.landlord_decision;delete row.workspace.lease_preparation;delete row.workspace.test_run;
+ const group=await flow.store.group(ids.b);
+ const building=fixture.state.buildings.find(b=>b.id===group.root.listings.building_id);
+ building.landlord_signer_email='current-property-signer@example.test';
+ row.workspace.recommendation={landlord_email:'previous-signer@example.test',revision:1};
+ for(const member of group.members){const source=fixture.state.applications.find(a=>a.id===member.id);source.email='shared@example.test';}
+ env.APP_ENV='staging';env.LEASE_REVIEW_ONLY_CASE_IDS=ids.b;
+ const reviewResponse=await post({action:'prepare',version:row.workspace_version});
+ const reviewPayload=await reviewResponse.json();assert.equal(reviewResponse.status,200,JSON.stringify(reviewPayload));checks++;
+ eq(reviewPayload.configuration.reviewOnly,true);eq(reviewPayload.configuration.canSend,false);
+ eq(reviewPayload.signing.signers.find(s=>s.role==='landlord').email,building.landlord_signer_email);
+ eq(reviewPayload.signing.signers.filter(s=>s.role==='tenant').map(s=>s.email),['shared@example.test','shared@example.test']);
+ eq((await post({action:'send',packageId:reviewPayload.signing.id,version:row.workspace_version})).status,503);
+ eq(row.status,'review');eq(row.workspace.landlord_decision,undefined);
+ const ccBody={action:'prepare',version:row.workspace_version,carbonCopies:[{name:'Agent Copy',email:'copy@example.test'}]};
+ const copied=await post(ccBody);eq(copied.status,200);const cp=await copied.json();
+ eq(cp.signing.carbonCopies,[{recipientId:'cc-1',name:'Agent Copy',email:'copy@example.test',routingOrder:3}]);
+ eq((await(await get()).json()).carbonCopies,cp.signing.carbonCopies);
+ eq((await post({...ccBody,carbonCopies:[{name:'Bad',email:'shared@example.test'}]})).status,422);
+ eq((await post({...ccBody,carbonCopies:[{name:'Bad',email:'not-an-email'}]})).status,422);
+ eq((await post({...ccBody,carbonCopies:Array.from({length:3},(_,i)=>({name:'Copy',email:`copy${i}@example.test`}))})).status,422);
+ env.DOCUSIGN_PRIVATE_KEY=generateKeyPairSync('rsa',{modulusLength:2048}).privateKey.export({format:'pem',type:'pkcs8'});
+ const pdfBody={action:'download_pdf',packageId:cp.signing.id,version:row.workspace_version};
+ eq((await post(pdfBody,wrong)).status,404);
+ eq((await post({...pdfBody,version:row.workspace_version-1})).status,409);
+ const downloaded=await post(pdfBody);assert.equal(downloaded.status,200,await downloaded.clone().text());checks++;eq(downloaded.headers.get('Content-Type'),'application/pdf');eq(await downloaded.text(),'%PDF-test-download');
+ eq(pdfDrafts,1);eq(pdfSends,0);
+ const removedCopies=await post({...ccBody,carbonCopies:[]});eq(removedCopies.status,200);
+ eq((await(await get()).json()).carbonCopies,[]);
+ eq(reserves,1);
+ env.APP_ENV='production';
+ eq((await post({action:'prepare',version:row.workspace_version})).status,409);
+ env.APP_ENV='staging';env.LEASE_REVIEW_ONLY_CASE_IDS='another-case';
+ eq((await post({action:'prepare',version:row.workspace_version})).status,409);
  console.log(`PASS ${checks} signing HTTP checks: scoped access, readiness, exact source download, stale reviews, signer changes, idempotent send and forged webhook`);
 }finally{globalThis.fetch=original;}

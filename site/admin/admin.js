@@ -1,8 +1,10 @@
+import { toDetailListing } from "../shared/listing-presentation.js";
+import {renderAgentProperties} from './property-collaboration.js';
+import {workspaceNavigation,workspaceHome,workspaceRoleLabel,workspaceGroups} from '../shared/workspace-navigation.js';
 import {propertyGroups, compareNames} from './property-groups.js';
 import { openNewProperty } from "./property-import.js";
 import "./sidebar.js";
-import { syncListingKind, syncListingProperty } from "./listing-editor.js";
-import { renderAdminDashboard } from "./admin-dashboard.js";
+import { syncListingKind, syncListingProperty, setListingTerm, listingTermValue } from "./listing-editor.js";
 import { renderOnboarding } from "./onboarding.js";
 import { renderLandlordProperties } from "./landlord-properties.js";
 import { readDocxText } from "./docx.js";
@@ -37,7 +39,6 @@ import {
 } from "./properties.js";
 import { endDateFor } from "../shared/lease-dates.js";
 import {
-  captionFromFilename,
   classifyFiles,
   parseFolderName,
   parseListingCopy
@@ -49,7 +50,9 @@ const API = "/api/admin";
 // nothing here decides it, and nothing here enforces it — the Worker refuses a
 // write an agent should not make whatever this page renders. It exists so an
 // agent is shown a value rather than an input that will fail on Save.
-const session = { email: "", role: "", name: "" };
+const initialSession = document.getElementById('workspace-session');
+const bootstrapSession = initialSession ? JSON.parse(initialSession.textContent) : null;
+const session = { email: "", role: "", name: "", ...bootstrapSession };
 
 function isManager() {
   return session.role === "manager";
@@ -119,6 +122,8 @@ let routeId = "";
 let filter = "all";
 let listingSearch = "";
 let editingId = null;
+let listingDirty = false;
+let previewResizeObserver;
 // The properties a listing can be put under, fetched once on the first
 // editor open, and which one the open listing is under as stored — the Worker
 // allows an agent to set that link but not to move it.
@@ -151,7 +156,7 @@ async function api(path, options = {}) {
 
   if (!response.ok) {
     if (response.status === 401) location.assign(`/login/?next=admin${location.hash}`);
-    throw new Error(payload?.error || `Request failed (${response.status})`);
+    throw Object.assign(new Error(payload?.error || `Request failed (${response.status})`), {code:payload?.code,status:response.status});
   }
 
   return payload;
@@ -215,7 +220,7 @@ function renderMedia() {
     <div class="photo-item" data-id="${escapeHtml(item.id)}">
       <img src="${escapeHtml(item.url)}" alt="">
       <div class="photo-tools">
-        <input type="text" data-role="caption" placeholder="Caption (Living room)" maxlength="120"
+        <input type="text" data-role="caption" placeholder="Caption (Optional)" maxlength="120"
                value="${escapeHtml(item.caption || "")}">
         <div class="photo-buttons">
           <button type="button" class="small" data-role="left" ${index === 0 ? "disabled" : ""}>←</button>
@@ -231,7 +236,7 @@ function renderMedia() {
       <img src="${escapeHtml(item.preview)}" alt="">
       <div class="photo-tools">
         <span class="pending-flag">Uploads on save</span>
-        <input type="text" data-role="pending-caption" placeholder="Caption (Living room)" maxlength="120"
+        <input type="text" data-role="pending-caption" placeholder="Caption (Optional)" maxlength="120"
                value="${escapeHtml(item.caption || "")}">
         <div class="photo-buttons">
           <button type="button" class="small" data-role="pending-left" ${index === 0 ? "disabled" : ""}>←</button>
@@ -271,6 +276,8 @@ function renderMedia() {
   }
 
   mediaSection.dataset.pending = String(pendingMedia.length > 0 || Boolean(pendingVideo));
+  if (editor.open) listingInputChanged();
+  else updateListingPreview();
 }
 
 function queuePhotos(files) {
@@ -278,7 +285,7 @@ function queuePhotos(files) {
     pendingMedia.push({
       file,
       kind: "photo",
-      caption: captionFromFilename(file.name),
+      caption: "",
       preview: URL.createObjectURL(file)
     });
   }
@@ -316,6 +323,8 @@ async function flushPendingMedia() {
       body: JSON.stringify({ path: upload.path, kind: "photo", caption: item.caption, position })
     });
     currentMedia.push(media);
+    URL.revokeObjectURL(item.preview);
+    pendingMedia = pendingMedia.filter(entry => entry !== item);
     position += 1;
   }
 
@@ -342,13 +351,13 @@ async function flushPendingMedia() {
   if (pendingVideo) {
     setStatus("Uploading video… this can take a minute.");
     const upload = await uploadFile(pendingVideo.file);
-    clearPendingVideo();
     form.elements.video_url.value = upload.url;
     await api(`/listings/${encodeURIComponent(editingId)}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ video_url: upload.url })
     });
+    clearPendingVideo();
   }
 }
 
@@ -384,12 +393,13 @@ async function importFolder(files) {
     openEditor(null);
     for (const [field, value] of Object.entries(result.fields)) {
       if (form.elements[field] && value !== null && value !== "") {
-        form.elements[field].value = value;
+        if (field === "term_label") setListingTerm(form.elements[field], value);
+        else form.elements[field].value = value;
       }
     }
     form.elements.category.value = "residential";
     form.elements.transaction_type.value = result.fields.transaction_type || "sale";
-    syncListingKind(form, false);
+    syncListingKind(form, false, result.fields.property_type || "");
 
     queuePhotos(result.photoFiles);
     if (result.planFile) queuePlan(result.planFile);
@@ -521,7 +531,8 @@ const ROUTES = new Set(["overview", "listings", "applications", "dossier", "leas
 
 function readHash() {
   const parts = (location.hash || "").replace(/^#\/?/, "").split("/").filter(Boolean);
-  const name = ROUTES.has(parts[0]) ? parts[0] : "overview";
+  const home = workspaceHome(session);
+  const name = ROUTES.has(parts[0]) ? parts[0] : home;
   let id = "";
   try { id = decodeURIComponent(parts[1] || ""); } catch { /* malformed URL: show list */ }
   return { name, id };
@@ -554,12 +565,15 @@ function showRoute(name, { rows }) {
 }
 
 async function goto({ name, id }) {
+  if (editor.open) editor.close();
+  document.body.append(editor);
+  listingDirty = false;
   if (session.owner && name !== "staff") {
     location.replace("#/staff");
     return;
   }
-  // Agent tasks are a filter of My Rentals, not a second destination.
-  if (session.role === "agent" && name === "overview") {
+  // Retired Admin Dashboard links and Agent overview links open the rental queue.
+  if (["agent", "manager"].includes(session.role) && name === "overview") {
     location.replace("#/applications");
     return;
   }
@@ -571,10 +585,6 @@ async function goto({ name, id }) {
   // has to put it away first, or it stays on top of whatever loads behind it.
   if (name !== "leases" || !id) closeLeaseScreen();
 
-  if (name === "overview" && session.role === "manager") {
-    showRoute("overview", { rows: false }); crumbs([{ label: "Dashboard" }]);
-    return renderAdminDashboard(ROUTE_HOSTS.overview, { api, session });
-  }
   if (name === "onboarding") {
     showRoute("onboarding", { rows: false }); crumbs([{ label: "Landlord Onboarding", href: "#/onboarding" }, ...(id ? [{ label: id === "new" ? "Invite landlord" : "Review submission" }] : [])]);
     if (!isManager()) { ROUTE_HOSTS.onboarding.innerHTML = '<p role="alert">Only Admin can manage landlord onboarding.</p>'; return; }
@@ -632,7 +642,10 @@ async function goto({ name, id }) {
       showRoute("listing", { rows: false });
       const listing = listings.find(row => row.id === id);
       crumbs([{ label: "Listings", href: "#/listings" }, { label: listing?.title || "Not found" }]);
-      if (listing) renderListingDetail(ROUTE_HOSTS.listing, listing, !listing.can_edit);
+      if (listing) {
+        if (listing.can_edit) openEditor(listing);
+        else { renderListingDetail(ROUTE_HOSTS.listing, listing, true); observeListingPreview(); }
+      }
       else ROUTE_HOSTS.listing.innerHTML = '<p class="status">Listing not found. <a href="#/listings">Back to listings</a></p>';
       return;
     }
@@ -678,6 +691,7 @@ async function goto({ name, id }) {
   }
 
   if (name === "properties") {
+    if(session.role==="agent"){showRoute("properties",{rows:false});crumbs([{label:"Properties & Settings"}]);return renderAgentProperties(ROUTE_HOSTS.properties,{api,buildingId:id});}
     // The Worker refuses these routes for an agent; this keeps the browser from
     // asking in the first place.
     showRoute("properties", { rows: false });
@@ -950,25 +964,23 @@ async function refreshApplications() {
 // can see that they are an agent stops wondering why a box will not open.
 function showSession() {
   whoEl.textContent = session.email;
-  const label = session.owner ? "Platform owner" : { manager: "Admin", agent: "Agent", landlord: "Landlord" }[session.role] || "Account";
+  if(!document.querySelector('#account-security-link')){
+    const link=document.createElement('a');link.id='account-security-link';link.href='/login/?security=1';link.textContent='Account security & roles';whoEl.parentElement.append(link);
+  }
+  const label = workspaceRoleLabel(session);
   whoRoleEl.textContent = session.name || label;
   document.body.dataset.role = session.role;
-  const navigation = session.owner ? { staff: "Accounts & Access" } : session.role === "manager"
-    ? { overview: "Dashboard", applications: "Rentals", onboarding: "Landlord Onboarding", properties: "Properties & Settings", listings: "Listings", staff: "Accounts & Access", requests: "Change Requests" }
-    : session.role === "agent"
-      ? { applications: "My Rentals", listings: "Listings" }
-      : { overview: "Awaiting My Decision", properties: "My Properties", leases: "Lease Documents" };
+  const navigation = workspaceNavigation(session);
   document.querySelectorAll('.nav [data-route]').forEach(link => {
     const label = navigation[link.dataset.route]; link.hidden = !label;
     if (label) { link.querySelector("span").textContent = label; link.setAttribute("aria-label", label); link.title = label; link.querySelector("abbr")?.setAttribute("title", label); }
   });
   const nav = document.querySelector(".nav");
-  document.querySelector('.side .brand').href = session.owner ? "#/staff" : session.role === "agent" ? "#/applications" : "#/overview";
-  document.querySelector('.side .brand').setAttribute("aria-label", session.owner ? "Star Real Estate access management" : session.role === "agent" ? "Star Real Estate my rentals" : "Star Real Estate dashboard");
+  nav.hidden = false;
+  document.querySelector('.side .brand').href = session.owner ? "#/staff" : session.role === "landlord" ? "#/overview" : "#/applications";
+  document.querySelector('.side .brand').setAttribute("aria-label", session.owner ? "Star Real Estate access management" : session.role === "landlord" ? "Star Real Estate awaiting decisions" : "Star Real Estate rentals");
   nav.querySelectorAll('.nav-section').forEach(section => section.remove());
-  const groups = session.role === "manager"
-    ? {overview:"Workspace", properties:"Portfolio", staff:"Administration"}
-    : session.role === "agent" ? {applications:"Workspace"} : {overview:"Workspace"};
+  const groups = workspaceGroups(session);
   Object.keys(navigation).forEach(key => {
     if (groups[key]) {
       const section = document.createElement("div");
@@ -1007,10 +1019,9 @@ function showEnvironment(me) {
 }
 
 async function load() {
-  setStatus("Loading listings…");
+  setStatus("Loading workspace…");
   try {
-    const me = await api("/me");
-    listings = me.owner ? [] : (await api("/listings")).listings;
+    const me = bootstrapSession || await api("/me");
     if (me?.email) {
       session.email = me.email;
       session.role = me.role || "";
@@ -1021,6 +1032,7 @@ async function load() {
       showSession();
     }
     showEnvironment(me);
+    listings = me.owner ? [] : (await api("/listings")).listings;
     setStatus("");
     await goto(readHash());
   } catch (error) {
@@ -1033,12 +1045,14 @@ async function load() {
 function openEditor(listing) {
   if (session.role === "landlord") return;
   if (!isManager() && (listing ? !listing.can_edit : !session.property_ids?.length)) return;
+  if (editor.open) editor.close();
+  document.body.append(editor);
   editingId = listing?.id || null;
   currentMedia = (listing?.listing_media || []).slice();
   for (const item of pendingMedia) URL.revokeObjectURL(item.preview);
   pendingMedia = [];
   clearPendingVideo();
-  editorTitle.textContent = listing ? "Edit listing" : "New listing";
+  editorTitle.textContent = listing ? "Edit Listing" : "New Listing";
 
   form.reset();
   photoFiles.value = "";
@@ -1046,13 +1060,13 @@ function openEditor(listing) {
   videoFile.value = "";
 
   for (const field of TEXT_FIELDS.concat(NUMBER_FIELDS)) {
-    form.elements[field].value = listing?.[field] ?? "";
+    if (field === "term_label") setListingTerm(form.elements[field], listing?.[field]);
+    else form.elements[field].value = listing?.[field] ?? "";
   }
   form.elements.category.value = listing?.category || "residential";
   form.elements.transaction_type.value = listing?.transaction_type || "sale";
-  form.elements.published.checked = listing ? Boolean(listing.published) : false;
   form.querySelector("#listing-form-error").hidden = true;
-  syncListingKind(form, Boolean(editingId));
+  syncListingKind(form, Boolean(editingId), listing?.property_type || "");
 
   renderMedia();
   linkedBuildingId = listing?.building_id || "";
@@ -1061,7 +1075,17 @@ function openEditor(listing) {
   // or a folder import — may have typed in the box, and the list arriving is
   // no reason to empty it.
   loadBuildings(true).then(() => fillPropertySelect());
-  if (!editor.open) editor.showModal();
+  showRoute("listing", { rows: false });
+  renderListingDetail(ROUTE_HOSTS.listing, listing || { title: "New listing" }, false);
+  ROUTE_HOSTS.listing.querySelector(".listing-editor-slot").append(editor);
+  form.querySelector("[data-listing-unpublish]").hidden = !listing?.published;
+  form.querySelector("[data-listing-unpublish]").disabled = false;
+  form.querySelector("#listing-publication-status").textContent = listing?.published ? "Live on Website" : "Draft · Not Published";
+  listingDirty = false;
+  editor.show();
+  editor.scrollTop = 0;
+  observeListingPreview();
+  updateListingPreview();
 }
 
 // ---- The property a unit belongs to ----
@@ -1118,8 +1142,9 @@ function showPropertyName(typedName) {
   const property = buildingRows.find(row => row.id === select.value);
   if (typedName !== undefined) form.elements.property_name.value = typedName;
   syncListingProperty(form, property, Boolean(select.value));
+  updateListingPreview();
   document.getElementById("property-hint").textContent = select.value
-    ? (property ? "Building name and address come from this property." : "Property details are unavailable. Close and reopen to retry; the existing link is preserved.")
+    ? (property ? "" : "Property details are unavailable. Close and reopen to retry; the existing link is preserved.")
     : "For a standalone listing, enter its building name and address. Add managed properties through Properties & Settings or landlord onboarding.";
 }
 
@@ -1127,15 +1152,16 @@ async function resolveBuildingLink() {
   return form.elements.building_id.value || null;
 }
 
+form.elements.term_label.addEventListener("input", () => { delete form.elements.term_label.dataset.originalTerm; });
+
 function collectValues() {
   const values = {
     category: form.elements.category.value,
-    transaction_type: form.elements.transaction_type.value,
-    published: form.elements.published.checked
+    transaction_type: form.elements.transaction_type.value
   };
 
   for (const field of TEXT_FIELDS) {
-    values[field] = form.elements[field].value.trim();
+    values[field] = field === "term_label" ? listingTermValue(form.elements[field]) : form.elements[field].value.trim();
   }
 
   for (const field of NUMBER_FIELDS) {
@@ -1150,7 +1176,7 @@ form.elements.building_id?.addEventListener("change", () => {
   // Preserve the selected address when making a listing standalone, so it can be edited.
   showPropertyName();
 });
-for (const name of ["category", "transaction_type", "published"]) {
+for (const name of ["category", "transaction_type"]) {
   form.elements[name].addEventListener("change", () => syncListingKind(form, Boolean(editingId)));
 }
 
@@ -1180,16 +1206,16 @@ form.addEventListener("submit", async (event) => {
         body: JSON.stringify(values)
       });
       editingId = listing.id;
-      editorTitle.textContent = "Edit listing";
+      editorTitle.textContent = "Edit Listing";
     }
 
     await flushPendingMedia();
     renderMedia();
 
     editor.close();
-    const savedPublished = form.elements.published.checked;
+    location.hash = `#/listings/${editingId}`;
     await load();
-    setStatus(savedPublished ? "Saved. The website updates within a minute." : "Draft saved. This listing is not published.");
+    setStatus("Draft saved. Review the preview, then publish when ready. The live website has not changed.");
   } catch (error) {
     const errorEl = form.querySelector("#listing-form-error");
     errorEl.textContent = error.message;
@@ -1325,6 +1351,7 @@ photoGrid.addEventListener("change", async (event) => {
   if (input.dataset.role === "pending-caption") {
     const item = pendingPhotos()[Number(card.dataset.index)];
     if (item) item.caption = input.value;
+    updateListingPreview();
     return;
   }
 
@@ -1337,6 +1364,7 @@ photoGrid.addEventListener("change", async (event) => {
     });
     const item = currentMedia.find((media) => media.id === id);
     if (item) item.caption = input.value;
+    updateListingPreview();
   } catch (error) {
     setStatus(error.message, "error");
   }
@@ -1471,7 +1499,7 @@ document.addEventListener("keydown", (event) => {
 // whole, so their events are delegated from that host rather than bound to
 // controls a re-render would replace.
 ROUTE_HOSTS.properties.addEventListener("click", async (event) => {
-  await handlePropertyClick(event, ROUTE_HOSTS.properties, routeId);
+  if(session.role !== "agent") await handlePropertyClick(event, ROUTE_HOSTS.properties, routeId);
 });
 
 
@@ -1593,9 +1621,6 @@ document.getElementById("listing-search").addEventListener("input", event => {
 ROUTE_HOSTS.overview.addEventListener("click", event => {
   if (event.target.closest("[data-desk-refresh]")) { applicationsLoaded = false; load(); }
 });
-ROUTE_HOSTS.listing.addEventListener("click", event => {
-  if (event.target.closest("[data-desk-edit-listing]")) openEditor(listings.find(row => row.id === routeId));
-});
 ROUTE_HOSTS.properties.addEventListener("click", async event => {
   const button = event.target.closest("[data-desk-new-property]");
   if (!button || !isManager()) return;
@@ -1620,3 +1645,120 @@ document.querySelectorAll("[data-sign-out]").forEach(link => link.addEventListen
     location.replace("/login/");
   } catch (error) { setStatus(error.message, "error"); }
 }));
+
+// The preview uses the public page itself; only its data source is different.
+function updateListingPreview() {
+  const frame = ROUTE_HOSTS.listing.querySelector(".listing-preview-frame");
+  if (!frame) return;
+  let listing = listings.find(row => row.id === routeId);
+  if (editor.open) {
+    const queued = pendingMedia.map((item, index) => ({ ...item, url: item.preview, position: photos().length + index }));
+    const media = currentMedia.filter(item => !(pendingPlan() && item.kind === "floor_plan"));
+    listing = { id: editingId, ...collectValues(), listing_media: [...media, ...queued] };
+    if (pendingVideo) listing.video_url = pendingVideo.preview;
+  }
+  if (listing) frame.contentWindow.postMessage({ type: "listing-preview", property: toDetailListing(listing) }, location.origin);
+}
+window.addEventListener("message", event => {
+  const frame = ROUTE_HOSTS.listing.querySelector(".listing-preview-frame");
+  if (event.origin !== location.origin || event.source !== frame?.contentWindow) return;
+  if (event.data?.type === "listing-preview-ready") updateListingPreview();
+  if (event.data?.type === "listing-preview-rendered" && !listingDirty) {
+    const listing = listings.find(row => row.id === routeId);
+    const publish = ROUTE_HOSTS.listing.querySelector("[data-listing-publish]");
+    if (publish) publish.disabled = !listing?.can_edit || (listing.published && !listing.has_unpublished_changes);
+  }
+});
+function listingInputChanged() {
+  listingDirty = true;
+  const publish = ROUTE_HOSTS.listing.querySelector("[data-listing-publish]");
+  if (publish) publish.disabled = true;
+  form.querySelector("[data-listing-unpublish]").disabled = true;
+  const status = ROUTE_HOSTS.listing.querySelector("[data-listing-preview-status]");
+  if (status) status.textContent = "Unsaved changes · save draft to review before publishing";
+  updateListingPreview();
+}
+form.addEventListener("input", listingInputChanged);
+form.addEventListener("change", listingInputChanged);
+editor.addEventListener("close", () => ROUTE_HOSTS.listing.classList.remove("is-editing"));
+ROUTE_HOSTS.listing.addEventListener("click", async event => {
+  const width = event.target.closest("[data-preview-width]");
+  if (width) {
+    ROUTE_HOSTS.listing.querySelector(".listing-preview-stage").classList.toggle("is-mobile", width.dataset.previewWidth === "mobile");
+    for (const button of ROUTE_HOSTS.listing.querySelectorAll("[data-preview-width]")) button.setAttribute("aria-pressed", String(button === width));
+    resizeListingPreview();
+  }
+  const button = event.target.closest("[data-listing-publish], [data-listing-unpublish]");
+  if (!button || listingDirty) return;
+  const listing = listings.find(row => row.id === routeId);
+  if (!listing?.can_edit) return;
+  button.disabled = true;
+  try {
+    if (button.hasAttribute("data-listing-publish")) {
+      await api(`/listings/${encodeURIComponent(listing.id)}/publish`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ revision: listing.draft_revision })
+      });
+      await load();
+      setStatus("Published. The website updates within a minute.");
+    } else {
+      await api(`/listings/${encodeURIComponent(listing.id)}`, {
+        method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ published: false })
+      });
+      await load();
+      setStatus("Listing unpublished. It will disappear from the website within a minute.");
+    }
+  } catch (error) { setStatus(error.message, "error"); }
+  finally { button.disabled = false; }
+});
+
+function resizeListingPreview() {
+  const viewport = ROUTE_HOSTS.listing.querySelector(".listing-preview-viewport");
+  const frame = viewport?.querySelector("iframe");
+  if (!frame || !viewport.clientWidth) return;
+  const width = viewport.closest(".listing-preview-stage").classList.contains("is-mobile") ? 390 : 1440;
+  const scale = Math.min(1, viewport.clientWidth / width);
+  frame.style.width = `${width}px`;
+  frame.style.height = `${viewport.clientHeight / scale}px`;
+  frame.style.transform = `scale(${scale})`;
+  frame.style.left = `${Math.max(0, (viewport.clientWidth - width * scale) / 2)}px`;
+}
+function observeListingPreview() {
+  previewResizeObserver?.disconnect();
+  const viewport = ROUTE_HOSTS.listing.querySelector(".listing-preview-viewport");
+  if (!viewport) return;
+  setupListingDivider();
+  previewResizeObserver = new ResizeObserver(resizeListingPreview);
+  previewResizeObserver.observe(viewport);
+  resizeListingPreview();
+}
+
+function setupListingDivider() {
+  const host = ROUTE_HOSTS.listing.querySelector(".listing-workbench");
+  const divider = host?.querySelector(".listing-divider");
+  if (!divider) return;
+  const setWidth = width => {
+    const max = Math.max(300, Math.min(650, host.clientWidth - 378));
+    const next = Math.round(Math.max(300, Math.min(max, width)));
+    host.style.setProperty("--listing-editor-width", `${next}px`);
+    divider.setAttribute("aria-valuenow", String(next));
+    divider.setAttribute("aria-valuemax", String(max));
+    try { localStorage.setItem("star.listing.editorWidth", String(next)); } catch {}
+  };
+  try { const saved = Number(localStorage.getItem("star.listing.editorWidth")); if (saved) setWidth(saved); } catch {}
+  divider.addEventListener("pointerdown", event => {
+    if (event.button !== 0) return;
+    divider.setPointerCapture(event.pointerId);
+    host.classList.add("is-resizing");
+  });
+  divider.addEventListener("pointermove", event => {
+    if (divider.hasPointerCapture(event.pointerId)) setWidth(host.getBoundingClientRect().right - event.clientX - 9);
+  });
+  const stop = () => host.classList.remove("is-resizing");
+  divider.addEventListener("pointerup", stop);
+  divider.addEventListener("lostpointercapture", stop);
+  divider.addEventListener("keydown", event => {
+    if (!["ArrowLeft", "ArrowRight"].includes(event.key)) return;
+    event.preventDefault();
+    setWidth(Number(divider.getAttribute("aria-valuenow")) + (event.key === "ArrowLeft" ? 20 : -20));
+  });
+}

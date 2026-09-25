@@ -318,3 +318,5 @@ button.rg-report-link:disabled{color:#83919a;cursor:default;text-decoration:none
  .rg-property-units>.rg-unit>summary>span:first-child{grid-column:1/-1}
  .rg-property-units>.rg-unit>summary>span:nth-child(3){padding-left:0}
 }
+
+.rg-contact-list{display:grid;gap:14px;margin-top:12px}.rg-contact-card{border:1px solid #dce5eb;border-radius:8px;padding:14px 16px;background:#fafcfd;min-width:0}.rg-contact-card header{padding-bottom:8px;border-bottom:1px solid #e7edf0}.rg-contact-card header>span{font-size:10px;color:#71818c}.rg-contact-card header h4{font-size:14px;color:#294c60;margin:4px 0 0}.rg-contact-card .rg-fact>b{overflow-wrap:anywhere}

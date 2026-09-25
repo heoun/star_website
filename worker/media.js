@@ -73,10 +73,21 @@ async function devMediaFallback(request, env, pathname) {
   }
 }
 
-export async function serveMedia(request, env, pathname) {
-  const response = await serveFromBucket(request, env, pathname);
-  if (response.status !== 404) return response;
-  return (await devMediaFallback(request, env, pathname)) || response;
+export async function serveMedia(request, env, pathname, ctx) {
+  // Public listing images have immutable, random storage keys. Cache only full
+  // image responses; document storage and video range requests never enter here.
+  const cacheable = ctx && request.method === "GET" && !request.headers.has("Range");
+  const key = cacheable ? new Request(new URL(pathname, request.url).toString()) : null;
+  if (key) {
+    const cached = await caches.default.match(key);
+    if (cached) return cached;
+  }
+  let response = await serveFromBucket(request, env, pathname);
+  if (response.status === 404) response = (await devMediaFallback(request, env, pathname)) || response;
+  if (key && response.status === 200 && response.headers.get("Content-Type")?.startsWith("image/")) {
+    ctx.waitUntil(caches.default.put(key, response.clone()).catch(error => console.warn("Public image cache write failed", error)));
+  }
+  return response;
 }
 
 async function serveFromBucket(request, env, pathname) {

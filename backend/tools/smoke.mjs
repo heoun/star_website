@@ -52,7 +52,7 @@ async function run() {
   const build = spawnSync(process.execPath, [path.join(root, "scripts/build.js")], { cwd: root, stdio: "inherit" });
   if (build.status !== 0) { console.error("smoke: build failed"); process.exit(1); }
 
-  const vars = ["--var", "BACKEND_V2:on", "--var", "DEV_REAL_EMAIL:false"];
+  const vars = ["--var", "APP_ENV:local", "--var", "BACKEND_V2:on", "--var", "DEV_REAL_EMAIL:false"];
   // SMOKE_DB=memory forces the in-memory store even when .dev.vars carries
   // database credentials — the zero-secrets path CI exercises.
   if (process.env.SMOKE_DB === "memory") {
@@ -70,7 +70,7 @@ async function run() {
     console.log(`smoke: starting wrangler dev on :${PORT}…`);
     wrangler = spawn(
       "npx",
-      ["--yes", "wrangler@4", "dev", "--port", PORT, "--ip", "127.0.0.1", ...vars],
+      ["--no-install", "wrangler", "dev", "--port", PORT, "--ip", "127.0.0.1", ...vars],
       { cwd: root, stdio: ["ignore", "pipe", "pipe"], detached: true },
     );
     wrangler.stdout.on("data", () => {});

@@ -6,7 +6,8 @@ const {chromium}=await import(process.env.PLAYWRIGHT_MODULE || 'playwright');
 const root=resolve('site');
 const pageHtml=`<!doctype html><meta name="viewport" content="width=device-width,initial-scale=1"><title>Signing test</title><link rel="stylesheet" href="/admin/signing-confirm.css"><style>body{font:16px system-ui;max-width:850px;margin:24px auto;padding:16px}li{margin:12px 0;overflow-wrap:anywhere}button{margin:12px;padding:12px}label{display:block}</style><main id="host"></main><script type="module">
 import {signingMarkup,bindSigning} from '/admin/rental-signing.js';
-const record={created_at:new Date().toISOString(),template_version:'star-lease-2026-09-19-anchor-v11',id:'test-package',phase:'preparing',signers:[{recipientId:'1',role:'tenant',name:'Applicant A',email:'a@example.test'},{recipientId:'2',role:'tenant',name:'Applicant B',email:'b@example.test'},{recipientId:'3',role:'landlord',name:'Landlord A',email:'l@example.test'}]};
+import {SIGNING_TEMPLATE_VERSION} from '/shared/lease-signing-layout.js';
+const record={created_at:new Date().toISOString(),template_version:SIGNING_TEMPLATE_VERSION,id:'test-package',phase:'preparing',signers:[{recipientId:'1',role:'tenant',name:'Applicant A',email:'a@example.test'},{recipientId:'2',role:'tenant',name:'Applicant B',email:'b@example.test'},{recipientId:'3',role:'landlord',name:'Landlord A',email:'l@example.test'}]};
 window.calls=[];window.ctx={id:'rental-id',row:{status:'landlord_approved',workspace_version:1},w:{lease_preparation:{}},signing:{configuration:{enabled:true,canSend:true,environment:'demo'},signing:null},openReview:async entry=>{entry.reviewed=true;window.render();},api:async(path,init)=>{const command=JSON.parse(init.body);window.calls.push(command);if(command.action==='prepare')return{signing:record};if(command.action==='send'){window.ctx.signing.signing={...record,phase:'in_progress'};window.ctx.row.status='lease_sent';}if(command.action==='void')window.ctx.signing.signing.void_requested=true;return{};}};
 window.render=()=>{const h=document.querySelector('#host');h.innerHTML=signingMarkup(window.ctx);bindSigning(h,window.ctx,window.render);};window.render();
 </script>`;
@@ -91,6 +92,12 @@ try{
  eq(await page.evaluate(()=>calls.filter(c=>c.action==='send').length),0);
  await page.evaluate(()=>{ctx.signing={configuration:{enabled:false,canSend:false,message:'Not configured'}};ctx.row.status='landlord_approved';render();});
  eq(await page.getByRole('button',{name:'Review Lease for Signatures'}).isDisabled(),true);
+ await page.reload();
+ await page.evaluate(()=>{ctx.row.status='review';ctx.row.progression_blocked=true;ctx.w={};ctx.signing={configuration:{enabled:true,canSend:false,reviewOnly:true,environment:'demo'},signing:null};render();});
+ eq(await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).isEnabled(),true);
+ await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).click();
+ await page.waitForURL('**/#/leases/rental-id');
+ eq(await page.evaluate(()=>calls.filter(c=>c.action==='send').length),0);
  eq(errors,[]);await mkdir('/tmp/star-signing-qa',{recursive:true});await page.screenshot({path:'/tmp/star-signing-qa/signing-mobile.png',fullPage:true});
  console.log('PASS '+checks+' signing browser checks: platform review, skip-review confirmation, revision invalidation, single send, ordering, cancellation, downloads and disabled setup');
 }finally{await browser.close();await new Promise(r=>server.close(r));}

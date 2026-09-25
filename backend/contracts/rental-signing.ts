@@ -46,6 +46,8 @@ export interface RentalSigningPackage {
   rentalId: string;
   approvalRevision: number;
   templateVersion: string;
+  propertyLabel?: string;
+  carbonCopies?: {recipientId:string;name:string;email:string;routingOrder:3}[];
   values: Record<string, unknown>;
   reviewFile?: RentalSigningFile;
   documents: { documentId: string; file: RentalSigningFile; name?: string; layout?: string; tenantRecipientId?: string | null }[];

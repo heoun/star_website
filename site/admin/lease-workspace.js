@@ -1,6 +1,7 @@
 // Review a lease by business topic; edits use the lease screen's existing controls.
 import { endDateFor, parseDate } from '../shared/lease-dates.js';
 import { DOCUMENTS } from '../shared/lease-documents.js';
+import { formatSettingValue, moneyInputValue } from '../shared/lease-values.js';
 let escapeHtml = value => String(value ?? '');
 export function initWorkspace(deps) { escapeHtml = deps.escapeHtml; }
 const esc = value => escapeHtml(value);
@@ -37,7 +38,7 @@ export function reviewIssues(state) {
   if(state.signing?.configuration?.enabled && !state.landlordEmail)issues.push({tab:'recipients',label:'Assign a landlord signer email'});
   const emails=[...tenantSigners(state).map(t=>t.email),state.landlordEmail].filter(Boolean).map(e=>String(e).toLowerCase());
   if(emails.some(e=>!/^\S+@[^\s@]+\.[^\s@]+$/.test(e)))issues.push({tab:'recipients',label:'Check signer email addresses'});
-  if(new Set(emails).size!==emails.length)issues.push({tab:'recipients',label:'Each signer needs a different email address'});
+  if(!state.signing?.configuration?.reviewOnly && new Set(emails).size!==emails.length)issues.push({tab:'recipients',label:'Each signer needs a different email address'});
   for(const id of state.dirty){
     const field=state.byId.get(id),v=state.values[id];
     if(field?.type==='date' && v && !parseDate(v))issues.push({id,label:`Check ${label(field)}`});
@@ -97,7 +98,7 @@ function leaseTypeRow(state){
 function valueText(field,state) {
   const value=state.values[field.id];
   if(field.type==='checkbox')return state.checked.has(field.id)?'Yes':'No';
-  return value===undefined || value===null || value===''?'Not Set':String(value);
+  return value===undefined || value===null || value===''?'Not Set':formatSettingValue(field,value);
 }
 function row(id,state,derived=false) {
   const field=state.byId.get(id);if(!field)return '';
@@ -119,6 +120,7 @@ function control(field,state) {
   if(field.type==='checkbox')return `<label class="ws-check"><input type="checkbox" ${attrs}${state.checked.has(field.id)?' checked':''}><span>Yes</span></label>`;
   if(field.type==='choice')return `<select ${attrs}>${['',...field.options].map(v=>`<option value="${esc(v)}"${v===value?' selected':''}>${esc(v || 'Select')}</option>`).join('')}</select>`;
   if(field.type==='multiline')return `<textarea ${attrs} rows="3">${esc(value)}</textarea>`;
+  if(field.type==='money')return `<div class="ws-money-input"><span aria-hidden="true">$</span><input type="text" inputmode="decimal" aria-label="${esc(label(field))} (USD)" ${attrs} value="${esc(moneyInputValue(value))}"></div>`;
   return `<input type="${field.type==='integer'?'number':'text'}" ${attrs} value="${esc(value)}">`;
 }
 function propertyTerms(state) {
@@ -142,7 +144,13 @@ function documentsPanel(state) {
 }
 function recipientsPanel(state) {
   return `<div data-workspace-recipients>${signingRecipients(state)}</div>`+
+    carbonCopyEditor(state)+
     `<div data-workspace-signing></div>`;
+}
+export function carbonCopyEditor(state){
+  const record=state.signing?.signing,locked=state.readOnly || (record && !['voided','declined'].includes(record.phase));
+  const copies=record?.carbonCopies || state.carbonCopies || [];
+  return `<div data-cc-editor>${section('CC Recipients',locked?copies.map(c=>textRow(c.name,c.email)).join('') || '<p>No CC recipients.</p>':`${copies.map(c=>`<div class="ws-review-row" data-cc-row><label>Name<input data-cc-name value="${esc(c.name)}" maxlength="100"></label><label>Email<input type="email" data-cc-email value="${esc(c.email)}"></label><button type="button" data-cc-action="remove">Remove</button></div>`).join('')}<div class="ws-editor-actions"><button type="button" data-cc-action="add">Add CC Recipient</button><button type="button" data-cc-action="save">Save CC Recipients</button></div>`,'Receives a copy after every tenant and the landlord have signed. No signature required.')}</div>`;
 }
 export function signingRecipients(state,signers) {
   const entity=state.values['landlord.entity_name'];
@@ -160,7 +168,7 @@ export function annotateWorkspace(host,state) {
     const input=host.querySelector(`[data-lease-input="${selector}"]`);
     if(input && input!==document.activeElement){
       if(field.type==='checkbox')input.checked=state.checked.has(id);
-      else input.value=state.values[id]??'';
+      else input.value=field.type==='money'?moneyInputValue(state.values[id]):state.values[id]??'';
     }
   }
   const term=host.querySelector('[data-ws-term]');if(term)term.textContent=leaseTerm(state) || 'Not Set';

@@ -4,6 +4,16 @@ import {sameOriginMutation} from './auth.js';
 import {fetchBuilding} from './supabase.js';
 const json=(body,status=200)=>Response.json(body,{status,headers:{'Cache-Control':'no-store','Referrer-Policy':'no-referrer'}});
 const fail=(message,status)=>{throw Object.assign(new Error(message),{status});};
+// Email capabilities expose only the terms needed to confirm a decision.
+// Applicant reports and the full case remain behind the authenticated case API.
+function decisionSummary(view) {
+  const r=view.recommendation;
+  return {workspace_version:view.workspace_version,progression_blocked:view.progression_blocked,
+    allowed_actions:view.allowed_actions?.filter(a=>['landlord_accept','landlord_decline'].includes(a)),
+    landlord_decision:view.landlord_decision?{outcome:view.landlord_decision.outcome}:null,
+    listings:{title:view.listings?.title,unit:view.listings?.unit},
+    recommendation:r?{revision:r.revision,tenant_name:r.tenant_name,terms:r.terms}:null};
+}
 async function readBody(request) {
   if(!request.headers.get('Content-Type')?.toLowerCase().startsWith('application/json')) fail('Send the confirmation as JSON.',415);
   const reader=request.body?.getReader(),chunks=[];let size=0;
@@ -25,21 +35,21 @@ export async function handleLandlordDecision(request,env) {
     const building=await fetchBuilding(env,g.root.listings.building_id);
     if(building?.landlord_signer_email && building.landlord_signer_email.toLowerCase()!==claims.email)
       fail('The landlord for this property has changed. Contact the leasing team.',403);
-    const principal={role:'landlord',email:claims.email,property_ids:staff.property_ids};
+    const principal= {role:'landlord',email:claims.email,property_ids:staff.property_ids};
     const view=await flow.get(principal,claims.id);
     // Link scanners and ordinary page loads may read this summary, never decide.
-    if(request.method==='GET')return json({case:view});
+    if(request.method==='GET')return json({case:decisionSummary(view)});
     const body=await readBody(request);
     if(!body || !['accept','decline'].includes(body.outcome) || body.confirmed!==true || !Number.isSafeInteger(body.version) ||
       (body.reason!==undefined && (typeof body.reason!=='string' || body.reason.length>2000)))fail('Confirm a valid decision.',422);
     const prior=g.root.workspace.landlord_decision;
     if(prior){
-      if(prior.revision===claims.revision && prior.outcome===(body.outcome==='accept'?'accepted':'declined'))return json({case:view,recorded:true});
+      if(prior.revision===claims.revision && prior.outcome===(body.outcome==='accept'?'accepted':'declined'))return json({case:decisionSummary(view),recorded:true});
       fail('A decision is already recorded. Contact the leasing team to change it.',409);
     }
     const result=await flow.execute(principal,claims.id,{action:body.outcome==='accept'?'landlord_accept':'landlord_decline',
       revision:claims.revision,version:body.version,reason:body.reason || ''});
-    return json({case:result,recorded:true});
+    return json({case:decisionSummary(result),recorded:true});
   } catch(e) {
     const status=Number.isInteger(e.status) ? e.status : 503;
     return json({error:status>=500?'The decision could not be saved right now. Please try again.':e.message},status);

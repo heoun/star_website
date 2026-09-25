@@ -14,13 +14,15 @@ try {
  const flow=rentalWorkflow(env,new Request(origin));await flow.reconcile(ids.b);
  const row=()=>fixture.state.applications.find(a=>a.id===ids.b);
  eq(row().status,'sent_to_landlord');eq(fixture.state.emails.length,1);
- const mail=fixture.state.emails[0],link=new URL(/Agree to proceed: (\S+)/.exec(mail.text)[1]),params=new URLSearchParams(link.hash.slice(1)),token=params.get('token');assert(token);checks++;
+ const mail=fixture.state.emails[0],link=new URL(/Agree to Proceed: (\S+)/.exec(mail.text)[1]),params=new URLSearchParams(link.hash.slice(1)),token=params.get('token');assert(token);checks++;
  eq(mail.text.includes('No sign-in is required'),true);eq(link.search,'');
  eq(await createLandlordDecisionToken(env,origin,ids.b,row().workspace.recommendation),token);
  const before=fixture.writes.length;
  let res=await call(token);eq(res.status,200);let view=(await res.json()).case;eq(fixture.writes.length,before);eq(row().status,'sent_to_landlord');
  for(const value of ['ssn_encrypted','ssn_last4','ADMIN-ONLY','TEAM-ONLY','application_documents','government_id']){assert(!JSON.stringify(view).includes(value));checks++;}
- eq(view.recommendation.members.length,2);
+ eq(view.recommendation.members,undefined);
+ const details=new URL(/View Details: (\S+)/.exec(mail.text)[1]);eq(new URLSearchParams(details.hash.slice(1)).has('token'),false);
+ env.ACCOUNT_SECURITY='on';eq((await call(token)).status,200);
  eq((await call('')).status,401);eq((await call('x'+token)).status,401);
  eq((await call(token,null,{},'HEAD')).status,405);
  const approve={outcome:'accept',confirmed:true,version:view.workspace_version};

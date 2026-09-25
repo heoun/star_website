@@ -25,6 +25,7 @@ export function rentalWorkflow(env,request) {
 export function householdApplication(group) {
   return {...group.root,name:group.members.map(m=>m.name).join(' and '),email:group.members.map(m=>m.email).join('; '),
     current_address:group.members.map(m=>`${m.name}: ${m.current_address || ''}`).join('\n'),
+    pets:group.members.flatMap(m=>Array.isArray(m.pets)?m.pets:[]),
     children_under_11:group.members.some(m=>m.children_under_11===true),wants_window_guards:group.members.some(m=>m.wants_window_guards===true)};
 }
 export async function runRentalAutomation(env,request,id) {

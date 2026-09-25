@@ -1,10 +1,15 @@
-// Shared Supabase provider, separate applicant and workspace browser sessions.
+// Authentication realm is selected by the server route, never by browser input.
 import { isLocalRequest } from "./env.js";
 import { resolveStaff } from "./staff.js";
+import { accountSecurityEnabled, businessIdentity, verifiedSessionClaims } from "./account-security.js";
+import {createRecoveryCookie,recoveryCookie} from "./workspace-recovery.js";
+import {gipConfig} from './gip.js';
+import {readGipSession} from './gip-session.js';
+import {handleGipAuth} from './gip-flow.js';
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const SESSION_COOKIES = { applicant: "star_portal", workspace: "star_workspace" };
-function authScope(request) {
+export function authScope(request) {
   const path = new URL(request.url).pathname;
   return path.startsWith('/api/auth/workspace/') || ['/api/auth/workspace-code','/api/auth/workspace-activate'].includes(path) ? 'workspace' : 'applicant';
 }
@@ -12,7 +17,7 @@ function authScope(request) {
 // Missing selectors support old clients; a supplied invalid/missing slot must
 // never fall back to another applicant's legacy session.
 const APPLICANT_CONTEXT=/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
-function sessionCookieName(request,scope=authScope(request)) {
+export function sessionCookieName(request,scope=authScope(request)) {
   if(scope==='workspace')return SESSION_COOKIES.workspace;
   const header=request.headers.get('X-Applicant-Session');
   const query=new URL(request.url).searchParams.get('applicant_session');
@@ -41,14 +46,35 @@ function json(payload, status = 200, headers = {}) {
 //
 // Accept publishable and legacy anon keys. These only travel in apikey;
 // Authorization carries the user's verified access token.
-export function authConfig(env) {
+export function authConfig(env, scope = 'workspace') {
+  if(env.AUTH_PROVIDER && env.AUTH_PROVIDER!=='supabase')return null;
+  if (scope === 'applicant' && env.APPLICANT_AUTH_MODE && !['legacy','isolated','maintenance'].includes(env.APPLICANT_AUTH_MODE)) return null;
+  if (scope === 'applicant' && env.APPLICANT_AUTH_MODE === 'maintenance') return null;
+  if (scope === 'applicant' && env.APPLICANT_AUTH_MODE === 'isolated') {
+    let url, workspace;
+    try {
+      const parsed = new URL(env.APPLICANT_AUTH_URL);
+      if (parsed.protocol !== 'https:' || parsed.username || parsed.password || parsed.pathname !== '/' || parsed.search || parsed.hash) return null;
+      url = parsed.origin;
+      workspace = new URL(env.SUPABASE_URL).origin;
+    } catch { return null; }
+    const key = env.APPLICANT_AUTH_PUBLISHABLE_KEY || '';
+    // Missing or accidentally shared configuration must never fall back to staff Auth.
+    if (env.ACCOUNT_SECURITY !== 'on' || !key || url === workspace) return null;
+    return {url, key};
+  }
   const url = (env.SUPABASE_URL || "").replace(/\/+$/, "");
   const key = env.SUPABASE_PUBLISHABLE_KEY || env.SUPABASE_ANON_KEY || "";
   return url && key ? { url, key } : null;
 }
 
-export async function authRequest(env, path, { method = "POST", token, body } = {}) {
-  const config = authConfig(env);
+export function authConfigured(env,scope='workspace') {
+  if(env.AUTH_PROVIDER==='gip'){try{gipConfig(env,scope);return true;}catch{return false;}}
+  return !!authConfig(env,scope);
+}
+
+export async function authRequest(env, path, { method = "POST", token, body, scope = 'workspace' } = {}) {
+  const config = authConfig(env, scope);
   if (!config) throw Object.assign(new Error("Sign-in is not configured."), { status: 503 });
   const response = await fetch(`${config.url}/auth/v1/${path}`, {
     method,
@@ -76,6 +102,9 @@ export function authErrorMessage(payload, fallback) {
   if (/already registered|already been registered|user_already_exists/i.test(raw)) {
     return "This email already has an account. Sign in instead, or reset your password.";
   }
+  if((payload?.code||payload?.error_code)==='same_password'||/different from the old password/i.test(raw))return "Choose a different password from your current password.";
+  if((payload?.code||payload?.error_code)==='insufficient_aal')return "Verify your authenticator before changing your password.";
+  if((payload?.code||payload?.error_code)==='weak_password')return "Choose a stronger password; this password does not meet the security requirements.";
   if (/password should be/i.test(raw)) return `Please choose a password of at least ${PASSWORD_MIN} characters.`;
   if (/rate limit|too many|429/i.test(raw)) return "Too many attempts. Please wait a minute and try again.";
   if (/expired|invalid/i.test(raw)) return "That code has expired or is not right. Request a new one.";
@@ -103,7 +132,7 @@ function decodeSessionCookie(value) {
   }
 }
 
-function cookieValue(request, name) {
+export function cookieValue(request, name) {
   const header = request.headers.get("Cookie") || "";
   for (const part of header.split(/;\s*/)) {
     const eq = part.indexOf("=");
@@ -114,20 +143,29 @@ function cookieValue(request, name) {
 
 // `Secure` would make the browser drop the cookie on a plain-HTTP loopback,
 // which is exactly where development runs.
-function sessionCookie(request, value, maxAge, scope = authScope(request)) {
+export function sessionCookie(request, value, maxAge, scope = authScope(request)) {
   const attributes = [`${sessionCookieName(request,scope)}=${value}`, "Path=/", "HttpOnly", "SameSite=Lax", `Max-Age=${maxAge}`];
   if (!isLocalRequest(request)) attributes.push("Secure");
   return attributes.join("; ");
 }
 
+export function workspaceRoleCookie(request,role) {
+  return `star_workspace_role=${role}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_SECONDS}${isLocalRequest(request)?"":"; Secure"}`;
+}
+
 export async function signedIn(request, session, env) {
   if (!sessionCookieName(request)) return json({error:"Invalid applicant session."},400);
   if (!verifiedUser(session.user)) return json({ error: "Confirm your email before signing in." }, 403);
+  let access;
   if (authScope(request) === 'workspace') {
-    const resolved = await resolveStaff(env, {email: session.user.email, subject: session.user.id});
+    const resolved = await resolveStaff(env, {email: session.user.email, subject: session.user.id}, {allowPending:true});
+    access=resolved.identity;
     if (!resolved.identity) return json({error: resolved.error}, resolved.status || 403);
+  } else if (env.APPLICANT_AUTH_MODE === 'isolated') {
+    // Do not report successful sign-in while the business binding is unavailable.
+    await verifiedIdentity(request, env, session.user, session.access_token, 'applicant');
   }
-  return json({ ok: true, email: String(session.user?.email || "").toLowerCase() }, 200, {
+  return json({ ok: true, email: String(session.user?.email || "").toLowerCase(), ...(access && accountSecurityEnabled(env) ? {setup_password:access.has_password===false,mfa_required:access.role==="manager"} : {}) }, 200, {
     "Set-Cookie": sessionCookie(request, encodeSessionCookie(session), SESSION_SECONDS)
   });
 }
@@ -138,31 +176,43 @@ export async function signedIn(request, session, env) {
 // cookie the response must set — Supabase rotates refresh tokens, so
 // dropping it would sign the applicant out a request later.
 export async function readSession(request, env, scope = authScope(request)) {
-  if (!authConfig(env)) return null;
+  if(env.AUTH_PROVIDER==='gip')return readGipSession(request,env,scope);
+  if (!authConfig(env, scope)) return null;
 
   const name=sessionCookieName(request,scope);
   if(!name)return null;
   const stored = decodeSessionCookie(cookieValue(request, name));
   if (!stored) return null;
 
-  const user = await authRequest(env, "user", { method: "GET", token: stored.at });
+  const user = await authRequest(env, "user", { method: "GET", token: stored.at, scope });
   if (user.ok && verifiedUser(user.payload)) {
-    return { email: String(user.payload.email).trim().toLowerCase(), subject: user.payload.id, token: stored.at };
+    return verifiedIdentity(request,env,user.payload,stored.at,scope);
   }
 
   if (user.ok || ![401, 403].includes(user.status) || !stored.rt) return null;
   const refreshed = await authRequest(env, "token?grant_type=refresh_token", {
-    body: { refresh_token: stored.rt }
+    scope, body: { refresh_token: stored.rt }
   });
   const session = refreshed.payload;
   if (!refreshed.ok || !session?.access_token || !verifiedUser(session.user)) return null;
 
   return {
-    email: String(session.user.email).trim().toLowerCase(),
-    subject: session.user.id,
-    token: session.access_token,
+    ...await verifiedIdentity(request,env,session.user,session.access_token,scope),
     setCookie: sessionCookie(request, encodeSessionCookie(session), SESSION_SECONDS, scope)
   };
+}
+
+async function verifiedIdentity(request,env,user,token,scope) {
+  const identity={email:String(user.email).trim().toLowerCase(),subject:user.id,token,setCookie:undefined,user_id:undefined,aal:undefined,mfaAt:0,workspaceRole:"owner",factors:[]};
+  if(!accountSecurityEnabled(env))return identity;
+  const claims=verifiedSessionClaims(token);
+  identity.user_id=await businessIdentity(env,identity,scope);
+  identity.auth_scope=scope;
+  identity.aal=claims.aal;
+  identity.mfaAt=Math.max(0,...(Array.isArray(claims.amr)?claims.amr:[]).filter(a=>a.method==='totp'||a.method==='mfa/totp').map(a=>Number(a.timestamp)||0));
+  identity.workspaceRole=cookieValue(request,'star_workspace_role')==='admin'?'admin':'owner';
+  identity.factors=(user.factors||[]).filter(f=>f.factor_type==='totp').map(({id,status,friendly_name})=>({id,status,friendly_name}));
+  return identity;
 }
 
 // -------------------------------------------------------------------- account
@@ -194,7 +244,7 @@ async function handleRegister(request, env) {
     return json({ error: `Please choose a password of at least ${PASSWORD_MIN} characters.` }, 422);
   }
 
-  const result = await authRequest(env, "signup", { body: { email, password: body.password } });
+  const result = await authRequest(env, "signup", { scope: authScope(request), body: { email, password: body.password } });
   if (!result.ok) {
     return json({
       error: authErrorMessage(result.payload, "The account could not be created. Please try again.")
@@ -225,7 +275,7 @@ async function handleResend(request, env) {
     return json({ error: "Please enter a valid email address." }, 422);
   }
 
-  const result = await authRequest(env, "resend", { body: { type: "signup", email } });
+  const result = await authRequest(env, "resend", { scope: authScope(request), body: { type: "signup", email } });
   if (!result.ok && result.status === 429) {
     return json({ error: authErrorMessage(result.payload, "Too many codes requested. Please wait a minute.") }, 429);
   }
@@ -239,14 +289,24 @@ async function handleVerifyRegister(request, env) {
   if (!EMAIL_PATTERN.test(email) || !/^\d{6,8}$/.test(code)) {
     return json({ error: "Please enter the complete 6–8 digit code from the email." }, 422);
   }
+  const isolated = env.APPLICANT_AUTH_MODE === 'isolated';
+  if (isolated && !validPassword(body.password)) return json({error:'Return to Create an account and enter your applicant password before verifying the code.'},422);
 
-  const result = await authRequest(env, "verify", { body: { type: "signup", email, token: code } });
+  const result = await authRequest(env, "verify", { scope: authScope(request), body: { type: "signup", email, token: code } });
   if (!result.ok || !result.payload?.access_token) {
     return json({
       error: authErrorMessage(result.payload, "That code has expired or is not right. Request a new one.")
     }, 401);
   }
 
+  if (isolated) {
+    // Signup does not replace a pre-existing unconfirmed user's password.
+    // Only after mailbox proof may the chosen password be installed.
+    if (!verifiedUser(result.payload.user) || cleanEmail(result.payload.user.email)!==email) return json({error:'Email verification failed.'},403);
+    const saved = await authRequest(env, 'user', {scope:'applicant',method:'PUT',token:result.payload.access_token,body:{password:body.password}});
+    const samePassword = (saved.payload?.code || saved.payload?.error_code)==='same_password';
+    if (!saved.ok && !samePassword) return json({error:authErrorMessage(saved.payload,'Your email was verified, but your password could not be saved. Use Forgot your password to finish setting it.')},400);
+  }
   return signedIn(request, result.payload, env);
 }
 
@@ -258,14 +318,16 @@ async function handleLogin(request, env) {
     return json({ error: "Email or password is incorrect." }, 401);
   }
 
-  const result = await authRequest(env, "token?grant_type=password", { body: { email, password } });
+  const result = await authRequest(env, "token?grant_type=password", { scope: authScope(request), body: { email, password } });
   if (!result.ok || !result.payload?.access_token) {
     return json({
       error: authErrorMessage(result.payload, "Email or password is incorrect.")
     }, result.status === 429 ? 429 : 401);
   }
 
-  return signedIn(request, result.payload, env);
+  const response=await signedIn(request,result.payload,env);
+  if(response.ok&&authScope(request)==='workspace'&&accountSecurityEnabled(env))response.headers.append('Set-Cookie',recoveryCookie(request));
+  return response;
 }
 
 // Password reset: prove the inbox again, then choose the new password. The
@@ -277,7 +339,7 @@ async function handleRequestReset(request, env) {
     return json({ error: "Please enter a valid email address." }, 422);
   }
 
-  const result = await authRequest(env, "recover", { body: { email } });
+  const result = await authRequest(env, "recover", { scope: authScope(request), body: { email } });
   if (!result.ok && result.status === 429) {
     return json({ error: authErrorMessage(result.payload, "Too many codes requested. Please wait a minute.") }, 429);
   }
@@ -291,18 +353,26 @@ async function handleVerifyReset(request, env) {
   if (!EMAIL_PATTERN.test(email) || !/^\d{6,8}$/.test(code)) {
     return json({ error: "Please enter the complete 6–8 digit code from the email." }, 422);
   }
-  if (!validPassword(body.password)) {
+  const secureWorkspace=authScope(request)==='workspace'&&accountSecurityEnabled(env);
+  if (!secureWorkspace && !validPassword(body.password)) {
     return json({ error: `Please choose a password of at least ${PASSWORD_MIN} characters.` }, 422);
   }
 
-  const verified = await authRequest(env, "verify", { body: { type: "recovery", email, token: code } });
+  const verified = await authRequest(env, "verify", { scope: authScope(request), body: { type: "recovery", email, token: code } });
   if (!verified.ok || !verified.payload?.access_token) {
     return json({
       error: authErrorMessage(verified.payload, "That code has expired or is not right. Request a new one.")
     }, 401);
   }
 
-  const updated = await authRequest(env, "user", {
+  if(secureWorkspace){
+    if(cleanEmail(verified.payload.user?.email)!==email)return json({error:'The reset code does not match this account.'},401);
+    const response=await signedIn(request,verified.payload,env);
+    if(response.ok)response.headers.append('Set-Cookie',await createRecoveryCookie(request,env,verified.payload.access_token));
+    return response;
+  }
+
+  const updated = await authRequest(env, "user", { scope: authScope(request),
     method: "PUT",
     token: verified.payload.access_token,
     body: { password: body.password }
@@ -329,7 +399,8 @@ export function sameOriginMutation(request) {
 
 // Called by both /api/auth and the existing applicant endpoints.
 export async function handleAuthRequest(request, env, ctx, resource) {
-  if (!authConfig(env)) return json({ error: "Sign-in is temporarily unavailable." }, 503);
+  if(env.AUTH_PROVIDER==='gip')return handleGipAuth(request,env,resource,authScope(request));
+  if (!authConfig(env, authScope(request))) return json({ error: "Sign-in is temporarily unavailable." }, 503);
   if (!sessionCookieName(request)) return json({error:"Invalid applicant session."},400);
   if (!sameOriginMutation(request)) return json({ error: "Use this website to submit the form." }, 403);
   if (authScope(request) === 'workspace' && !['login','me','request-reset','verify-reset','sign-out'].includes(resource)) return json({error:'Unknown workspace account endpoint.'},404);
@@ -345,9 +416,11 @@ export async function handleAuthRequest(request, env, ctx, resource) {
       const stored = decodeSessionCookie(cookieValue(request, sessionCookieName(request)));
       if (stored?.at) {
         // Clear this browser even if upstream revocation is temporarily unavailable.
-        ctx.waitUntil(authRequest(env, "logout?scope=local", { token: stored.at }).catch(() => {}));
+        ctx.waitUntil(authRequest(env, "logout?scope=local", { scope: authScope(request), token: stored.at }).catch(() => {}));
       }
-      return json({ ok: true }, 200, { "Set-Cookie": sessionCookie(request, "", 0) });
+      const response=json({ ok: true }, 200, { "Set-Cookie": sessionCookie(request, "", 0) });
+      if(response.ok&&authScope(request)==='workspace'&&accountSecurityEnabled(env))response.headers.append('Set-Cookie',recoveryCookie(request));
+      return response;
     }
     if (!request.headers.get("Content-Type")?.toLowerCase().startsWith("application/json")) return json({ error: "Send this form as JSON." }, 415);
     const reader = request.body?.getReader(); let size = 0; const parts = [];
@@ -363,5 +436,8 @@ export async function handleAuthRequest(request, env, ctx, resource) {
     const handlers = { register: handleRegister, resend: handleResend, "verify-register": handleVerifyRegister, login: handleLogin, "request-reset": handleRequestReset, "verify-reset": handleVerifyReset };
     if (handlers[resource]) return await handlers[resource](safeRequest, env);
     return json({ error: "Unknown account endpoint." }, 404);
-  } catch { return json({ error: "Sign-in could not be completed. Please try again." }, 503); }
+  } catch (error) {
+    if (error.status === 403) return json({error:'Account access is unavailable. Contact the team for help.'},403);
+    return json({ error: "Sign-in could not be completed. Please try again." }, 503);
+  }
 }

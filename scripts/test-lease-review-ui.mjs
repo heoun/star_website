@@ -20,7 +20,7 @@ env.RENTAL_AUTOMATION='on';env.RENTAL_SCREENING='mock';
 const keys=new Set();env.LOCAL_EMAIL_SINK={async send(m,key){if(!keys.has(key)){keys.add(key);fixture.state.emails.push(m);}}};
 Object.assign(env,{DOCUSIGN_ENABLED:'on',DOCUSIGN_ENVIRONMENT:'demo',DEV_DOCUSIGN_SEND:'on',DOCUSIGN_INTEGRATION_KEY:'test',DOCUSIGN_USER_ID:'test',DOCUSIGN_ACCOUNT_ID:'test',DOCUSIGN_PRIVATE_KEY:'test',DOCUSIGN_CONNECT_HMAC_SECRET:'test',DOCUSIGN_WEBHOOK_URL:'https://example.test/api/webhooks/docusign'});
 const packages=new Map(),upstream=globalThis.fetch;
-globalThis.fetch=async(input,init={})=>{const u=new URL(input);if(u.pathname.endsWith('/rental_signing_packages')){if(init.method==='POST'){const row=JSON.parse(init.body);packages.set(row.id,row);return Response.json([row]);}const selected=u.searchParams.get('id')?.slice(3);return Response.json([...packages.values()].filter(p=>(!selected || p.id===selected)&&(!u.searchParams.has('reserved') || !!p.reserved===(u.searchParams.get('reserved')==='eq.true'))));}return upstream(input,init);};
+globalThis.fetch=async(input,init={})=>{const u=new URL(input);if(u.pathname.endsWith('/rental_signing_packages')){if(init.method==='POST'){const row=JSON.parse(init.body);packages.set(row.id,row);return Response.json([row]);}const selected=u.searchParams.get('id')?.slice(3);return Response.json([...packages.values()].reverse().filter(p=>(!selected || p.id===selected)&&(!u.searchParams.has('reserved') || !!p.reserved===(u.searchParams.get('reserved')==='eq.true'))));}return upstream(input,init);};
 env.APPLICANT_DOCS.head=async path=>fixture.state.files[path]?{}:null;
 const root=resolve('dist'),pending=[];
 env.ASSETS={async fetch(request){const path=new URL(request.url).pathname,file=resolve(root,`.${path}${path.endsWith('/')?'index.html':''}`);if(!file.startsWith(root+'/'))return new Response(null,{status:404});try{return new Response(await readFile(file),{headers:{'Content-Type':({'.html':'text/html','.js':'text/javascript','.mjs':'text/javascript','.css':'text/css','.svg':'image/svg+xml'})[extname(file)] || 'application/octet-stream'}});}catch{return new Response(null,{status:404});}}};
@@ -40,7 +40,7 @@ const browser=await chromium.launch({headless:true}),context=await browser.newCo
 page.on('pageerror',e=>errors.push(e.message));
 if(process.env.DEBUG_REVIEW){page.on('response',r=>{if(r.status()>=400)console.log('HTTP',r.status(),r.url());});page.on('console',m=>{if(m.type()==='error')console.log(m.text());});}
 const out='/tmp/star-lease-review-ui';await mkdir(out,{recursive:true});let checks=0;const eq=(a,b)=>{assert.deepEqual(a,b);checks++;};
-const login=async email=>{await page.goto(`${base}/login/`);await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign in',exact:true}).click();await page.waitForURL('**/admin/**');};
+const login=async email=>{await page.goto(`${base}/login/`);await page.getByLabel('Email address').fill(email);await page.getByLabel('Password',{exact:true}).fill('testing-password');await page.getByRole('button',{name:'Sign In',exact:true}).click();await page.waitForURL('**/admin/**');};
 try{
  const flow=rentalWorkflow(env,new Request(base));await flow.reconcile(ids.b);
  const row=fixture.state.applications.find(a=>a.id===ids.b);
@@ -53,8 +53,30 @@ try{
  eq(await panel.getByRole('heading',{level:3}).allTextContents(),['Tenants','Property & Lease Terms','Rent & Deposit','Landlord & Signer','Property Terms & Disclosures']);
  eq(await panel.locator('[data-lease-input]:visible').count(),0);
  eq(await page.locator('#lease-alarm').isVisible(),false);
+ eq(await page.getByRole('button',{name:'Download PDF',exact:true}).isVisible(),true);
+ await page.route('**/api/admin/cases/*/signing',async route=>{
+  if(route.request().method()==='POST' && route.request().postDataJSON()?.action==='download_pdf')return route.fulfill({status:200,contentType:'application/pdf',body:'%PDF-test-download'});
+  return route.fallback();
+ });
+ const pdfDownload=page.waitForEvent('download');
+ await page.getByRole('button',{name:'Download PDF',exact:true}).click();
+ eq((await pdfDownload).suggestedFilename(),'lease-for-review.pdf');
+ await page.getByText('Lease PDF downloaded.',{exact:true}).waitFor();
+ await page.unroute('**/api/admin/cases/*/signing');
  const valueStarts=await panel.locator('[data-ws-row="property.address_full"]>.ws-review-value,[data-ws-row="lease.effective_date"]>summary>.ws-review-value,[data-ws-row="lease.commencement_date"]>summary>.ws-review-value').evaluateAll(nodes=>nodes.map(n=>n.getBoundingClientRect().left));
  assert.ok(Math.max(...valueStarts)-Math.min(...valueStarts)<1);checks++;
+ await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();
+ await panel.getByRole('button',{name:'Add CC Recipient',exact:true}).click();
+ await panel.locator('[data-cc-name]').fill('Agent Copy');
+ await panel.locator('[data-cc-email]').fill('copy@example.test');
+ await panel.getByRole('button',{name:'Save CC Recipients',exact:true}).click();
+ await page.getByText('CC recipients saved. No email has been sent.',{exact:true}).waitFor();
+ await page.reload();await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();
+ eq(await panel.locator('[data-cc-email]').inputValue(),'copy@example.test');
+ await panel.getByRole('button',{name:'Remove',exact:true}).click();
+ await panel.getByRole('button',{name:'Save CC Recipients',exact:true}).click();
+ await page.getByText('CC recipients saved. No email has been sent.',{exact:true}).waitFor();
+ await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  const typeRow=panel.locator('[data-ws-row="dhcr.mark_vacancy"]');
  await typeRow.locator(':scope > summary').click();
  eq(await panel.locator('[data-ws-row="dhcr.mark_renewal"]').count(),0);
@@ -86,7 +108,7 @@ try{
  await page.route(preparePattern,async route=>{if(route.request().method()!=='POST')return route.fallback();await new Promise(r=>setTimeout(r,1500));await route.continue();});
  const prepared=page.waitForResponse(r=>r.request().method()==='POST' && /\/signing$/.test(r.url()));
  await panel.getByRole('tab',{name:'Documents',exact:true}).click();
- eq(await panel.locator('[data-ws-doc=""]').count(),0);eq(await panel.locator('[data-ws-doc]').count(),15);
+ eq(await panel.locator('[data-ws-doc=""]').count(),0);eq(await panel.locator('[data-ws-doc]').count(),17);
  eq(await panel.locator('[data-preview-status="loading"]').count(),1);
  eq(await page.locator('#lease-draft').isDisabled(),true);
  await page.getByRole('button',{name:/Back to Rental/}).click();
@@ -99,7 +121,7 @@ try{
  eq(await page.locator('#lease-review-feedback').isHidden(),true);
  eq(await page.locator('#lease-draft').isEnabled(),true);
  eq(await panel.getByRole('tab',{selected:true}).innerText(),'Lease Information');
- eq(packages.size,1);
+ eq(packages.size,3);
  await page.unroute(preparePattern);
  // A slow frame with a quick switch draws only the last selection, and
  // previewing one document does not count as reviewing the package.
@@ -124,7 +146,7 @@ try{
  eq(await page.locator('#lease-all-documents').getAttribute('aria-pressed'),'true');
  eq(await panel.locator('[data-workspace-document-preview]').count(),0);
  eq(await page.locator('#lease-draft').isHidden(),true);
- eq(packages.size,1);
+ eq(packages.size,3);
  await panel.locator('[data-ws-doc="utilities"]').click();
  await frame.locator('[data-signing-field="utilities-1-signature"].current').waitFor();
  eq(await page.locator('#lease-draft').isHidden(),true);
@@ -141,6 +163,9 @@ try{
  await end.locator('input').fill('09/30/2027');eq(await panel.locator('[data-ws-term]').innerText(),'12 Months');
  await end.getByRole('button',{name:'Done',exact:true}).click();
  const rent=panel.locator('[data-ws-row="rent.monthly"]');await rent.locator(':scope > summary').click();await rent.locator('input').fill('3100');
+ eq(await rent.locator('.ws-money-input>span').innerText(),'$');
+ eq(await rent.locator('[data-ws-value]').innerText(),'$3,100.00');
+ eq(await page.locator('[data-lease-slot="rent.monthly"]').first().innerText(),'$3,100.00');
  eq(await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).isDisabled(),true);
  await rent.getByRole('button',{name:'Done',exact:true}).click();eq(await rent.getAttribute('open'),null);
  await panel.getByRole('tab',{name:'E-sign Recipients',exact:true}).click();
@@ -163,11 +188,11 @@ try{
  eq(await panel.getByRole('button',{name:'Review Lease Draft',exact:true}).count(),0);
  eq(await panel.getByRole('button',{name:'Send With DocuSign',exact:true}).count(),0);
  eq(await page.getByRole('button',{name:'Send With DocuSign',exact:true}).isEnabled(),true);
- eq(packages.size,1); // Prepared once for the first approval when Documents opened; a new approval needs a new package.
+ eq(packages.size,3); // Prepared once for the first approval when Documents opened; a new approval needs a new package.
  await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  await page.getByRole('button',{name:'Review Lease for Signatures',exact:true}).click();
  await page.getByText('Review the lease and signer details, then send with DocuSign.',{exact:true}).waitFor();
- eq(packages.size,2);
+ eq(packages.size,4);
  const savedFrame=page.frameLocator('iframe[title="Lease for Signing"]');
  const savedPackage=[...packages.values()].at(-1);
  const qaSource=await page.request.get(`${base}/api/admin/cases/${ids.b}/signing?package=${savedPackage.id}&file=source`);
@@ -213,7 +238,7 @@ try{
   const {DOCUMENTS}=await import('/shared/lease-documents.js');
   const fold=t=>String(t).replace(/\s+/g,' ').trim();
   const nodes=[...document.querySelectorAll('#lease-doc section.docx > article > *')];
-  const starts=[...DOCUMENTS,{id:'fines',starts:'Fine Schedule'}].map(d=>({id:d.id,index:nodes.findIndex(n=>fold(n.textContent).startsWith(fold(d.starts)))})).sort((a,b)=>a.index-b.index);
+  const starts=DOCUMENTS.map(d=>({id:d.id,index:nodes.findIndex(n=>fold(n.textContent).startsWith(fold(d.starts)))})).sort((a,b)=>a.index-b.index);
   const at=starts.findIndex(s=>s.id===id);
   const paragraphs=nodes.slice(starts[at].index,starts[at+1]?.index??nodes.length).flatMap(n=>n.matches('p')?[n]:[...n.querySelectorAll('p')]);
   const slots=paragraphs.flatMap(p=>[...p.querySelectorAll('[data-lease-slot]')]);
@@ -289,8 +314,7 @@ try{
  await page.screenshot({path:`${out}/signing-fields-47.png`,fullPage:true});
  // Every rider opens its own copy with its original tenant/landlord lines and navigation.
  for(const layout of ['utilities','packages','keys','insurance','rules','fines']){
-  if(layout==='fines')await detail.locator('[data-preview-layout="fines"]').click();
-  else await panel.locator(`[data-ws-doc="${layout}"]`).click();
+  await panel.locator(`[data-ws-doc="${layout}"]`).click();
   await savedFrame.locator(`[data-signing-field="${layout}-1-signature"].current`).waitFor();
   eq(await savedFrame.locator('.signing-field-box').count(),6);
   eq(await savedFrame.locator('.signing-field-box[data-kind="initial"]').count(),0);
@@ -300,14 +324,14 @@ try{
   if(layout==='utilities')await page.screenshot({path:`${out}/filled-values-utilities.png`,fullPage:true});
   eq(await savedFrame.locator(`[data-signing-field="${layout}-3-full_name"]`).innerText(),owner.name);
   eq(await frameTop(),0);
-  eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),layout==='fines'?'rules':layout);
+  eq(await detail.evaluate(el=>el.previousElementSibling?.getAttribute('data-ws-doc')),layout);
   eq(await page.locator('#lease-doc-name').innerText(),({utilities:'Utilities Rider',packages:'Packages Rider',keys:'Key Rider',insurance:'Renters Insurance Rider',rules:'Community Rules Rider',fines:'Fine Schedule'})[layout]);
   await detail.locator(`[data-preview-signing-fields="${layout}-3-signature"]`).click();
   await savedFrame.locator(`[data-signing-field="${layout}-3-signature"].current`).waitFor();
   eq(await currentInView(),true);
   await page.screenshot({path:`${out}/signing-fields-${layout}.png`,fullPage:true});
  }
- eq(await detail.locator('[data-preview-layout]').allTextContents(),['Community Rules Rider','Fine Schedule']);
+ eq(await detail.locator('[data-preview-layout]').allTextContents(),[]);
  // Switching quickly settles on the last document only.
  await panel.locator('[data-ws-doc="utilities"]').click();
  await panel.locator('[data-ws-doc="packages"]').click();
@@ -320,7 +344,7 @@ try{
  eq(await page.locator('#lease-doc-name').innerText(),'Packages Rider');
  // Fields are drawn on the anchor tokens the saved document carries, so a
  // signer the package was not prepared for cannot be previewed into it.
- await panel.locator('[data-ws-doc="rules"]').click();await detail.locator('[data-preview-layout="fines"]').click();
+ await panel.locator('[data-ws-doc="fines"]').click();
  await savedFrame.locator('[data-signing-field="fines-1-signature"].current').waitFor();
  const slotCheck=await savedFrame.locator('#lease-doc').evaluate(async host=>{
   const {showSigningFields,clearSigningFields}=await import('/admin/signing-field-preview.js');
@@ -456,11 +480,11 @@ try{
  eq(await page.getByRole('button',{name:'Review Lease Draft',exact:true}).count(),1);
  await page.getByRole('button',{name:'Review Lease Draft',exact:true}).click();
  await page.locator('#lease-final').filter({hasText:'Send With DocuSign'}).waitFor();
- eq(packages.size,2); // The reviewed package is reused after navigating back.
+ eq(packages.size,4); // The reviewed package is reused after navigating back.
  await panel.getByRole('tab',{name:'Documents',exact:true}).click();
  await panel.locator('[data-ws-doc="smoking"]').click();
  await savedFrame.locator('[data-signing-field="smoking-1-signature"].current').waitFor();
- eq(packages.size,2);
+ eq(packages.size,4);
  await panel.getByRole('tab',{name:'Lease Information',exact:true}).click();
  // A saved document with different bytes must never be marked as reviewed.
  await page.getByRole('button',{name:/Back to Rental/}).click();
