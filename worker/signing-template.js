@@ -4,7 +4,7 @@ import {splitSigningDocuments,signingVisibleText} from './signing-documents.js';
 import {signingFields,SIGNING_TEMPLATE_VERSION} from '../site/shared/lease-signing-layout.js';
 import {injectSigningAnchors} from './signing-anchors.js';
 export {SIGNING_TEMPLATE_VERSION};
-const SOURCE_SHA='cb2911f9d459b57427013000fc823d8c0b1ae9198f31320c517b81d5750c0ed2';
+const SOURCE_SHA='98b215078ca1bbc6cc2c8e3015334301f0ce41945e1a8f9cba69faa2bd4c1e3d';
 export const sha256=async bytes=>Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',bytes)),x=>x.toString(16).padStart(2,'0')).join('');
 export async function buildSigningLease(env,request,values,signers,tenantValues={}){
  let source;
