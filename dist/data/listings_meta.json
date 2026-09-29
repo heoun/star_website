@@ -1,9 +1,9 @@
 {
-  "synced_at": "2026-07-30T13:44:12+00:00",
+  "synced_at": "2026-09-29T23:33:27+00:00",
   "source": "cache",
   "listing_count": 44,
   "status": "stale_cache",
   "errors": [
-    "auth: Expecting value: line 1 column 1 (char 0)"
+    "auth: Missing service account credentials. Set GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_FILE."
   ]
 }
